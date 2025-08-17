@@ -44,7 +44,7 @@ public:
 
     void SetControlledEntity(Player *newEntity);
 
-    void MoveThink(usercmd_t& botcmd);
+    void MoveThink(usercmd_t& botcmd, float skillLevel = 1.0f);
 
     void AvoidPath(
         Vector vPos,
@@ -127,7 +127,7 @@ public:
 
     void SetControlledEntity(Player *newEntity);
 
-    void          TurnThink(usercmd_t& botcmd, usereyes_t& eyeinfo);
+    void          TurnThink(usercmd_t& botcmd, usereyes_t& eyeinfo, float skillLevel = 1.0f);
     const Vector& GetTargetAngles() const;
     void          SetTargetAngles(Vector vAngles);
     void          AimAt(Vector vPos);
@@ -141,32 +141,43 @@ private:
     Vector m_vAngSpeed;
 };
 
+class BotController;
+
 class BotState
 {
 public:
-    virtual bool CheckCondition() const = 0;
-    virtual void Begin()                = 0;
-    virtual void End()                  = 0;
-    virtual void Think()                = 0;
+    BotState(BotController* pController) : m_pController(pController) {}
+    virtual ~BotState() {}
+
+    virtual void Enter() {}
+    virtual void Think() = 0;
+    virtual void Exit() {}
+    virtual const char* GetName() = 0;
+
+protected:
+    BotController* m_pController;
 };
 
 class BotController : public Listener
 {
-public:
-    struct botfunc_t {
-        bool (BotController::*CheckCondition)(void);
-        void (BotController::*BeginState)(void);
-        void (BotController::*EndState)(void);
-        void (BotController::*ThinkState)(void);
-    };
+    friend class AttackBotState;
+    friend class CuriousBotState;
+    friend class IdleBotState;
+    friend class GrenadeBotState;
+    friend class WeaponBotState;
 
 private:
-    static botfunc_t botfuncs[];
-
     BotMovement movement;
     BotRotation rotation;
 
     // States
+    BotState* m_pCurrentState;
+    AttackBotState* m_pAttackState;
+    CuriousBotState* m_pCuriousState;
+    IdleBotState* m_pIdleState;
+    GrenadeBotState* m_pGrenadeState;
+    WeaponBotState* m_pWeaponState;
+
     int    m_iCuriousTime;
     int    m_iAttackTime;
     int    m_iAttackStopAimTime;
@@ -174,6 +185,7 @@ private:
     int    m_iLastSeenTime;
     int    m_iLastUnseenTime;
     int    m_iContinuousFireTime;
+    int    m_iLastStateChangeTime;  // Track when we last changed states
     Vector m_vAimOffset;
     int    m_iLastAimTime;
 
@@ -189,14 +201,27 @@ private:
     usercmd_t  m_botCmd;
     usereyes_t m_botEyes;
 
-    // States
-    int               m_StateCount;
-    unsigned int      m_StateFlags;
-    ScriptThreadLabel m_RunLabel;
-
     // Taunts
     int m_iNextTauntTime;
     int m_iLastFireTime;
+
+    // Skill
+    float m_fSkill;
+
+    // Strafing behavior
+    int   m_iLastStrafeTime;
+    int   m_iStrafeDirection;
+    int   m_iStrafeChangeTime;
+
+    // Combat stance behavior
+    int     m_iLastStanceChangeTime;
+    int     m_iCrouchTime;
+    int     m_iStandTime;
+    bool    m_bIsCrouching;
+    bool    m_bWantsToRun;
+    
+    // Performance optimization
+    int     m_iLastFullUpdateTime;  // Track when we last did expensive operations
 
 private:
     DelegateHandle delegateHandle_gotKill;
@@ -212,43 +237,17 @@ private:
     void CheckUse(void);
     bool CheckWindows(void);
     void CheckValidWeapon(void);
+    void PerformCombatStrafing(void);
+    void UpdateCombatStance(void);
+    bool IsValidEnemy(Sentient *sent) const;
+    bool CheckCondition_Attack(void);
+    bool CheckCondition_Curious(void);
 
-    void State_DefaultBegin(void);
-    void State_DefaultEnd(void);
-    void State_Reset(void);
+    void UpdateStates(void);
+    void ChangeState(BotState* pNewState);
+    bool ShouldTransitionToState(BotState* newState);
+    void ValidateAndRecoverState(void);
 
-    static void InitState_Idle(botfunc_t *func);
-    bool        CheckCondition_Idle(void);
-    void        State_BeginIdle(void);
-    void        State_EndIdle(void);
-    void        State_Idle(void);
-
-    static void InitState_Curious(botfunc_t *func);
-    bool        CheckCondition_Curious(void);
-    void        State_BeginCurious(void);
-    void        State_EndCurious(void);
-    void        State_Curious(void);
-
-    static void InitState_Attack(botfunc_t *func);
-    bool        CheckCondition_Attack(void);
-    void        State_BeginAttack(void);
-    void        State_EndAttack(void);
-    void        State_Attack(void);
-    bool        IsValidEnemy(Sentient *sent) const;
-
-    static void InitState_Grenade(botfunc_t *func);
-    bool        CheckCondition_Grenade(void);
-    void        State_BeginGrenade(void);
-    void        State_EndGrenade(void);
-    void        State_Grenade(void);
-
-    static void InitState_Weapon(botfunc_t *func);
-    bool        CheckCondition_Weapon(void);
-    void        State_BeginWeapon(void);
-    void        State_EndWeapon(void);
-    void        State_Weapon(void);
-
-    void CheckStates(void);
 
 public:
     CLASS_PROTOTYPE(BotController);
@@ -280,6 +279,12 @@ public:
     void EventStuffText(const str& text);
 
     BotMovement& GetMovement();
+    float        GetSkill() const;
+
+	void AimAtEnemy(bool bCanSee, float fDistanceSquared, bool bFiring);
+    bool PerformAttack(bool bCanSee, bool bCanAttack, float fDistanceSquared, bool& bMelee, bool& bNoMove, float& fMinDistanceSquared, class Weapon* pWeap);
+    bool PerformCombatMovement(bool bCanSee, bool bMelee, bool bNoMove, bool bFiring, float fMinDistanceSquared, float fEnemyDistanceSquared);
+    bool CheckReactionTime(float fDistanceSquared);
 
 public:
     void    setControlledEntity(Player *player);

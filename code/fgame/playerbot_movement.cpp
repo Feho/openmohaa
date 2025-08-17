@@ -55,7 +55,7 @@ void BotMovement::SetControlledEntity(Player *newEntity)
     controlledEntity = newEntity;
 }
 
-void BotMovement::MoveThink(usercmd_t& botcmd)
+void BotMovement::MoveThink(usercmd_t& botcmd, float skillLevel)
 {
     Vector vAngles;
     Vector vWishDir;
@@ -130,9 +130,20 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
 
         m_iCheckPathTime = level.inttime;
 
-        if (m_iNumBlocks >= 5) {
-            // Give up
-            ClearMove();
+        // Instead of giving up permanently, reset after many attempts and try a completely different approach
+        if (m_iNumBlocks >= 8) {
+            // Reset blocking state and try a different target location
+            m_iNumBlocks = 0;
+            m_iTempAwayState = 0;
+            
+            // Pick a completely new random destination to break the cycle
+            Vector randomOffset = Vector(G_CRandom(1024), G_CRandom(1024), 0); // Keep Z=0 to stay on ground
+            m_vTargetPos = controlledEntity->origin + randomOffset;
+            m_vCurrentGoal = m_vTargetPos;
+            
+            // Clear path to force new pathfinding
+            m_pPath->Clear();
+            return;
         }
 
         if (!m_pPath->IsQuerying() && !controlledEntity->GetLadder()) {
@@ -146,14 +157,17 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
         }
 
         if (!blocked) {
+            // Successfully moving - reset blocking state
             m_iTempAwayState = 0;
             m_iNumBlocks     = 0;
 
             if (!m_pPath->GetNodeCount()) {
-                m_vTargetPos   = controlledEntity->origin + Vector(G_CRandom(512), G_CRandom(512), G_CRandom(512));
+                // No path but not blocked - find new random destination (ground level only)
+                m_vTargetPos   = controlledEntity->origin + Vector(G_CRandom(512), G_CRandom(512), 0);
                 m_vCurrentGoal = m_vTargetPos;
             }
         } else if (m_iTempAwayState == 0) {
+            // Start blocking detection
             m_iLastBlockTime = level.inttime;
             m_iTempAwayState = 1;
         }
@@ -166,7 +180,7 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
             m_iTempAwayTime  = level.inttime;
             m_iNumBlocks++;
 
-            // Try to backward a little
+            // Calculate movement delta for unstuck direction
             if (m_pPath->GetNodeCount()) {
                 delta = m_pPath->GetCurrentDelta();
             } else {
@@ -175,25 +189,34 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
 
             m_pPath->Clear();
 
-            if (m_iNumBlocks < 2) {
-                dir   = -delta;
-                dir.z = 0;
-                dir.normalize();
-
-                if (dir.x < -0.5 || dir.x > 0.5) {
-                    dir.x *= 4;
-                    dir.y /= 4;
-                } else if (dir.y < -0.5 || dir.y > 0.5) {
-                    dir.x /= 4;
-                    dir.y *= 4;
-                } else {
-                    dir.x = G_CRandom(2);
-                    dir.y = G_CRandom(2);
+            // Improved unstuck logic - try different strategies based on attempt count
+            if (m_iNumBlocks <= 2) {
+                // First attempts: try backing away from the obstacle
+                dir = -delta;
+                dir.z = 0; // Keep on ground level
+                VectorNormalize(dir);
+                
+                // Add some randomness to avoid getting stuck in the same pattern
+                dir += Vector(G_CRandom(0.5f), G_CRandom(0.5f), 0);
+                VectorNormalize(dir);
+                
+                m_vCurrentGoal = controlledEntity->origin + dir * 128;
+            } else if (m_iNumBlocks <= 4) {
+                // Middle attempts: try perpendicular movement
+                Vector perpendicular(-delta.y, delta.x, 0);
+                VectorNormalize(perpendicular);
+                
+                // Randomly choose left or right
+                if (G_Random(1.0f) > 0.5f) {
+                    perpendicular = -perpendicular;
                 }
-
-                m_vCurrentGoal = controlledEntity->origin + delta + dir * 128;
+                
+                m_vCurrentGoal = controlledEntity->origin + perpendicular * 200;
             } else {
-                m_vCurrentGoal = controlledEntity->origin + Vector(G_CRandom(512), G_CRandom(512), G_CRandom(512));
+                // Later attempts: try completely random directions (but stay on ground)
+                Vector randomDir(G_CRandom(1.0f), G_CRandom(1.0f), 0);
+                VectorNormalize(randomDir);
+                m_vCurrentGoal = controlledEntity->origin + randomDir * 256;
             }
         }
 
@@ -238,9 +261,23 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
     float x = vWishDir.x * 127;
     float y = -vWishDir.y * 127;
 
+    // Apply skill-based movement precision
+    // Lower skill bots have less precise movement control, but not so much it breaks navigation
+    if (skillLevel < 1.0f) {
+        // Reduce the frequency of movement errors to avoid erratic behavior
+        const float errorChance = (1.0f - skillLevel) * 0.1f;  // 0% to 10% chance based on skill
+        
+        if (G_Random(1.0f) < errorChance) {
+            // Apply small movement error - much less than before
+            const float errorFactor = (1.0f - skillLevel) * 0.1f;  // Up to 10% error instead of 30%
+            x += G_CRandom(x * errorFactor);
+            y += G_CRandom(y * errorFactor);
+        }
+    }
+
     botcmd.forwardmove = (signed char)Q_clamp(x, -127, 127);
     botcmd.rightmove   = (signed char)Q_clamp(y, -127, 127);
-    botcmd.upmove      = 0;
+    // upmove is preserved from combat stance system - don't reset it
 
     CheckJump(botcmd);
 
@@ -411,7 +448,10 @@ void BotMovement::CheckJump(usercmd_t& botcmd)
 
         delta = m_vJumpLocation - controlledEntity->origin;
         if (delta.lengthSquared() < Square(32)) {
-            botcmd.upmove = 127;
+            // Only jump if not crouching (preserve combat stance)
+            if (botcmd.upmove != -127) {
+                botcmd.upmove = 127;
+            }
         }
     }
 }
@@ -500,10 +540,13 @@ void BotMovement::CheckJumpOverEdge(usercmd_t& botcmd)
         return;
     }
 
-    if (!botcmd.upmove) {
-        botcmd.upmove = 127;
-    } else {
-        botcmd.upmove = 0;
+    // Only jump if not crouching (preserve combat stance)
+    if (botcmd.upmove != -127) {
+        if (!botcmd.upmove) {
+            botcmd.upmove = 127;
+        } else {
+            botcmd.upmove = 0;
+        }
     }
 }
 
@@ -587,6 +630,11 @@ Move to the specified position
 */
 void BotMovement::MoveTo(Vector vPos, float *vLeashHome, float fLeashRadius)
 {
+    // Basic validation - don't try to move to the same position
+    if ((vPos - controlledEntity->origin).lengthSquared() < Square(32)) {
+        return;
+    }
+
     m_vTargetPos = vPos;
 
     PathSearchParameter parameters;
