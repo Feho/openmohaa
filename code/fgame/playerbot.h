@@ -36,6 +36,13 @@ typedef struct nodeAttract_s {
 
 class BotController;
 
+// Forward declarations for bot state classes
+class AttackBotState;
+class CuriousBotState;
+class IdleBotState;
+class GrenadeBotState;
+class WeaponBotState;
+
 class BotMovement
 {
 public:

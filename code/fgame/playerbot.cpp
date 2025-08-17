@@ -602,7 +602,7 @@ void BotController::ValidateAndRecoverState()
 
     // Validate enemy reference
     if (m_pEnemy && !IsValidEnemy(m_pEnemy)) {
-        gi.DPrintf("%s: Invalid enemy reference, clearing\n", controlledEnt->client->pers.netname);
+        // gi.DPrintf("%s: Invalid enemy reference, clearing\n", controlledEnt->client->pers.netname);
         ClearEnemy();
     }
 
