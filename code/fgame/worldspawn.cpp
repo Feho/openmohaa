@@ -598,7 +598,7 @@ World::World()
     sky_portal = qtrue;
     UpdateSky();
 
-    m_fAIVisionDistance = 2048.0f;
+    m_fAIVisionDistance = 4096.0f;
 
     level.cinematic = spawnflags & WORLD_CINEMATIC;
 

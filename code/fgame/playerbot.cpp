@@ -21,11 +21,12 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 // playerbot.cpp: Multiplayer bot system.
 //
-// FIXME: Refactor code and use OOP-based state system
+
 
 #include "g_local.h"
 #include "actor.h"
 #include "playerbot.h"
+#include "playerbot_const.h"
 #include "consoleevent.h"
 #include "debuglines.h"
 #include "scriptexception.h"
@@ -33,6 +34,216 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "weaputils.h"
 #include "windows.h"
 #include "g_bot.h"
+
+/********************************************************************************
+
+Bot States
+
+********************************************************************************/
+
+class AttackBotState : public BotState
+{
+public:
+    AttackBotState(BotController* pController) : BotState(pController) {}
+    virtual void Think();
+    virtual const char* GetName() { return "Attack"; }
+};
+
+class CuriousBotState : public BotState
+{
+public:
+    CuriousBotState(BotController* pController) : BotState(pController) {}
+    virtual void Think();
+    virtual const char* GetName() { return "Curious"; }
+};
+
+class IdleBotState : public BotState
+{
+public:
+    IdleBotState(BotController* pController) : BotState(pController) {}
+    virtual void Think();
+    virtual const char* GetName() { return "Idle"; }
+};
+
+class GrenadeBotState : public BotState
+{
+public:
+    GrenadeBotState(BotController* pController) : BotState(pController) {}
+    virtual void Think();
+    virtual const char* GetName() { return "Grenade"; }
+};
+
+class WeaponBotState : public BotState
+{
+public:
+    WeaponBotState(BotController* pController) : BotState(pController) {}
+    virtual void Think();
+    virtual const char* GetName() { return "Weapon"; }
+};
+
+void AttackBotState::Think()
+{
+    // Early validation - ensure we have a valid enemy
+    if (!m_pController->m_pEnemy || !m_pController->IsValidEnemy(m_pController->m_pEnemy)) {
+        m_pController->m_iAttackTime = 0;
+        return;
+    }
+
+    // Get current weapon - bail if no weapon available
+    Weapon *pWeap = m_pController->getControlledEntity()->GetActiveWeapon(WEAPON_MAIN);
+    if (!pWeap) {
+        return;
+    }
+
+    // Calculate distances for decision making
+    const float fDistanceSquared = (m_pController->m_pEnemy->origin - m_pController->getControlledEntity()->origin).lengthSquared();
+    const float fMinDistance = MIN_ATTACK_DISTANCE;
+    float fMinDistanceSquared = fMinDistance * fMinDistance;  // Not const - can be modified by PerformAttack
+    
+    // Update enemy position tracking
+    m_pController->m_vOldEnemyPos = m_pController->m_vLastEnemyPos;
+
+    // Determine visibility and combat capability  
+    const bool bCanSee = m_pController->getControlledEntity()->CanSee(
+        m_pController->m_pEnemy, 
+        ENEMY_DETECTION_ANGLE,  // Use same angle as enemy detection for consistency
+        Q_min(world->m_fAIVisionDistance, world->farplane_distance * 1.2), 
+        false
+    );
+
+    // Combat state variables
+    bool bMelee = false;
+    bool bNoMove = false;
+    bool bFiring = false;
+    bool bCanAttack = false;
+
+    if (bCanSee) {
+        // Enemy is visible - evaluate attack capability
+        bCanAttack = m_pController->CheckReactionTime(fDistanceSquared);
+        bFiring = m_pController->PerformAttack(bCanSee, bCanAttack, fDistanceSquared, bMelee, bNoMove, fMinDistanceSquared, pWeap);
+    } else {
+        // Enemy not visible - stop attacking and track time
+        m_pController->m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
+        
+        if (level.inttime > m_pController->m_iLastSeenTime + LAST_SEEN_UNSEEN_DELAY_MS) {
+            m_pController->m_iLastUnseenTime = level.inttime;
+        }
+    }
+
+    // Update aiming regardless of visibility (for prediction)
+    m_pController->AimAtEnemy(bCanSee, fDistanceSquared, bFiring);
+
+    // Handle movement and positioning
+    const float fEnemyDistanceSquared = (m_pController->getControlledEntity()->origin - m_pController->m_vLastEnemyPos).lengthSquared();
+    if (m_pController->PerformCombatMovement(bCanSee, bMelee, bNoMove, bFiring, fMinDistanceSquared, fEnemyDistanceSquared)) {
+        return; // Enemy was cleared during movement
+    }
+}
+
+void CuriousBotState::Think()
+{
+    // Ensure we're running when curious (investigating) - clear ALL combat stance
+    m_pController->m_bIsCrouching = false;
+    m_pController->m_bWantsToRun = true;
+    m_pController->m_botCmd.buttons |= BUTTON_RUN;
+    m_pController->m_botCmd.upmove = 0;  // Clear crouch
+    m_pController->m_botCmd.rightmove = 0;  // Clear any strafing from combat
+    
+    // FORCE clear actual player crouch flags - this is the real fix!
+    if (m_pController->controlledEnt && m_pController->controlledEnt->client) {
+        m_pController->controlledEnt->client->ps.pm_flags &= ~(PMF_DUCKED | PMF_VIEW_PRONE | PMF_VIEW_DUCK_RUN);
+    }
+    
+    if (m_pController->CheckWindows()) {
+        m_pController->m_botCmd.buttons ^= BUTTON_ATTACKLEFT;
+        m_pController->m_iLastFireTime = level.inttime;
+    } else {
+        m_pController->m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
+    }
+
+    m_pController->AimAtAimNode();
+
+    if (!m_pController->GetMovement().MoveToBestAttractivePoint(3) && (!m_pController->GetMovement().IsMoving() || m_pController->m_vLastCuriousPos != m_pController->m_vNewCuriousPos)) {
+        m_pController->GetMovement().MoveTo(m_pController->m_vNewCuriousPos);
+        m_pController->m_vLastCuriousPos = m_pController->m_vNewCuriousPos;
+    }
+
+    if (m_pController->GetMovement().MoveDone()) {
+        m_pController->m_iCuriousTime = 0;
+    }
+    
+    // FINAL SAFETY: Force clear combat stance at end of non-combat state
+    m_pController->m_bIsCrouching = false;
+    m_pController->m_botCmd.upmove = 0;  // Normal movement (physics flags do the real work)
+    // FORCE clear actual player crouch flags!
+    if (m_pController->controlledEnt && m_pController->controlledEnt->client) {
+        m_pController->controlledEnt->client->ps.pm_flags &= ~(PMF_DUCKED | PMF_VIEW_PRONE | PMF_VIEW_DUCK_RUN);
+    }
+}
+
+void IdleBotState::Think()
+{
+    // Ensure we're not stuck crouching in idle state - clear ALL combat stance
+    m_pController->m_bIsCrouching = false;
+    m_pController->m_bWantsToRun = true;
+    m_pController->m_botCmd.buttons |= BUTTON_RUN;
+    m_pController->m_botCmd.upmove = 0;  // Normal movement (not jumping)
+    m_pController->m_botCmd.rightmove = 0;  // Clear any strafing from combat
+    
+    // FORCE clear actual player crouch flags - this is the real fix!
+    if (m_pController->controlledEnt && m_pController->controlledEnt->client) {
+        m_pController->controlledEnt->client->ps.pm_flags &= ~(PMF_DUCKED | PMF_VIEW_PRONE | PMF_VIEW_DUCK_RUN);
+    }
+    
+    if (m_pController->CheckWindows()) {
+        m_pController->m_botCmd.buttons ^= BUTTON_ATTACKLEFT;
+        m_pController->m_iLastFireTime = level.inttime;
+    } else {
+        m_pController->m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
+        m_pController->CheckReload();
+    }
+
+    m_pController->AimAtAimNode();
+
+    if (!m_pController->GetMovement().MoveToBestAttractivePoint() && !m_pController->GetMovement().IsMoving()) {
+        // Only go to death position if we've been idle for a while (avoid immediate retreat after kills)
+        const int idleTime = level.inttime - m_pController->m_iAttackTime;
+        const bool hasBeenIdleLongEnough = (m_pController->m_iAttackTime == 0) || (idleTime > IDLE_TIME_BEFORE_DEATH_POS_MS); // 5 seconds after combat
+        
+        if (m_pController->m_vLastDeathPos != vec_zero && hasBeenIdleLongEnough) {
+            m_pController->GetMovement().MoveTo(m_pController->m_vLastDeathPos);
+
+            if (m_pController->GetMovement().MoveDone()) {
+                m_pController->m_vLastDeathPos = vec_zero;
+            }
+        } else {
+            Vector randomDir(G_CRandom(16), G_CRandom(16), G_CRandom(16));
+            Vector preferredDir;
+            float  radius = IDLE_AVOID_RADIUS_MIN + G_Random(IDLE_AVOID_RADIUS_MAX - IDLE_AVOID_RADIUS_MIN);
+
+            preferredDir += Vector(m_pController->getControlledEntity()->orientation[0]) * (rand() % 5 ? IDLE_AVOID_PREFERRED_DIR_DISTANCE : -IDLE_AVOID_PREFERRED_DIR_DISTANCE);
+            preferredDir += Vector(m_pController->getControlledEntity()->orientation[2]) * (rand() % 5 ? IDLE_AVOID_PREFERRED_DIR_DISTANCE : -IDLE_AVOID_PREFERRED_DIR_DISTANCE);
+            m_pController->GetMovement().AvoidPath(m_pController->getControlledEntity()->origin + randomDir, radius, preferredDir);
+        }
+    }
+    
+    // FINAL SAFETY: Force clear combat stance at end of non-combat state  
+    m_pController->m_bIsCrouching = false;
+    m_pController->m_botCmd.upmove = 0;  // Normal movement (physics flags do the real work)
+    // FORCE clear actual player crouch flags!
+    if (m_pController->controlledEnt && m_pController->controlledEnt->client) {
+        m_pController->controlledEnt->client->ps.pm_flags &= ~(PMF_DUCKED | PMF_VIEW_PRONE | PMF_VIEW_DUCK_RUN);
+    }
+}
+
+void GrenadeBotState::Think()
+{
+}
+
+void WeaponBotState::Think()
+{
+}
+
 
 // We assume that we have limited access to the server-side
 // and that most logic come from the playerstate_s structure
@@ -43,12 +254,25 @@ CLASS_DECLARATION(Listener, BotController, NULL) {
     {NULL, NULL}
 };
 
-BotController::botfunc_t BotController::botfuncs[MAX_BOT_FUNCTIONS];
+
 
 BotController::BotController()
 {
     if (LoadingSavegame) {
         return;
+    }
+
+    // Create states in proper order
+    m_pAttackState = std::make_unique<AttackBotState>(this);
+    m_pCuriousState = std::make_unique<CuriousBotState>(this);
+    m_pIdleState = std::make_unique<IdleBotState>(this);
+    m_pGrenadeState = std::make_unique<GrenadeBotState>(this);
+    m_pWeaponState = std::make_unique<WeaponBotState>(this);
+    
+    // Set initial state and enter it
+    m_pCurrentState = m_pIdleState.get();
+    if (m_pCurrentState) {
+        m_pCurrentState->Enter();
     }
 
     m_botCmd.serverTime = 0;
@@ -75,14 +299,38 @@ BotController::BotController()
     m_iLastSeenTime       = 0;
     m_iLastUnseenTime     = 0;
     m_iLastBurstTime      = 0;
+    m_iLastStateChangeTime = 0;
 
     m_iNextTauntTime = 0;
 
-    m_StateFlags = 0;
+    
+    m_fSkill = 0.01f + G_Random(0.8f);
+
+    // Initialize strafing behavior
+    m_iLastStrafeTime  = 0;
+    m_iStrafeDirection = 0;
+    m_iStrafeChangeTime = 0;
+
+    // Initialize combat stance behavior
+    m_iLastStanceChangeTime = 0;
+    m_iCrouchTime = 0;
+    m_iStandTime = 0;
+    m_bIsCrouching = false;
+    m_bWantsToRun = true;
+    
+    // Performance optimization
+    m_iLastFullUpdateTime = 0;
 }
 
 BotController::~BotController()
 {
+    // Properly exit current state before cleanup
+    if (m_pCurrentState)
+    {
+        m_pCurrentState->Exit();
+        m_pCurrentState = nullptr;
+    }
+
     if (controlledEnt) {
         controlledEnt->delegate_gotKill.Remove(delegateHandle_gotKill);
         controlledEnt->delegate_killed.Remove(delegateHandle_killed);
@@ -96,20 +344,14 @@ BotMovement& BotController::GetMovement()
     return movement;
 }
 
+float BotController::GetSkill() const
+{
+    return m_fSkill;
+}
+
 void BotController::Init(void)
 {
     bot_manualmove = gi.Cvar_Get("bot_manualmove", "0", 0);
-
-    for (int i = 0; i < MAX_BOT_FUNCTIONS; i++) {
-        botfuncs[i].BeginState = &BotController::State_DefaultBegin;
-        botfuncs[i].EndState   = &BotController::State_DefaultEnd;
-    }
-
-    InitState_Attack(&botfuncs[0]);
-    InitState_Curious(&botfuncs[1]);
-    InitState_Grenade(&botfuncs[2]);
-    InitState_Idle(&botfuncs[3]);
-    //InitState_Weapon(&botfuncs[4]);
 }
 
 void BotController::GetUsercmd(usercmd_t *ucmd)
@@ -122,8 +364,129 @@ void BotController::GetEyeInfo(usereyes_t *eyeinfo)
     *eyeinfo = m_botEyes;
 }
 
+void BotController::ChangeState(BotState* pNewState)
+{
+    // Don't change to the same state
+    if (m_pCurrentState == pNewState) {
+        return;
+    }
+
+    // Don't change to null state
+    if (!pNewState) {
+        gi.DPrintf("BotController::ChangeState: Attempted to change to null state\n");
+        return;
+    }
+
+    if (m_pCurrentState)
+    {
+        // gi.DPrintf("%s: Exiting state %s\n", controlledEnt->client->pers.netname, m_pCurrentState->GetName());
+        m_pCurrentState->Exit();
+        
+        // Clear combat stance when exiting AttackBotState to prevent stuck crouching
+        if (dynamic_cast<AttackBotState*>(m_pCurrentState)) {
+            m_bIsCrouching = false;
+            m_bWantsToRun = true;
+            m_botCmd.upmove = 0;  // Normal movement (physics flags do the real work)
+            m_botCmd.buttons |= BUTTON_RUN;
+            m_botCmd.buttons &= ~BUTTON_ATTACKLEFT;
+            m_botCmd.buttons &= ~BUTTON_ATTACKRIGHT;
+            // FORCE clear actual player crouch flags!
+            if (controlledEnt && controlledEnt->client) {
+                controlledEnt->client->ps.pm_flags &= ~(PMF_DUCKED | PMF_VIEW_PRONE | PMF_VIEW_DUCK_RUN);
+            }
+        }
+    }
+
+    m_pCurrentState = pNewState;
+
+    if (m_pCurrentState)
+    {
+        // gi.DPrintf("%s: Entering state %s\n", controlledEnt->client->pers.netname, m_pCurrentState->GetName());
+        m_pCurrentState->Enter();
+    }
+}
+
+void BotController::UpdateStates(void)
+{
+    BotState* desiredState = nullptr;
+    
+    // Determine the desired state based on current conditions
+    if (CheckCondition_Attack())
+    {
+        desiredState = m_pAttackState.get();
+    }
+    else if (CheckCondition_Curious())
+    {
+        desiredState = m_pCuriousState.get();
+    }
+    else
+    {
+        desiredState = m_pIdleState.get();
+    }
+    
+    // Only change state if different from current state
+    if (m_pCurrentState != desiredState)
+    {
+        // Add state transition validation and hysteresis
+        if (ShouldTransitionToState(desiredState))
+        {
+            ChangeState(desiredState);
+        }
+    }
+}
+
+/*
+====================
+ShouldTransitionToState
+
+Determines if a state transition should occur, implementing hysteresis 
+and transition validation to prevent rapid state switching
+====================
+*/
+bool BotController::ShouldTransitionToState(BotState* newState)
+{
+    if (!newState) {
+        return false;
+    }
+    
+    // Always allow transition if no current state
+    if (!m_pCurrentState) {
+        return true;
+    }
+    
+    // Get current time for transition timing
+    const int currentTime = level.inttime;
+    
+    // Implement hysteresis - require minimum time in current state before switching
+    // This prevents rapid state switching that can make bots look erratic
+    const int minStateTime = MIN_STATE_TRANSITION_TIME_MS; // 1 second minimum
+    
+    if (currentTime < m_iLastStateChangeTime + minStateTime) {
+        // Too soon to change states - stay in current state for stability
+        return false;
+    }
+    
+    // Special transition rules for better behavior
+    if (m_pCurrentState == m_pAttackState.get()) {
+        // When leaving attack state, require longer delay to avoid rapid re-engaging
+        if (newState != m_pAttackState.get() && currentTime < m_iLastStateChangeTime + ATTACK_STATE_TRANSITION_DELAY_MS) {
+            return false;
+        }
+    }
+    
+    // Allow the transition and update timing
+    m_iLastStateChangeTime = currentTime;
+    return true;
+}
+
 void BotController::UpdateBotStates(void)
 {
+    // Early validation - ensure we have a valid controlled entity
+    if (!controlledEnt || !controlledEnt->client) {
+        gi.DPrintf("BotController::UpdateBotStates: Invalid controlled entity\n");
+        return;
+    }
+
     if (bot_manualmove->integer) {
         memset(&m_botCmd, 0, sizeof(usercmd_t));
         return;
@@ -131,15 +494,10 @@ void BotController::UpdateBotStates(void)
 
     m_botCmd.serverTime = level.svsTime;
 
+    // Ensure bot has a primary weapon assigned
     if (!controlledEnt->client->pers.dm_primary[0]) {
-        Event *event;
-
-        //
-        // Primary weapon
-        //
-        event = new Event(EV_Player_PrimaryDMWeapon);
+        Event *event = new Event(EV_Player_PrimaryDMWeapon);
         event->AddString("auto");
-
         controlledEnt->ProcessEvent(event);
     }
 
@@ -166,7 +524,9 @@ void BotController::UpdateBotStates(void)
         return;
     }
 
-    m_botCmd.buttons |= BUTTON_RUN;
+    // Initialize command state
+    m_botCmd.buttons |= BUTTON_RUN;  // Default to running (may be overridden in combat)
+    m_botCmd.upmove = 0;
 
     m_botEyes.ofs[0]    = 0;
     m_botEyes.ofs[1]    = 0;
@@ -174,13 +534,66 @@ void BotController::UpdateBotStates(void)
     m_botEyes.angles[0] = 0;
     m_botEyes.angles[1] = 0;
 
-    CheckStates();
+    // Validate bot state and recover from invalid conditions
+    ValidateAndRecoverState();
 
-    movement.MoveThink(m_botCmd);
-    rotation.TurnThink(m_botCmd, m_botEyes);
+    UpdateStates();
+    if (m_pCurrentState)
+    {
+        m_pCurrentState->Think();
+        
+        // FINAL SAFETY: Ensure non-combat states can't be overridden by combat stance logic
+        if (!dynamic_cast<AttackBotState*>(m_pCurrentState)) {
+            m_bIsCrouching = false;
+            m_botCmd.upmove = 0;  // Normal movement (physics flags do the real work)
+            // FORCE clear actual player crouch flags!
+            if (controlledEnt && controlledEnt->client) {
+                controlledEnt->client->ps.pm_flags &= ~(PMF_DUCKED | PMF_VIEW_PRONE | PMF_VIEW_DUCK_RUN);
+            }
+        }
+    }
+
+    movement.MoveThink(m_botCmd, m_fSkill);
+    rotation.TurnThink(m_botCmd, m_botEyes, m_fSkill);
     CheckUse();
 
     CheckValidWeapon();
+}
+
+/*
+====================
+ValidateAndRecoverState
+
+Validates the bot's state and recovers from invalid conditions
+====================
+*/
+void BotController::ValidateAndRecoverState()
+{
+    // Ensure we have a valid current state
+    if (!m_pCurrentState) {
+        gi.DPrintf("%s: No current state, defaulting to idle\n", controlledEnt->client->pers.netname);
+        m_pCurrentState = m_pIdleState.get();
+        if (m_pCurrentState) {
+            m_pCurrentState->Enter();
+        }
+    }
+
+    // Validate enemy reference
+    if (m_pEnemy && !IsValidEnemy(m_pEnemy)) {
+        ClearEnemy();
+    }
+
+    // Reset any stuck states
+    if (m_iAttackTime && level.inttime > m_iAttackTime + ATTACK_STATE_TIMEOUT_MS) { // 10 seconds max attack time
+        gi.DPrintf("%s: Attack state stuck, resetting\n", controlledEnt->client->pers.netname);
+        ClearEnemy();
+    }
+
+    if (m_iCuriousTime && level.inttime > m_iCuriousTime + CURIOUS_STATE_TIMEOUT_MS) { // 30 seconds max curious time
+        gi.DPrintf("%s: Curious state stuck, resetting\n", controlledEnt->client->pers.netname);
+        m_iCuriousTime = 0;
+        m_vNewCuriousPos = vec_zero;
+    }
 }
 
 void BotController::CheckUse(void)
@@ -266,6 +679,10 @@ bool BotController::CheckWindows(void)
 
 void BotController::CheckValidWeapon()
 {
+    if (!controlledEnt) {
+        return;
+    }
+
     Weapon *weapon = controlledEnt->GetActiveWeapon(WEAPON_MAIN);
     if (!weapon) {
         // If holstered, use the best weapon available
@@ -278,6 +695,17 @@ void BotController::CheckValidWeapon()
 
 void BotController::SendCommand(const char *text)
 {
+    // Input validation
+    if (!text || !*text) {
+        gi.DPrintf("BotController::SendCommand: Invalid command text\n");
+        return;
+    }
+
+    if (!controlledEnt) {
+        gi.DPrintf("BotController::SendCommand: No controlled entity\n");
+        return;
+    }
+
     char        *buffer;
     char        *data;
     size_t       len;
@@ -286,7 +714,12 @@ void BotController::SendCommand(const char *text)
     len = strlen(text) + 1;
 
     buffer = (char *)gi.Malloc(len);
-    data   = buffer;
+    if (!buffer) {
+        gi.DPrintf("BotController::SendCommand: Failed to allocate memory\n");
+        return;
+    }
+
+    data = buffer;
     Q_strncpyz(data, text, len);
 
     const char *com_token = COM_Parse(&data);
@@ -372,18 +805,32 @@ Make the bot reload if necessary
 */
 void BotController::CheckReload(void)
 {
-    Weapon *weap;
-
-    if (level.inttime < m_iLastFireTime + 2000) {
-        // Don't reload while attacking
+    Weapon *weap = controlledEnt->GetActiveWeapon(WEAPON_MAIN);
+    if (!weap) {
         return;
     }
 
-    weap = controlledEnt->GetActiveWeapon(WEAPON_MAIN);
-
-    if (weap && weap->CheckReload(FIRE_PRIMARY)) {
-        SendCommand("reload");
+    // Don't reload if weapon doesn't need it
+    if (!weap->CheckReload(FIRE_PRIMARY)) {
+        return;
     }
+
+    // Skill-based reload behavior: lower skill bots are more likely to "forget" to reload
+    // and have worse timing for when to reload
+    const float forgetChance = RELOAD_FORGET_CHANCE_BASE - (m_fSkill * RELOAD_FORGET_CHANCE_SKILL_MULTIPLIER);  // 50% forget chance at skill 0, 10% at skill 1
+    if (G_Random(1.0f) < forgetChance) {
+        return;
+    }
+
+    // Lower skill bots wait longer before considering a reload
+    const int skillBasedDelay = RELOAD_DELAY_MIN_MS + (int)((1.0f - m_fSkill) * (RELOAD_DELAY_MAX_MS - RELOAD_DELAY_MIN_MS));  // 1-3 second delay based on skill
+    if (level.inttime < m_iLastFireTime + skillBasedDelay) {
+        // Don't reload while recently attacking or if skill dictates waiting longer
+        return;
+    }
+
+    // All conditions met - initiate reload
+    SendCommand("reload");
 }
 
 /*
@@ -451,10 +898,36 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     switch (iType) {
     case AI_EVENT_MISC:
     case AI_EVENT_MISC_LOUD:
+        // Minor events just make bots curious
+        m_iCuriousTime   = level.inttime + CURIOUS_TIME_FROM_MINOR_EVENT_MS;  // Reduced from 20 seconds
+        m_vNewCuriousPos = vPos;
         break;
+        
     case AI_EVENT_WEAPON_FIRE:
     case AI_EVENT_WEAPON_IMPACT:
     case AI_EVENT_EXPLOSION:
+        // Combat events - if we have a valid enemy owner, immediately target them
+        if (pSentOwner && IsValidEnemy(pSentOwner)) {
+            m_pEnemy = pSentOwner;
+            m_vLastEnemyPos = pSentOwner->origin;
+            m_iLastSeenTime = level.inttime;
+            m_iAttackTime = level.inttime + ATTACK_TIME_FROM_EVENT_MS;  // Stay in attack mode for 5 seconds
+            m_iEnemyEyesTag = -1;  // Reset eye tracking
+            
+            // Clear any current movement to focus on combat
+            movement.ClearMove();
+            
+            // gi.DPrintf("%s: Noticed combat event from %s, engaging!\n", 
+            //           controlledEnt->client->pers.netname,
+            //           pSentOwner->IsSubclassOfPlayer() ? 
+            //           static_cast<Player*>(pSentOwner)->client->pers.netname : "enemy");
+        } else {
+            // No valid enemy owner, just become curious
+            m_iCuriousTime   = level.inttime + CURIOUS_TIME_FROM_EVENT_MS;
+            m_vNewCuriousPos = vPos;
+        }
+        break;
+        
     case AI_EVENT_AMERICAN_VOICE:
     case AI_EVENT_GERMAN_VOICE:
     case AI_EVENT_AMERICAN_URGENT:
@@ -462,7 +935,8 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     case AI_EVENT_FOOTSTEP:
     case AI_EVENT_GRENADE:
     default:
-        m_iCuriousTime   = level.inttime + 20000;
+        // Other events make bots curious for investigation
+        m_iCuriousTime   = level.inttime + CURIOUS_TIME_FROM_EVENT_MS;
         m_vNewCuriousPos = vPos;
         break;
     }
@@ -472,226 +946,47 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
 ====================
 ClearEnemy
 
-Clear the bot's enemy
+Clear the bot's enemy and reset combat state
 ====================
 */
 void BotController::ClearEnemy(void)
 {
+    // Clear enemy tracking data
     m_iAttackTime   = 0;
-    m_pEnemy        = NULL;
+    m_pEnemy        = nullptr;
     m_iEnemyEyesTag = -1;
     m_vOldEnemyPos  = vec_zero;
     m_vLastEnemyPos = vec_zero;
+    
+    // Reset combat movement behavior
+    m_iStrafeDirection = 0;
+    m_iStrafeChangeTime = 0;
+    m_iLastStrafeTime = 0;
+
+    // Reset combat stance to normal patrol behavior
+    m_bIsCrouching = false;
+    m_bWantsToRun = true;
+    m_iCrouchTime = 0;
+    m_iStandTime = 0;
+    m_iLastStanceChangeTime = 0;
+    
+    // Clear combat-related command state
+    m_botCmd.upmove = 0;
+    m_botCmd.buttons |= BUTTON_RUN;
+    m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
 }
 
-/*
-====================
-Bot states
---------------------
-____________________
---------------------
-____________________
---------------------
-____________________
---------------------
-____________________
-====================
-*/
-
-void BotController::CheckStates(void)
-{
-    m_StateCount = 0;
-
-    for (int i = 0; i < MAX_BOT_FUNCTIONS; i++) {
-        botfunc_t *func = &botfuncs[i];
-
-        if (func->CheckCondition) {
-            if ((this->*func->CheckCondition)()) {
-                if (!(m_StateFlags & (1 << i))) {
-                    m_StateFlags |= 1 << i;
-
-                    if (func->BeginState) {
-                        (this->*func->BeginState)();
-                    }
-                }
-
-                if (func->ThinkState) {
-                    m_StateCount++;
-                    (this->*func->ThinkState)();
-                }
-            } else {
-                if ((m_StateFlags & (1 << i))) {
-                    m_StateFlags &= ~(1 << i);
-
-                    if (func->EndState) {
-                        (this->*func->EndState)();
-                    }
-                }
-            }
-        } else {
-            if (func->ThinkState) {
-                m_StateCount++;
-                (this->*func->ThinkState)();
-            }
-        }
-    }
-
-    assert(m_StateCount);
-    if (!m_StateCount) {
-        gi.DPrintf("*** WARNING *** %s was stuck with no states !!!", controlledEnt->client->pers.netname);
-        State_Reset();
-    }
-}
-
-/*
-====================
-Default state
 
 
-====================
-*/
-void BotController::State_DefaultBegin(void)
-{
-    movement.ClearMove();
-}
 
-void BotController::State_DefaultEnd(void) {}
 
-void BotController::State_Reset(void)
-{
-    m_iCuriousTime    = 0;
-    m_iAttackTime     = 0;
-    m_vLastCuriousPos = vec_zero;
-    m_vOldEnemyPos    = vec_zero;
-    m_vLastEnemyPos   = vec_zero;
-    m_vLastDeathPos   = vec_zero;
-    m_pEnemy          = NULL;
-    m_iEnemyEyesTag   = -1;
-}
 
-/*
-====================
-Idle state
 
-Make the bot move to random directions
-====================
-*/
-void BotController::InitState_Idle(botfunc_t *func)
-{
-    func->CheckCondition = &BotController::CheckCondition_Idle;
-    func->ThinkState     = &BotController::State_Idle;
-}
 
-bool BotController::CheckCondition_Idle(void)
-{
-    if (m_iCuriousTime) {
-        return false;
-    }
 
-    if (m_iAttackTime) {
-        return false;
-    }
 
-    return true;
-}
 
-void BotController::State_Idle(void)
-{
-    if (CheckWindows()) {
-        m_botCmd.buttons ^= BUTTON_ATTACKLEFT;
-        m_iLastFireTime = level.inttime;
-    } else {
-        m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
-        CheckReload();
-    }
 
-    AimAtAimNode();
-
-    if (!movement.MoveToBestAttractivePoint() && !movement.IsMoving()) {
-        if (m_vLastDeathPos != vec_zero) {
-            movement.MoveTo(m_vLastDeathPos);
-
-            if (movement.MoveDone()) {
-                m_vLastDeathPos = vec_zero;
-            }
-        } else {
-            Vector randomDir(G_CRandom(16), G_CRandom(16), G_CRandom(16));
-            Vector preferredDir;
-            float  radius = 512 + G_Random(2048);
-
-            preferredDir += Vector(controlledEnt->orientation[0]) * (rand() % 5 ? 1024 : -1024);
-            preferredDir += Vector(controlledEnt->orientation[2]) * (rand() % 5 ? 1024 : -1024);
-            movement.AvoidPath(controlledEnt->origin + randomDir, radius, preferredDir);
-        }
-    }
-}
-
-/*
-====================
-Curious state
-
-Forward to the last event position
-====================
-*/
-void BotController::InitState_Curious(botfunc_t *func)
-{
-    func->CheckCondition = &BotController::CheckCondition_Curious;
-    func->ThinkState     = &BotController::State_Curious;
-}
-
-bool BotController::CheckCondition_Curious(void)
-{
-    if (m_iAttackTime) {
-        m_iCuriousTime = 0;
-        return false;
-    }
-
-    if (level.inttime > m_iCuriousTime) {
-        if (m_iCuriousTime) {
-            movement.ClearMove();
-            m_iCuriousTime = 0;
-        }
-
-        return false;
-    }
-
-    return true;
-}
-
-void BotController::State_Curious(void)
-{
-    if (CheckWindows()) {
-        m_botCmd.buttons ^= BUTTON_ATTACKLEFT;
-        m_iLastFireTime = level.inttime;
-    } else {
-        m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
-    }
-
-    AimAtAimNode();
-
-    if (!movement.MoveToBestAttractivePoint(3) && (!movement.IsMoving() || m_vLastCuriousPos != m_vNewCuriousPos)) {
-        movement.MoveTo(m_vNewCuriousPos);
-        m_vLastCuriousPos = m_vNewCuriousPos;
-    }
-
-    if (movement.MoveDone()) {
-        m_iCuriousTime = 0;
-    }
-}
-
-/*
-====================
-Attack state
-
-Attack the enemy
-====================
-*/
-void BotController::InitState_Attack(botfunc_t *func)
-{
-    func->CheckCondition = &BotController::CheckCondition_Attack;
-    func->EndState       = &BotController::State_EndAttack;
-    func->ThinkState     = &BotController::State_Attack;
-}
 
 static Vector bot_origin;
 
@@ -719,6 +1014,10 @@ static int sentients_compare(const void *elem1, const void *elem2)
 
 bool BotController::IsValidEnemy(Sentient *sent) const
 {
+    if (!sent) {
+        return false;
+    }
+
     if (sent == controlledEnt) {
         return false;
     }
@@ -738,29 +1037,72 @@ bool BotController::IsValidEnemy(Sentient *sent) const
         return false;
     }
 
+    // Team validation - this was the main issue
     if (sent->IsSubclassOfPlayer()) {
         Player *player = static_cast<Player *>(sent);
 
+        // In team games, don't attack teammates
         if (g_gametype->integer >= GT_TEAM && player->GetTeam() == controlledEnt->GetTeam()) {
             return false;
         }
+        
+        // In non-team games (FFA), all other players are valid enemies
+        // In team games, players on different teams are valid enemies
+        return true;
     } else {
+        // For non-player sentients (NPCs), check team alignment
         if (sent->m_Team == controlledEnt->m_Team) {
             return false;
         }
+        return true;
     }
-
-    return true;
 }
 
 bool BotController::CheckCondition_Attack(void)
 {
-    Container<Sentient *> sents       = SentientList;
-    float                 maxDistance = 0;
+    // Performance optimization - don't scan all sentients every frame
+    const int currentTime = level.inttime;
+    const int scanInterval = ENEMY_SCAN_INTERVAL_MS; // Only scan for new enemies every 250ms
+    
+    // Always check current enemy first if we have one
+    if (m_pEnemy && IsValidEnemy(m_pEnemy)) {
+        const float maxDistance = Q_min(world->m_fAIVisionDistance, world->farplane_distance * 1.2f);
+        // Use wider angle for current enemy to maintain engagement
+        if (controlledEnt->CanSee(m_pEnemy, ENEMY_DETECTION_ANGLE, maxDistance, false)) {  // Reduced from 140 to 90 degrees
+            // Current enemy is still valid and visible - keep tracking
+            m_vLastEnemyPos = m_pEnemy->origin;
+            m_iLastSeenTime = currentTime;
+            m_iAttackTime = currentTime + 1000;
+            return true;
+        }
+    }
+
+    // Only do expensive enemy scanning periodically
+    if (currentTime < m_iLastFullUpdateTime + scanInterval) {
+        // Skip expensive scan, but check if attack time has expired
+        if (currentTime > m_iAttackTime) {
+            if (m_iAttackTime) {
+                movement.ClearMove();
+                m_iAttackTime = 0;
+                ClearEnemy();
+            }
+            return false;
+        }
+        return m_iAttackTime > 0;
+    }
+
+    // Time for full enemy scan
+    m_iLastFullUpdateTime = currentTime;
+    
+    Container<Sentient *> sents = SentientList;
+    Sentient* bestEnemy = nullptr;
+    float bestDistanceSquared = 999999.0f;
+    float maxDistance = Q_min(world->m_fAIVisionDistance, world->farplane_distance * 1.2f);
 
     bot_origin = controlledEnt->origin;
     sents.Sort(sentients_compare);
 
+    // Search for new enemies
     for (int i = 1; i <= sents.NumObjects(); i++) {
         Sentient *sent = sents.ObjectAt(i);
 
@@ -768,215 +1110,87 @@ bool BotController::CheckCondition_Attack(void)
             continue;
         }
 
-        maxDistance = Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828);
-
-        if (controlledEnt->CanSee(sent, 80, maxDistance, false)) {
-            if (m_pEnemy != sent) {
-                m_iEnemyEyesTag = -1;
+        // Check if this enemy is visible
+        if (controlledEnt->CanSee(sent, ENEMY_DETECTION_ANGLE, maxDistance, false)) {  // Reduced from 140 to 90 degrees
+            float distanceSquared = (sent->origin - controlledEnt->origin).lengthSquared();
+            
+            // Prefer closer enemies, or if same enemy as before, prefer to keep it
+            if (sent == m_pEnemy || distanceSquared < bestDistanceSquared) {
+                bestEnemy = sent;
+                bestDistanceSquared = distanceSquared;
             }
-
-            if (!m_pEnemy) {
-                m_iLastUnseenTime = level.inttime;
-            }
-
-            m_pEnemy        = sent;
-            m_vLastEnemyPos = m_pEnemy->origin;
-        }
-
-        if (m_pEnemy) {
-            m_iAttackTime = level.inttime + 1000;
-            return true;
         }
     }
 
-    if (level.inttime > m_iAttackTime) {
+    // Update enemy tracking
+    if (bestEnemy) {
+        if (m_pEnemy != bestEnemy) {
+            m_iEnemyEyesTag = -1; // Reset eye tracking for new enemy
+        }
+        
+        if (!m_pEnemy) {
+            m_iLastUnseenTime = currentTime; // Transitioning from no enemy to enemy
+        }
+
+        m_pEnemy = bestEnemy;
+        m_vLastEnemyPos = m_pEnemy->origin;
+        m_iLastSeenTime = currentTime;
+        m_iAttackTime = currentTime + 1000;
+        return true;
+    }
+
+    // No enemy found - check if attack time has expired
+    if (currentTime > m_iAttackTime) {
         if (m_iAttackTime) {
             movement.ClearMove();
             m_iAttackTime = 0;
+            ClearEnemy(); // Clean up enemy state when giving up attack
         }
+        return false;
+    }
 
+    // Still in attack time window but no visible enemy - keep attack state
+    return true;
+}
+
+bool BotController::CheckCondition_Curious(void)
+{
+    // Don't be curious while in active combat
+    if (m_iAttackTime) {
+        m_iCuriousTime = 0;
+        return false;
+    }
+
+    // Check if curiosity time has expired
+    if (level.inttime > m_iCuriousTime) {
+        if (m_iCuriousTime) {
+            // Curiosity period ended - clear movement and reset
+            movement.ClearMove();
+            m_iCuriousTime = 0;
+            m_vNewCuriousPos = vec_zero;
+        }
+        return false;
+    }
+
+    // Still curious - validate that we have a valid position to investigate
+    if (m_vNewCuriousPos == vec_zero) {
+        m_iCuriousTime = 0;
         return false;
     }
 
     return true;
 }
 
-void BotController::State_EndAttack(void)
+/*
+====================
+AimAtEnemy
+
+Make the bot aim at the enemy
+====================
+*/
+void BotController::AimAtEnemy(bool bCanSee, float fDistanceSquared, bool bFiring)
 {
-    m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
-    controlledEnt->ZoomOff();
-}
-
-void BotController::State_Attack(void)
-{
-    bool    bMelee              = false;
-    bool    bCanSee             = false;
-    bool    bCanAttack          = false;
-    float   fMinDistance        = 128;
-    float   fMinDistanceSquared = fMinDistance * fMinDistance;
-    float   fEnemyDistanceSquared;
-    Weapon *pWeap   = controlledEnt->GetActiveWeapon(WEAPON_MAIN);
-    bool    bNoMove = false;
-    bool    bFiring = false;
-
-    if (!m_pEnemy || !IsValidEnemy(m_pEnemy)) {
-        // Ignore dead enemies
-        m_iAttackTime = 0;
-        return;
-    }
-    float fDistanceSquared = (m_pEnemy->origin - controlledEnt->origin).lengthSquared();
-
-    m_vOldEnemyPos = m_vLastEnemyPos;
-
-    bCanSee =
-        controlledEnt->CanSee(m_pEnemy, 20, Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828), false);
-
-    if (bCanSee) {
-        if (!pWeap) {
-            return;
-        }
-
-        bCanAttack = true;
-        if (m_iLastUnseenTime) {
-            const float reactionTime = Q_min(1000 * Q_min(1, fDistanceSquared / Square(2048)), 1000);
-            if (level.inttime <= m_iLastUnseenTime + 200 + G_Random(reactionTime)) {
-                bCanAttack = false;
-            } else {
-                m_iLastUnseenTime = 0;
-            }
-        }
-
-        if (bCanAttack) {
-            const int fireDelay                    = pWeap->FireDelay(FIRE_PRIMARY) * 1000;
-            float     fPrimaryBulletRange          = pWeap->GetBulletRange(FIRE_PRIMARY) / 1.25f;
-            float     fPrimaryBulletRangeSquared   = fPrimaryBulletRange * fPrimaryBulletRange;
-            float     fSecondaryBulletRange        = pWeap->GetBulletRange(FIRE_SECONDARY);
-            float     fSecondaryBulletRangeSquared = fSecondaryBulletRange * fSecondaryBulletRange;
-            float     fSpreadFactor                = pWeap->GetSpreadFactor(FIRE_PRIMARY);
-
-            const int maxContinousFireTime = fireDelay + 500 + G_Random(1500);
-            const int maxBurstTime         = fireDelay + 100 + G_Random(500);
-
-            //
-            // check the fire movement speed if the weapon has a max fire movement
-            //
-            if (pWeap->GetMaxFireMovement() < 1 && pWeap->HasAmmoInClip(FIRE_PRIMARY)) {
-                float length;
-
-                length = controlledEnt->velocity.length();
-                if ((length / sv_runspeed->value) > (pWeap->GetMaxFireMovementMult())) {
-                    bNoMove = true;
-                    movement.ClearMove();
-                }
-            }
-
-            fMinDistance = fPrimaryBulletRange;
-
-            if (fMinDistance > 256) {
-                fMinDistance = 256;
-            }
-
-            fMinDistanceSquared = fMinDistance * fMinDistance;
-
-            if (controlledEnt->client->ps.stats[STAT_AMMO] <= 0
-                && controlledEnt->client->ps.stats[STAT_CLIPAMMO] <= 0) {
-                m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
-                controlledEnt->ZoomOff();
-            } else if (fDistanceSquared > fPrimaryBulletRangeSquared) {
-                m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
-                controlledEnt->ZoomOff();
-            } else {
-                //
-                // Attacking
-                //
-
-                if (pWeap->IsSemiAuto()) {
-                    if (controlledEnt->client->ps.iViewModelAnim != VM_ANIM_IDLE
-                        && (controlledEnt->client->ps.iViewModelAnim < VM_ANIM_IDLE_0
-                            || controlledEnt->client->ps.iViewModelAnim > VM_ANIM_IDLE_2)) {
-                        m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
-                        controlledEnt->ZoomOff();
-                    } else if (fSpreadFactor < 0.25) {
-                        bFiring = true;
-                        m_botCmd.buttons ^= BUTTON_ATTACKLEFT;
-                        if (pWeap->GetZoom()) {
-                            if (!controlledEnt->IsZoomed()) {
-                                m_botCmd.buttons |= BUTTON_ATTACKRIGHT;
-                            } else {
-                                m_botCmd.buttons &= ~BUTTON_ATTACKRIGHT;
-                            }
-                        }
-                    } else {
-                        bNoMove = true;
-                        movement.ClearMove();
-                    }
-                } else {
-                    bFiring = true;
-                    m_botCmd.buttons |= BUTTON_ATTACKLEFT;
-                }
-            }
-
-            //
-            // Burst
-            //
-
-            if (m_iLastBurstTime) {
-                if (level.inttime > m_iLastBurstTime + maxBurstTime) {
-                    m_iLastBurstTime      = 0;
-                    m_iContinuousFireTime = 0;
-                } else {
-                    m_botCmd.buttons &= ~BUTTON_ATTACKLEFT;
-                }
-            } else {
-                if (bFiring) {
-                    m_iContinuousFireTime += level.intframetime;
-                } else {
-                    m_iContinuousFireTime = 0;
-                }
-
-                if (!m_iLastBurstTime && m_iContinuousFireTime > maxContinousFireTime) {
-                    m_iLastBurstTime      = level.inttime;
-                    m_iContinuousFireTime = 0;
-                }
-            }
-
-            m_iLastFireTime = level.inttime;
-
-            if (pWeap->GetFireType(FIRE_SECONDARY) == FT_MELEE) {
-                if (controlledEnt->client->ps.stats[STAT_AMMO] <= 0
-                    && controlledEnt->client->ps.stats[STAT_CLIPAMMO] <= 0) {
-                    bMelee = true;
-                } else if (fDistanceSquared <= fSecondaryBulletRangeSquared) {
-                    bMelee = true;
-                }
-            }
-
-            if (bMelee) {
-                m_botCmd.buttons &= ~BUTTON_ATTACKLEFT;
-
-                if (fDistanceSquared <= fSecondaryBulletRangeSquared) {
-                    m_botCmd.buttons ^= BUTTON_ATTACKRIGHT;
-                } else {
-                    m_botCmd.buttons &= ~BUTTON_ATTACKRIGHT;
-                }
-            }
-
-            m_iAttackTime        = level.inttime + 1000;
-            m_iAttackStopAimTime = level.inttime + 3000;
-            m_iLastSeenTime      = level.inttime;
-            m_vLastEnemyPos      = m_pEnemy->origin;
-        }
-    } else {
-        m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
-        fMinDistanceSquared = 0;
-
-        if (level.inttime > m_iLastSeenTime + 2000) {
-            m_iLastUnseenTime = level.inttime;
-        }
-    }
-
     if (bCanSee || level.inttime < m_iAttackStopAimTime) {
-        Vector        vRandomOffset;
         Vector        vTarget;
         orientation_t eyes_or;
 
@@ -986,26 +1200,92 @@ void BotController::State_Attack(void)
         }
 
         if (m_iEnemyEyesTag != -1) {
-            // Use the enemy's eyes bone
+            // Use the enemy's eyes bone for headshots (higher skill bots prefer this)
             m_pEnemy->GetTag(m_iEnemyEyesTag, &eyes_or);
-
-            //vRandomOffset = Vector(G_CRandom(8), G_CRandom(8), -G_Random(32));
             vTarget = eyes_or.origin;
         } else {
-            //vRandomOffset = Vector(G_CRandom(8), G_CRandom(8), 16 + G_Random(m_pEnemy->viewheight - 16));
+            // Fallback to origin
             vTarget = m_pEnemy->origin;
         }
 
-        if (level.inttime >= m_iLastAimTime + 100) {
-            if (m_iEnemyEyesTag != -1) {
-                m_vAimOffset[0] = G_CRandom((m_pEnemy->maxs.x - m_pEnemy->mins.x) * 0.5);
-                m_vAimOffset[1] = G_CRandom((m_pEnemy->maxs.y - m_pEnemy->mins.y) * 0.5);
-                m_vAimOffset[2] = -G_Random(m_pEnemy->maxs.z * 0.5);
-            } else {
-                m_vAimOffset[0] = G_CRandom((m_pEnemy->maxs.x - m_pEnemy->mins.x) * 0.5);
-                m_vAimOffset[1] = G_CRandom((m_pEnemy->maxs.y - m_pEnemy->mins.y) * 0.5);
-                m_vAimOffset[2] = 16 + G_Random(m_pEnemy->viewheight - 16);
+        if (level.inttime >= m_iLastAimTime + AIM_UPDATE_INTERVAL_MS) {
+            // Enhanced skill-based accuracy system with body part targeting
+            const float baseInaccuracy = AIM_INACCURACY_BASE - (m_fSkill * AIM_INACCURACY_SKILL_MULTIPLIER);  // Range from 1.5 (skill 0) to 0.5 (skill 1)
+            
+            // Distance-based accuracy degradation
+            const float distance = sqrt(fDistanceSquared);
+            const float distanceFactor = 1.0f + (distance / AIM_DISTANCE_FACTOR_DIVISOR);  // Gets worse with distance
+            
+            // Movement-based accuracy penalty
+            const float velocity = controlledEnt->velocity.length();
+            const float movementPenalty = 1.0f + (velocity / AIM_MOVEMENT_PENALTY_DIVISOR);  // Penalty for moving
+            
+            // Stance-based accuracy modifier
+            float stanceModifier = 1.0f;
+            if (m_bIsCrouching) {
+                stanceModifier = AIM_STANCE_MODIFIER_CROUCH;  // Much better accuracy when crouching
+            } else if (!m_bWantsToRun) {
+                stanceModifier = AIM_STANCE_MODIFIER_WALK;  // Better accuracy when not running
             }
+            
+            // Weapon spread factor influence
+            Weapon *weapon = controlledEnt->GetActiveWeapon(WEAPON_MAIN);
+            float weaponSpreadFactor = 1.0f;
+            if (weapon) {
+                weaponSpreadFactor = 1.0f + weapon->GetSpreadFactor(FIRE_PRIMARY) * AIM_WEAPON_SPREAD_FACTOR_MULTIPLIER;
+            }
+            
+            // Burst fire penalty - accuracy degrades during continuous fire
+            float burstPenalty = 1.0f;
+            if (m_iContinuousFireTime > 0) {
+                burstPenalty = 1.0f + (m_iContinuousFireTime / AIM_BURST_PENALTY_TIME_DIVISOR) * AIM_BURST_PENALTY_MULTIPLIER;  // +50% penalty per second of continuous fire
+            }
+            
+            // Target movement penalty - harder to hit moving targets
+            float targetMovementPenalty = 1.0f;
+            if (m_pEnemy) {
+                const float enemyVelocity = m_pEnemy->velocity.length();
+                targetMovementPenalty = 1.0f + (enemyVelocity / AIM_TARGET_MOVEMENT_PENALTY_DIVISOR);  // Penalty for moving targets
+            }
+            
+            // Final accuracy calculation
+            const float finalInaccuracy = baseInaccuracy * distanceFactor * movementPenalty * stanceModifier * weaponSpreadFactor * burstPenalty * targetMovementPenalty;
+            
+            // Body part targeting based on skill and accuracy
+            // High skill bots aim for head more often, low skill bots aim for center mass
+            const float headChance = m_fSkill * AIM_HEAD_CHANCE_SKILL_MULTIPLIER;  // 0-40% chance based on skill
+            const bool aimForHead = (G_Random() < headChance);
+            
+            if (m_iEnemyEyesTag != -1) {
+                // We have eyes bone - can target head or body
+                if (aimForHead) {
+                    // Aiming at head area (eyes bone) - use original old code logic for head targeting
+                    const float headSpread = finalInaccuracy * AIM_HEAD_SPREAD_MULTIPLIER;  // Smaller spread for head shots
+                    m_vAimOffset[0] = G_CRandom((m_pEnemy->maxs.x - m_pEnemy->mins.x) * 0.3f);
+                    m_vAimOffset[1] = G_CRandom((m_pEnemy->maxs.y - m_pEnemy->mins.y) * 0.3f);
+                    m_vAimOffset[2] = -G_Random(m_pEnemy->maxs.z * 0.3f) + G_CRandom(headSpread);
+                } else {
+                    // Aiming at body/center mass - move down from head
+                    const float bodySpread = finalInaccuracy * AIM_BODY_SPREAD_MULTIPLIER;
+                    m_vAimOffset[0] = G_CRandom((m_pEnemy->maxs.x - m_pEnemy->mins.x) * 0.5f);
+                    m_vAimOffset[1] = G_CRandom((m_pEnemy->maxs.y - m_pEnemy->mins.y) * 0.5f);
+                    m_vAimOffset[2] = -G_Random(m_pEnemy->maxs.z * 0.7f) + G_CRandom(bodySpread);  // Aim lower for body
+                }
+            } else {
+                // No eyes bone - use origin-based targeting from old code
+                const float bodySpread = finalInaccuracy * AIM_ORIGIN_SPREAD_MULTIPLIER;
+                m_vAimOffset[0] = G_CRandom((m_pEnemy->maxs.x - m_pEnemy->mins.x) * 0.5f);
+                m_vAimOffset[1] = G_CRandom((m_pEnemy->maxs.y - m_pEnemy->mins.y) * 0.5f);
+                m_vAimOffset[2] = 16 + G_Random(m_pEnemy->viewheight - 16) + G_CRandom(bodySpread);  // Original old code logic
+            }
+            
+            // Add some aim drift during sustained combat for realism
+            if (bFiring && m_iContinuousFireTime > AIM_DRIFT_SUSTAINED_FIRE_TIME_MS) {
+                const float driftAmount = (1.0f - m_fSkill) * AIM_DRIFT_AMOUNT_SKILL_MULTIPLIER;  // More drift for lower skill
+                m_vAimOffset[0] += G_CRandom(driftAmount);
+                m_vAimOffset[1] += G_CRandom(driftAmount);
+            }
+
             m_iLastAimTime = level.inttime;
         }
 
@@ -1013,21 +1293,242 @@ void BotController::State_Attack(void)
     } else {
         AimAtAimNode();
     }
+}
 
-    if (bNoMove) {
-        return;
+/*
+====================
+PerformAttack
+
+Make the bot attack the enemy
+====================
+*/
+bool BotController::PerformAttack(bool bCanSee, bool bCanAttack, float fDistanceSquared, bool& bMelee, bool& bNoMove, float& fMinDistanceSquared, Weapon* pWeap)
+{
+    bool bFiring = false;
+
+    if (bCanAttack) {
+        const int fireDelay                    = pWeap->FireDelay(FIRE_PRIMARY) * 1000;
+        float     fPrimaryBulletRange          = pWeap->GetBulletRange(FIRE_PRIMARY);  // REMOVED: / 1.25f division
+        float     fPrimaryBulletRangeSquared   = fPrimaryBulletRange * fPrimaryBulletRange;
+        float     fSecondaryBulletRange        = pWeap->GetBulletRange(FIRE_SECONDARY);
+        float     fSecondaryBulletRangeSquared = fSecondaryBulletRange * fSecondaryBulletRange;
+        float     fSpreadFactor                = pWeap->GetSpreadFactor(FIRE_PRIMARY);
+
+        // Ensure minimum firing range - some weapons may have unreasonably short ranges configured
+        const float minFiringRange = MIN_FIRING_RANGE;  // Minimum 2048 units firing range
+        if (fPrimaryBulletRange < minFiringRange) {
+            fPrimaryBulletRange = minFiringRange;
+            fPrimaryBulletRangeSquared = fPrimaryBulletRange * fPrimaryBulletRange;
+        }
+
+        const int maxContinousFireTime = fireDelay + CONTINUOUS_FIRE_TIME_MIN_MS + G_Random(CONTINUOUS_FIRE_TIME_MAX_MS * m_fSkill);
+        const int maxBurstTime         = fireDelay + BURST_FIRE_TIME_MIN_MS + G_Random(BURST_FIRE_TIME_MAX_MS * (1.0f - m_fSkill));
+
+        //
+        // check the fire movement speed if the weapon has a max fire movement
+        //
+        if (pWeap->GetMaxFireMovement() < 1 && pWeap->HasAmmoInClip(FIRE_PRIMARY)) {
+            float length;
+
+            length = controlledEnt->velocity.length();
+            if ((length / sv_runspeed->value) > (pWeap->GetMaxFireMovementMult())) {
+                bNoMove = true;
+                movement.ClearMove();
+            }
+        }
+
+        float fMinDistance = fPrimaryBulletRange;
+
+        if (fMinDistance > MIN_MELEE_RANGE) {
+            fMinDistance = MIN_MELEE_RANGE;
+        }
+
+        fMinDistanceSquared = fMinDistance * fMinDistance;
+
+        if (controlledEnt->client->ps.stats[STAT_AMMO] <= 0
+            && controlledEnt->client->ps.stats[STAT_CLIPAMMO] <= 0) {
+            m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
+            controlledEnt->ZoomOff();
+        } else if (fDistanceSquared > fPrimaryBulletRangeSquared) {
+            m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
+            controlledEnt->ZoomOff();
+        } else {
+            //
+            // Attacking
+            //
+
+            if (pWeap->IsSemiAuto()) {
+                if (controlledEnt->client->ps.iViewModelAnim != VM_ANIM_IDLE
+                    && (controlledEnt->client->ps.iViewModelAnim < VM_ANIM_IDLE_0
+                        || controlledEnt->client->ps.iViewModelAnim > VM_ANIM_IDLE_2)) {
+                    m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
+                    controlledEnt->ZoomOff();
+                } else if (fSpreadFactor < 0.25) {
+                    bFiring = true;
+                    m_botCmd.buttons ^= BUTTON_ATTACKLEFT;
+                    if (pWeap->GetZoom()) {
+                        if (!controlledEnt->IsZoomed()) {
+                            m_botCmd.buttons |= BUTTON_ATTACKRIGHT;
+                        } else {
+                            m_botCmd.buttons &= ~BUTTON_ATTACKRIGHT;
+                        }
+                    }
+                } else {
+                    bNoMove = true;
+                    movement.ClearMove();
+                }
+            } else {
+                bFiring = true;
+                m_botCmd.buttons |= BUTTON_ATTACKLEFT;
+            }
+        }
+
+        //
+        // Burst
+        //
+
+        if (m_iLastBurstTime) {
+            if (level.inttime > m_iLastBurstTime + maxBurstTime) {
+                m_iLastBurstTime      = 0;
+                m_iContinuousFireTime = 0;
+            } else {
+                m_botCmd.buttons &= ~BUTTON_ATTACKLEFT;
+            }
+        } else {
+            if (bFiring) {
+                m_iContinuousFireTime += level.intframetime;
+            } else {
+                m_iContinuousFireTime = 0;
+            }
+
+            if (!m_iLastBurstTime && m_iContinuousFireTime > maxContinousFireTime) {
+                m_iLastBurstTime      = level.inttime;
+                m_iContinuousFireTime = 0;
+            }
+        }
+
+        m_iLastFireTime = level.inttime;
+
+        if (pWeap->GetFireType(FIRE_SECONDARY) == FT_MELEE) {
+            if (controlledEnt->client->ps.stats[STAT_AMMO] <= 0
+                && controlledEnt->client->ps.stats[STAT_CLIPAMMO] <= 0) {
+                bMelee = true;
+            } else if (fDistanceSquared <= fSecondaryBulletRangeSquared) {
+                bMelee = true;
+            }
+        }
+
+        if (bMelee) {
+            m_botCmd.buttons &= ~BUTTON_ATTACKLEFT;
+
+            if (fDistanceSquared <= fSecondaryBulletRangeSquared) {
+                m_botCmd.buttons ^= BUTTON_ATTACKRIGHT;
+            } else {
+                m_botCmd.buttons &= ~BUTTON_ATTACKRIGHT;
+            }
+        }
+
+        m_iAttackTime        = level.inttime + 1000;
+        m_iAttackStopAimTime = level.inttime + ATTACK_STOP_AIM_DELAY_MS;
+        m_iLastSeenTime      = level.inttime;
+        m_vLastEnemyPos      = m_pEnemy->origin;
     }
 
-    fEnemyDistanceSquared = (controlledEnt->origin - m_vLastEnemyPos).lengthSquared();
+    return bFiring;
+}
 
-    if ((!movement.MoveToBestAttractivePoint(5) && !movement.IsMoving())
-        || (m_vOldEnemyPos != m_vLastEnemyPos && !movement.MoveDone()) || fEnemyDistanceSquared < fMinDistanceSquared) {
+/*
+====================
+PerformCombatMovement
+
+Make the bot move during combat
+====================
+*/
+bool BotController::PerformCombatMovement(bool bCanSee, bool bMelee, bool bNoMove, bool bFiring, float fMinDistanceSquared, float fEnemyDistanceSquared)
+{
+    if (bNoMove) {
+        // Weapon requires standing still for accuracy - clear movement
+        movement.ClearMove();
+        return false;
+    }
+
+    // Update combat stance ONLY when in combat state - prevent crouch persistence in other states
+    if ((bCanSee || level.inttime < m_iAttackStopAimTime) && dynamic_cast<AttackBotState*>(m_pCurrentState)) {
+        UpdateCombatStance();
+    } else {
+        // Reset combat stance when no longer in combat OR not in attack state
+        m_bIsCrouching = false;
+        m_bWantsToRun = true;
+        m_botCmd.upmove = 0;  // Normal movement (physics flags do the real work)
+        m_botCmd.buttons |= BUTTON_RUN;
+        // FORCE clear actual player crouch flags!
+        if (controlledEnt && controlledEnt->client) {
+            controlledEnt->client->ps.pm_flags &= ~(PMF_DUCKED | PMF_VIEW_PRONE | PMF_VIEW_DUCK_RUN);
+        }
+    }
+
+    // Determine if bot should stand still for accuracy - INCREASED likelihood
+    bool bShouldStandStill = false;
+    
+    // Stand still in more situations for better accuracy:
+    // 1. Bot is firing at medium/long range (all skill levels benefit from this)
+    // 2. Bot is crouching (should always stand still when crouched for best accuracy)
+    // 3. High skill bot choosing precision over mobility
+    // 4. Any bot firing at very long range
+    if (bCanSee && bFiring && (
+        (fEnemyDistanceSquared >= Square(STAND_STILL_DISTANCE_MEDIUM)) ||  // Stand still at medium+ range when firing
+        (m_bIsCrouching) ||  // Always stand still when crouched
+        (!m_bWantsToRun && m_fSkill > 0.5f) ||  // Medium+ skill bots choosing accuracy
+        (fEnemyDistanceSquared >= Square(STAND_STILL_DISTANCE_LONG) && G_Random(1.0f) < 0.6f))) {  // 60% chance at long range
+        bShouldStandStill = true;
+    }
+    
+    // Additional chance for high skill bots to stand still for precision shots
+    if (bCanSee && bFiring && m_fSkill > 0.7f && G_Random(1.0f) < 0.4f) {
+        bShouldStandStill = true;  // 40% chance for high skill bots to prioritize accuracy
+    }
+
+    // Clear movement for accuracy only in very specific cases
+    if (bShouldStandStill) {
+        movement.ClearMove();
+    }
+
+    // Enhanced strafing behavior - allow strafing in most combat situations
+    if (bCanSee && !bMelee && !bShouldStandStill) {
+        // Ensure bots run when moving during combat (not walking)
+        if (!m_bIsCrouching) {
+            m_botCmd.buttons |= BUTTON_RUN;
+        }
+        
+        // Strafe when:
+        // 1. Currently firing OR recently fired (within last 500ms)
+        // 2. Enemy is close (always strafe when close)
+        // 3. Bot wants to run (mobile combat style)
+        bool shouldStrafe = bFiring || 
+                           (level.inttime - m_iLastFireTime < 500) ||
+                           (fEnemyDistanceSquared < Square(MIN_MELEE_RANGE)) ||
+                           (m_bWantsToRun);
+                           
+        if (shouldStrafe) {
+            PerformCombatStrafing();
+        }
+    }
+
+    if (!bShouldStandStill && 
+        ((!movement.MoveToBestAttractivePoint(5) && !movement.IsMoving())
+        || (m_vOldEnemyPos != m_vLastEnemyPos && !movement.MoveDone()) || fEnemyDistanceSquared < fMinDistanceSquared)) {
+        
+        // Ensure bots run when actively moving during combat
+        if (!m_bIsCrouching) {
+            m_botCmd.buttons |= BUTTON_RUN;
+        }
+        
         if (!bMelee || !bCanSee) {
             if (fEnemyDistanceSquared < fMinDistanceSquared) {
                 Vector vDir = controlledEnt->origin - m_vLastEnemyPos;
                 VectorNormalizeFast(vDir);
 
-                movement.AvoidPath(m_vLastEnemyPos, fMinDistance, Vector(controlledEnt->orientation[1]) * 512);
+                movement.AvoidPath(m_vLastEnemyPos, sqrt(fMinDistanceSquared), Vector(controlledEnt->orientation[1]) * 512);
             } else {
                 movement.MoveTo(m_vLastEnemyPos);
             }
@@ -1035,7 +1536,7 @@ void BotController::State_Attack(void)
             if (!bCanSee && movement.MoveDone()) {
                 // Lost track of the enemy
                 ClearEnemy();
-                return;
+                return true;
             }
         } else {
             movement.MoveTo(m_vLastEnemyPos);
@@ -1045,62 +1546,49 @@ void BotController::State_Attack(void)
     if (movement.IsMoving()) {
         m_iAttackTime = level.inttime + 1000;
     }
-}
 
-/*
-====================
-Grenade state
-
-Avoid any grenades
-====================
-*/
-void BotController::InitState_Grenade(botfunc_t *func)
-{
-    func->CheckCondition = &BotController::CheckCondition_Grenade;
-    func->ThinkState     = &BotController::State_Grenade;
-}
-
-bool BotController::CheckCondition_Grenade(void)
-{
-    // FIXME: TODO
     return false;
 }
 
-void BotController::State_Grenade(void)
-{
-    // FIXME: TODO
-}
-
 /*
 ====================
-Weapon state
+CheckReactionTime
 
-Change weapon when necessary
+Check the bot's reaction time
 ====================
 */
-void BotController::InitState_Weapon(botfunc_t *func)
+bool BotController::CheckReactionTime(float fDistanceSquared)
 {
-    func->CheckCondition = &BotController::CheckCondition_Weapon;
-    func->BeginState     = &BotController::State_BeginWeapon;
-}
+    if (m_iLastUnseenTime) {
+        // Improved skill-based reaction time
+        // Lower skill = higher multiplier and more variance
+        const float skillFactor = 3.0f - (m_fSkill * 2.0f);  // Range from 3.0 (skill 0) to 1.0 (skill 1)
 
-bool BotController::CheckCondition_Weapon(void)
-{
-    return controlledEnt->GetActiveWeapon(WEAPON_MAIN)
-        != controlledEnt->BestWeapon(NULL, false, WEAPON_CLASS_THROWABLE);
-}
-
-void BotController::State_BeginWeapon(void)
-{
-    Weapon *weap = controlledEnt->BestWeapon(NULL, false, WEAPON_CLASS_THROWABLE);
-
-    if (weap == NULL) {
-        SendCommand("safeholster 1");
-        return;
+        // Base reaction time varies by distance - closer enemies are noticed faster
+        const float baseReactionTime = Q_min(1000 * Q_min(1, fDistanceSquared / Square(REACTION_DISTANCE_MAX)), 1000);
+        
+        // Additional random variance based on skill - low skill bots are more inconsistent
+        const float skillVariance = (1.0f - m_fSkill) * 600.0f;  // 0-600ms additional variance
+        const float randomVariance = G_Random(skillVariance);
+        
+        // Final reaction time: base + random variance, all modified by skill
+        const float totalReactionTime = (baseReactionTime + 300 + randomVariance) * skillFactor;
+        
+        if (level.inttime <= m_iLastUnseenTime + totalReactionTime) {
+            return false;
+        } else {
+            m_iLastUnseenTime = 0;
+        }
     }
 
-    SendCommand(va("use \"%s\"", weap->model.c_str()));
+    return true;
 }
+
+
+
+
+
+
 
 Weapon *BotController::FindWeaponWithAmmo()
 {
@@ -1184,6 +1672,15 @@ Weapon *BotController::FindMeleeWeapon()
 
 void BotController::UseWeaponWithAmmo()
 {
+    // Skill-based weapon switching - lower skill bots are slower to react to ammo changes
+    static int lastWeaponCheckTime = 0;
+    const int skillBasedCheckDelay = WEAPON_SWITCH_CHECK_DELAY_MIN_MS + (int)((1.0f - m_fSkill) * (WEAPON_SWITCH_CHECK_DELAY_MAX_MS - WEAPON_SWITCH_CHECK_DELAY_MIN_MS));  // 0.5-2 second delay based on skill
+    
+    if (level.inttime < lastWeaponCheckTime + skillBasedCheckDelay) {
+        return;  // Don't check for weapon changes too frequently if low skill
+    }
+    lastWeaponCheckTime = level.inttime;
+
     Weapon *bestWeapon = FindWeaponWithAmmo();
     if (!bestWeapon) {
         //
@@ -1237,8 +1734,8 @@ void BotController::Killed(const Event& ev)
 
     attacker = ev.GetEntity(1);
 
-    if (attacker && rand() % 5 == 0) {
-        // 1/5 chance to go back to the attacker position
+    if (attacker && rand() % 2 == 0) {
+        // 1/2 chance to go back to the attacker position
         m_vLastDeathPos = attacker->origin;
     } else {
         m_vLastDeathPos = vec_zero;
@@ -1264,7 +1761,7 @@ void BotController::GotKill(const Event& ev)
 {
     ClearEnemy();
     m_iCuriousTime = 0;
-
+    
     if (level.inttime >= m_iNextTauntTime && (rand() % 5) == 0) {
         //
         // Randomly play a taunt
@@ -1281,7 +1778,7 @@ void BotController::GotKill(const Event& ev)
 
         controlledEnt->ProcessEvent(event);
 
-        m_iNextTauntTime = level.inttime + 5000;
+        m_iNextTauntTime = level.inttime + TAUNT_DELAY_MS;
     }
 }
 
@@ -1392,5 +1889,198 @@ void BotControllerManager::ThinkControllers()
     for (i = 1; i <= controllers.NumObjects(); i++) {
         BotController *controller = controllers.ObjectAt(i);
         controller->Think();
+    }
+}
+
+/*
+====================
+PerformCombatStrafing
+
+Handle skill-based strafing behavior during combat
+====================
+*/
+void BotController::PerformCombatStrafing(void)
+{
+    // Enhanced skill-based strafing parameters - MORE aggressive strafing
+    const float skillFactor = STRAFE_INTENSITY_MIN + (m_fSkill * (STRAFE_INTENSITY_MAX - STRAFE_INTENSITY_MIN));  // 40-100% strafing likelihood (INCREASED base)
+    const int minStrafeTime = (int)(STRAFE_TIME_MIN_MS + (1.0f - m_fSkill) * STRAFE_TIME_MAX_MS);  // 0.3-1.0 seconds (FASTER changes)
+    const int maxStrafeTime = (int)(STRAFE_TIME_RANDOM_MIN_MS + (1.0f - m_fSkill) * STRAFE_TIME_RANDOM_MAX_MS); // 0.8-2.0 seconds (FASTER changes)
+    
+    // Allow strafing even when crouched (but with reduced intensity)
+    float strafeSkillFactor = skillFactor;
+    if (m_bIsCrouching) {
+        strafeSkillFactor *= STRAFE_INTENSITY_CROUCH_MULTIPLIER;  // Only slightly reduce strafing when crouched (was 0.5f)
+    }
+    
+    // Much more likely to strafe during combat
+    if (G_Random(1.0f) > strafeSkillFactor) {
+        // Still strafe occasionally even when "not strafing" for variety
+        if (G_Random(1.0f) < STRAFE_RANDOM_MOVE_CHANCE) {
+            m_botCmd.rightmove = (int)(G_CRandom(STRAFE_RANDOM_MOVE_INTENSITY) * m_fSkill); // Light random movement
+        } else {
+            m_botCmd.rightmove = 0;
+        }
+        return;
+    }
+    
+    // Check if it's time to change strafe direction (more frequent changes)
+    if (level.inttime >= m_iStrafeChangeTime || m_iStrafeDirection == 0) {
+        // Determine new strafe direction with enhanced variety
+        const float directionChange = G_Random(1.0f);
+        
+        if (directionChange < STRAFE_DIRECTION_CHANGE_CHANCE_L) {
+            m_iStrafeDirection = STRAFE_LEFT;  // Strafe left
+        } else if (directionChange < STRAFE_DIRECTION_CHANGE_CHANCE_R) {
+            m_iStrafeDirection = STRAFE_RIGHT;   // Strafe right
+        } else if (directionChange < STRAFE_DIRECTION_CHANGE_CHANCE_QUICK) {
+            // Quick direction switches for high skill bots
+            m_iStrafeDirection = (m_iStrafeDirection == STRAFE_RIGHT) ? STRAFE_LEFT : STRAFE_RIGHT;
+        } else {
+            m_iStrafeDirection = 0;     // Stop strafing briefly (less often)
+        }
+        
+        // Calculate next direction change time - faster for high skill
+        const int strafeTime = minStrafeTime + G_Random(maxStrafeTime - minStrafeTime);
+        m_iStrafeChangeTime = level.inttime + strafeTime;
+        m_iLastStrafeTime = level.inttime;
+    }
+    
+    // Apply strafing movement with enhanced skill-based intensity
+    float intensityFactor = STRAFE_INTENSITY_MIN + (m_fSkill * (STRAFE_INTENSITY_MAX - STRAFE_INTENSITY_MIN));  // 60-100% intensity (INCREASED base)
+    
+    // Less intensity reduction when crouched - allow mobile crouched combat
+    if (m_bIsCrouching) {
+        intensityFactor *= STRAFE_INTENSITY_CROUCH_MULTIPLIER;  // Only slight reduction (was 0.6f)
+    }
+    
+    m_botCmd.rightmove = (int)(m_iStrafeDirection * intensityFactor);
+    
+    // Allow combining movement even when crouching for dynamic combat
+    // Higher skill bots use more complex movement patterns
+    if (m_fSkill > 0.5f && G_Random(1.0f) < STRAFE_RANDOM_MOVE_CHANCE) {
+        // More frequent forward/backward movement while strafing
+        if (G_Random(1.0f) < STRAFE_FORWARD_MOVE_CHANCE) {
+            m_botCmd.forwardmove = (int)(STRAFE_FORWARD_MOVE_INTENSITY * m_fSkill);  // Move forward (INCREASED intensity)
+        } else {
+            m_botCmd.forwardmove = (int)(STRAFE_BACKWARD_MOVE_INTENSITY * m_fSkill); // Move backward
+        }
+    }
+    
+    // Add unpredictable movement bursts for high skill bots
+    if (m_fSkill > 0.7f && G_Random(1.0f) < STRAFE_UNPREDICTABLE_MOVE_CHANCE) {
+        // Sudden burst movements
+        m_botCmd.rightmove = (int)(G_CRandom(STRAFE_RIGHT) * STRAFE_UNPREDICTABLE_MOVE_INTENSITY_R);
+        m_botCmd.forwardmove = (int)(G_CRandom(STRAFE_RANDOM_MOVE_INTENSITY) * STRAFE_UNPREDICTABLE_MOVE_INTENSITY_F);
+    }
+}
+
+/*
+====================
+UpdateCombatStance
+
+Handle realistic combat stance behavior - running, standing, crouching
+====================
+*/
+void BotController::UpdateCombatStance(void)
+{
+    const int currentTime = level.inttime;
+    
+    // Skill-based stance behavior parameters - BALANCED mobility vs accuracy
+    const float skillFactor = m_fSkill;
+    const float crouchChance = CROUCH_CHANCE_BASE + (skillFactor * CROUCH_CHANCE_SKILL_MULTIPLIER);  // 15-35% chance to use tactical crouching
+    const float runningChance = RUNNING_CHANCE_BASE - (skillFactor * RUNNING_CHANCE_SKILL_MULTIPLIER);  // 60% (low skill) to 40% (high skill) chance to always run (REDUCED for more standing)
+    
+    // Check if it's time to evaluate stance change
+    if (currentTime >= m_iLastStanceChangeTime + STANCE_CHECK_INTERVAL_MS) {  // Check every 2 seconds (less frequent changes)
+        m_iLastStanceChangeTime = currentTime;
+        
+        // Determine if bot should run during combat - ENHANCED accuracy decision making
+        float adjustedRunningChance = runningChance;
+        
+        // Reduce running chance when enemy is at good firing range (encourage standing still)
+        if (m_pEnemy) {
+            float distanceToEnemy = (m_pEnemy->origin - controlledEnt->origin).length();
+            if (distanceToEnemy >= OPTIMAL_FIRING_RANGE_MIN && distanceToEnemy <= OPTIMAL_FIRING_RANGE_MAX) {
+                adjustedRunningChance *= RUNNING_CHANCE_DISTANCE_MULTIPLIER_MEDIUM;  // 30% less likely to run at optimal firing range
+            }
+            if (distanceToEnemy > OPTIMAL_FIRING_RANGE_MAX) {
+                adjustedRunningChance *= RUNNING_CHANCE_DISTANCE_MULTIPLIER_LONG;  // 50% less likely to run at long range (accuracy is key)
+            }
+        }
+        
+        // High skill bots are more likely to choose accuracy over mobility
+        if (skillFactor > 0.6f) {
+            adjustedRunningChance *= RUNNING_CHANCE_SKILL_MULTIPLIER_HIGH;  // High skill bots 20% less likely to always run
+        }
+        
+        if (G_Random(1.0f) < adjustedRunningChance) {
+            // Bot prefers mobile combat
+            m_bWantsToRun = true;
+        } else {
+            // Bot chooses accuracy - stand still for precision shots
+            m_bWantsToRun = false;
+        }
+        
+        // Determine crouching behavior based on skill and situation
+        float distanceToEnemy = 0.0f;
+        if (m_pEnemy) {
+            distanceToEnemy = (m_pEnemy->origin - controlledEnt->origin).length();
+        }
+        
+        // Only slightly more likely to crouch at very long distances
+        float adjustedCrouchChance = crouchChance;
+        if (distanceToEnemy > OPTIMAL_FIRING_RANGE_MAX) {
+            adjustedCrouchChance += CROUCH_CHANCE_DISTANCE_BONUS_LONG;  // +10% chance at long range (REDUCED)
+        }
+        if (distanceToEnemy > LONG_FIRING_RANGE) {
+            adjustedCrouchChance += CROUCH_CHANCE_DISTANCE_BONUS_VERY_LONG;  // +20% total at very long range (REDUCED)
+        }
+        
+        // Don't encourage crouching at close range - favor strafing instead
+        if (distanceToEnemy < MIN_MELEE_RANGE) {
+            adjustedCrouchChance *= CROUCH_CHANCE_DISTANCE_MULTIPLIER_CLOSE;  // Much less crouching up close
+            m_bWantsToRun = true;  // Force mobile combat at close range
+        }
+        
+        // High skill bots prefer mobile combat over crouching
+        if (skillFactor > 0.7f) {
+            adjustedCrouchChance *= CROUCH_CHANCE_SKILL_MULTIPLIER_HIGH;  // REDUCED crouching for high skill bots
+        }
+        
+        // Decide whether to crouch or stand - heavily favor standing/strafing
+        if (G_Random(1.0f) < adjustedCrouchChance) {
+            if (!m_bIsCrouching) {
+                m_bIsCrouching = true;
+                m_iCrouchTime = currentTime + (int)(CROUCH_TIME_MIN_MS + G_Random(CROUCH_TIME_MAX_MS - CROUCH_TIME_MIN_MS)); // 0.8-1.8 seconds (MUCH shorter)
+                // Don't force running to false - allow crouched strafing
+            }
+        } else {
+            if (m_bIsCrouching) {
+                m_bIsCrouching = false;
+                m_iStandTime = currentTime + (int)(STAND_TIME_MIN_MS + G_Random(STAND_TIME_MAX_MS - STAND_TIME_MIN_MS)); // 0.5-1.3 seconds (shorter)
+            }
+        }
+    }
+    
+    // Handle crouch timing - exit crouching quickly to return to mobile combat
+    if (m_bIsCrouching && currentTime >= m_iCrouchTime) {
+        m_bIsCrouching = false;
+        m_iStandTime = currentTime + (int)(STAND_TIME_MIN_MS + G_Random(STAND_TIME_MAX_MS - STAND_TIME_MIN_MS)); // Force standing time after crouch
+    }
+    
+    // Handle stand timing  
+    if (!m_bIsCrouching && currentTime < m_iStandTime) {
+        // Force standing for a minimum time to ensure mobile combat periods
+        m_bIsCrouching = false;
+    }
+    
+    // Apply stance to bot commands
+    if (m_bIsCrouching) {
+        m_botCmd.upmove = -127;  // Crouch
+        m_botCmd.buttons &= ~BUTTON_RUN;  // Don't run while crouched
+    } else {
+        m_botCmd.upmove = 0;  // Stand normally
+        // Always enable running when not crouched - individual movement logic will decide when to actually move
+        m_botCmd.buttons |= BUTTON_RUN;
     }
 }

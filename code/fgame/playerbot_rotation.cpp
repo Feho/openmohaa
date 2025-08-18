@@ -53,7 +53,7 @@ float AngleDifference(float ang1, float ang2)
     return diff;
 }
 
-void BotRotation::TurnThink(usercmd_t& botcmd, usereyes_t& eyeinfo)
+void BotRotation::TurnThink(usercmd_t& botcmd, usereyes_t& eyeinfo, float skillLevel)
 {
     float diff;
     float deltaDiff;
@@ -65,10 +65,14 @@ void BotRotation::TurnThink(usercmd_t& botcmd, usereyes_t& eyeinfo)
     float speed;
     int   i;
 
-    factor      = 1.0;
-    maxChange   = 360;
-    minChange   = 20;
-    changeSpeed = 15.0;
+    // Skill-based turning parameters
+    // Lower skill = slower and less accurate turning
+    const float skillFactor = 0.3f + (skillLevel * 0.7f);  // 30% to 100% efficiency based on skill
+    
+    factor      = skillFactor;  // Use skill-based factor instead of fixed 1.0
+    maxChange   = 240 + (skillLevel * 120);  // 240-360 degrees/sec based on skill
+    minChange   = 15 + (skillLevel * 5);     // 15-20 degrees minimum change based on skill
+    changeSpeed = 8.0f + (skillLevel * 7.0f);  // 8-15 acceleration speed based on skill
 
     if (m_vTargetAng[PITCH] > 180) {
         m_vTargetAng[PITCH] -= 360;
