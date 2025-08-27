@@ -43,6 +43,7 @@ cvar_t	*sv_allowDownload;
 cvar_t	*sv_maxclients;
 
 cvar_t	*sv_privateClients;		// number of clients reserved for password
+cvar_t	*sv_commandOverflowProtection;	// enable enhanced command overflow protection
 cvar_t	*sv_hostname;
 cvar_t	*sv_master[ MAX_MASTER_SERVERS ];		// master server ip address
 cvar_t	*sv_reconnectlimit;		// minimum seconds between connect messages
@@ -123,26 +124,41 @@ char	*SV_ExpandNewlines( char *in ) {
 ======================
 SV_ReplacePendingServerCommands
 
-  This is ugly
+Enhanced to handle command replacement more efficiently and prevent overflow
 ======================
 */
 int SV_ReplacePendingServerCommands( client_t *client, const char *cmd ) {
 	int i, index, csnum1, csnum2;
+	const char *cmdType = NULL;
+	
+	// Determine command type for more efficient parsing
+	if ( !Q_strncmp(cmd, "cs ", 3) ) {
+		cmdType = "cs";
+	} else if ( !Q_strncmp(cmd, "bcs0 ", 5) ) {
+		cmdType = "bcs0";
+	} else if ( !Q_strncmp(cmd, "bcs1 ", 5) ) {
+		cmdType = "bcs1";
+	} else if ( !Q_strncmp(cmd, "bcs2 ", 5) ) {
+		cmdType = "bcs2";
+	}
+	
+	if ( !cmdType ) {
+		return qfalse;
+	}
 
 	for ( i = client->reliableSent+1; i <= client->reliableSequence; i++ ) {
 		index = i & ( MAX_RELIABLE_COMMANDS - 1 );
-		//
-		if ( !Q_strncmp(cmd, client->reliableCommands[ index ], strlen("cs")) ) {
-			sscanf(cmd, "cs %i", &csnum1);
-			sscanf(client->reliableCommands[ index ], "cs %i", &csnum2);
-			if ( csnum1 == csnum2 ) {
-				Q_strncpyz( client->reliableCommands[ index ], cmd, sizeof( client->reliableCommands[ index ] ) );
-				/*
-				if ( client->netchan.remoteAddress.type != NA_BOT ) {
-					Com_Printf( "WARNING: client %i removed double pending config string %i: %s\n", client-svs.clients, csnum1, cmd );
+		
+		// Check if this is the same type of command
+		if ( !Q_strncmp(cmdType, client->reliableCommands[ index ], strlen(cmdType)) ) {
+			// For config string commands, check if same index
+			if ( cmdType[0] == 'c' || cmdType[0] == 'b' ) {
+				sscanf(cmd, "%*s %i", &csnum1);
+				sscanf(client->reliableCommands[ index ], "%*s %i", &csnum2);
+				if ( csnum1 == csnum2 ) {
+					Q_strncpyz( client->reliableCommands[ index ], cmd, sizeof( client->reliableCommands[ index ] ) );
+					return qtrue;
 				}
-				*/
-				return qtrue;
 			}
 		}
 	}
@@ -155,28 +171,31 @@ SV_AddServerCommand
 
 The given command will be transmitted to the client, and is guaranteed to
 not have future snapshot_t executed before it is executed
+Enhanced with better overflow handling and optimization for all protocols
 ======================
 */
 void SV_AddServerCommand( client_t *client, const char *cmd ) {
 	int		index, i;
-
-	if ( com_protocol->integer >= PROTOCOL_MOHTA_MIN ) {
-		// Added in 2.0
-		//  Requires spearhead clients.
-		//  Unfortunately in MOHAA 1.11, replacing cs can cause clients to crash
-		//  when an existing model is moved into a lower configstring.
-		//  For example:
-		//   cs 138 models/weapons/mp40.tik
-		//   cs 117 models/weapons/m1_garand.tik
-		//   1) models/weapons/mp40.tik is already referenced by cs 117, it will cause the model handle to be referenced twice.
-		//   2) when the client executes "cs 117", it will free up the mp40.tik model, leaving a dangling handle for cs 138.
-
-		// FIXME: To make it work on MOHAA clients, reorder configstrings that are sent to clients.
-		// For example, always put "cs 117" before "cs 138".
-
-		// this is very ugly but it's also a waste to for instance send multiple config string updates
-		// for the same config string index in one snapshot
-		if ( !strncmp( cmd, "cs ", 3 ) && SV_ReplacePendingServerCommands( client, cmd ) ) {
+	
+	// Simple rate limiting for config string commands to prevent spam
+	if ( (!strncmp( cmd, "cs ", 3 ) || !strncmp( cmd, "bcs", 3 )) && sv_commandOverflowProtection->integer ) {
+		int timeSinceLastCS = svs.time - client->lastConfigStringTime;
+		if ( timeSinceLastCS < 10 ) { // Limit to one config string command per 10ms
+			// Check if this is a critical config string (systeminfo, serverinfo)
+			int csIndex;
+			sscanf(cmd, "%*s %i", &csIndex);
+			if ( csIndex != CS_SERVERINFO && csIndex != CS_SYSTEMINFO ) {
+				// Non-critical config string, skip this update
+				return;
+			}
+		}
+		client->lastConfigStringTime = svs.time;
+	}
+	
+	// Always try to replace pending commands of the same type to reduce redundancy
+	// This helps prevent command overflow by eliminating duplicate config string updates
+	if ( !strncmp( cmd, "cs ", 3 ) || !strncmp( cmd, "bcs", 3 ) ) {
+		if ( SV_ReplacePendingServerCommands( client, cmd ) ) {
 			return;
 		}
 	}
@@ -186,25 +205,57 @@ void SV_AddServerCommand( client_t *client, const char *cmd ) {
 		return;
 
 	client->reliableSequence++;
-	// if we would be losing an old command that hasn't been acknowledged,
-	// we must drop the connection
-	// we check == instead of >= so a broadcast print added by SV_DropClient()
-	// doesn't cause a recursive drop client
-	if ( client->reliableSequence - client->reliableAcknowledge == MAX_RELIABLE_COMMANDS + 1 ) {
+	
+	// Enhanced overflow handling - try to drop less critical commands first
+	if ( client->reliableSequence - client->reliableAcknowledge >= MAX_RELIABLE_COMMANDS ) {
 		if ( client->gamestateMessageNum == -1 )  {
 			// invalid game state message 
 			// this can occur in SV_DropClient() to avoid calling it more than once
 			return;
 		}
 
-		Com_Printf( "===== pending server commands =====\n" );
-		for ( i = client->reliableAcknowledge + 1 ; i <= client->reliableSequence ; i++ ) {
-			Com_Printf( "cmd %5d: %s\n", i, client->reliableCommands[ i & (MAX_RELIABLE_COMMANDS-1) ] );
+		// Try to find and drop redundant commands to make space
+		int droppedCommands = 0;
+		if ( sv_commandOverflowProtection->integer ) {
+			for ( i = client->reliableAcknowledge + 1; i < client->reliableSequence && droppedCommands < 16; i++ ) {
+				int cmdIndex = i & (MAX_RELIABLE_COMMANDS-1);
+				char *existingCmd = client->reliableCommands[cmdIndex];
+				
+				// Drop empty config string updates and some non-critical commands
+				if ( (!strncmp(existingCmd, "cs ", 3) && strstr(existingCmd, "\"\"")) ||
+				     !strncmp(existingCmd, "print ", 6) ) {
+					// Shift commands down
+					for ( int j = i; j < client->reliableSequence - 1; j++ ) {
+						int fromIndex = (j + 1) & (MAX_RELIABLE_COMMANDS-1);
+						int toIndex = j & (MAX_RELIABLE_COMMANDS-1);
+						Q_strncpyz(client->reliableCommands[toIndex], 
+						          client->reliableCommands[fromIndex], 
+						          sizeof(client->reliableCommands[toIndex]));
+					}
+					client->reliableSequence--;
+					droppedCommands++;
+				}
+			}
 		}
-		Com_Printf( "cmd %5d: %s\n", i, cmd );
-		SV_DropClient( client, "Server command overflow" );
-		return;
+		
+		// If we still don't have space after cleanup, warn and drop client
+		if ( client->reliableSequence - client->reliableAcknowledge >= MAX_RELIABLE_COMMANDS ) {
+			Com_Printf( "===== pending server commands =====\n" );
+			for ( i = client->reliableAcknowledge + 1 ; i <= client->reliableSequence ; i++ ) {
+				Com_Printf( "cmd %5d: %s\n", i, client->reliableCommands[ i & (MAX_RELIABLE_COMMANDS-1) ] );
+			}
+			Com_Printf( "cmd %5d: %s\n", i, cmd );
+			if ( sv_commandOverflowProtection->integer && droppedCommands > 0 ) {
+				Com_Printf( "Dropped %d redundant commands, but buffer still full\n", droppedCommands );
+			}
+			SV_DropClient( client, "Server command overflow" );
+			return;
+		} else if ( droppedCommands > 0 ) {
+			Com_DPrintf( "Cleaned %d redundant commands for client %d\n", 
+			           droppedCommands, (int)(client - svs.clients) );
+		}
 	}
+	
 	index = client->reliableSequence & ( MAX_RELIABLE_COMMANDS - 1 );
 	Q_strncpyz( client->reliableCommands[ index ], cmd, sizeof( client->reliableCommands[ index ] ) );
 }

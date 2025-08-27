@@ -1086,6 +1086,7 @@ void SV_Init (void)
 	sv_fps = Cvar_Get ("sv_fps", "20", CVAR_SAVEGAME | CVAR_SERVERINFO | CVAR_NORESTART );
 	sv_timeout = Cvar_Get ("sv_timeout", "120", CVAR_TEMP );
 	sv_zombietime = Cvar_Get ("sv_zombietime", "2", CVAR_TEMP );
+	sv_commandOverflowProtection = Cvar_Get ("sv_commandOverflowProtection", "1", CVAR_ARCHIVE );
 	Cvar_Get ("nextmap", "", CVAR_TEMP );
 
 	sv_allowDownload = Cvar_Get ("sv_allowDownload", "0", CVAR_SERVERINFO);
