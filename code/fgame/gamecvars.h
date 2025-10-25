@@ -306,6 +306,22 @@ extern cvar_t *g_bot_attack_spreadmult;
  */
 extern cvar_t *g_bot_turn_speed;
 /**
+ * @brief How long (in seconds) the bot remembers the last known enemy position.
+ */
+extern cvar_t *g_bot_memory_duration;
+/**
+ * @brief Maximum search radius (in units) when investigating a lost enemy.
+ */
+extern cvar_t *g_bot_investigate_radius;
+/**
+ * @brief Time (in seconds) before the bot gives up investigating.
+ */
+extern cvar_t *g_bot_investigate_timeout;
+/**
+ * @brief Enable debug console output for bot behavior (0=off, 1=basic, 2=verbose).
+ */
+extern cvar_t *g_bot_debug;
+/**
  * @brief A value that determines the chance of the bot sending an instant message on kill.
  * 0 = disable
  * The higher the value, the lower the frequency of instant messages.

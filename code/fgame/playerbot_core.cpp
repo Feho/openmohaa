@@ -65,6 +65,16 @@ BotController::BotController()
 
     m_iNextTauntTime = 0;
 
+    // Initialize enemy memory
+    m_enemyMemory.enemy = NULL;
+    m_enemyMemory.lastKnownPosition = vec_zero;
+    m_enemyMemory.lastKnownVelocity = vec_zero;
+    m_enemyMemory.lastSeenTime = 0.0f;
+    m_enemyMemory.confidenceLevel = 0.0f;
+    m_enemyMemory.investigationStarted = false;
+    m_enemyMemory.searchAttempts = 0;
+    m_iInvestigateStartTime = 0;
+
     m_StateFlags = 0;
 }
 
@@ -88,10 +98,10 @@ void BotController::Init(void)
     }
 
     InitState_Attack(&botfuncs[0]);
-    InitState_Curious(&botfuncs[1]);
-    InitState_Grenade(&botfuncs[2]);
-    InitState_Idle(&botfuncs[3]);
-    //InitState_Weapon(&botfuncs[4]);
+    InitState_Investigate(&botfuncs[1]);
+    InitState_Curious(&botfuncs[2]);
+    InitState_Grenade(&botfuncs[3]);
+    InitState_Idle(&botfuncs[4]);
 }
 
 BotMovement& BotController::GetMovement()

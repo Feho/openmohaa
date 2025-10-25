@@ -93,4 +93,14 @@ void BotController::State_Reset(void)
     m_vLastDeathPos   = vec_zero;
     m_pEnemy          = NULL;
     m_iEnemyEyesTag   = -1;
+
+    // Clear enemy memory
+    m_enemyMemory.enemy = NULL;
+    m_enemyMemory.lastKnownPosition = vec_zero;
+    m_enemyMemory.lastKnownVelocity = vec_zero;
+    m_enemyMemory.lastSeenTime = 0.0f;
+    m_enemyMemory.confidenceLevel = 0.0f;
+    m_enemyMemory.investigationStarted = false;
+    m_enemyMemory.searchAttempts = 0;
+    m_iInvestigateStartTime = 0;
 }

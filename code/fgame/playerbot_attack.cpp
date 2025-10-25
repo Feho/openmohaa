@@ -22,6 +22,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "g_local.h"
 #include "playerbot.h"
 
+extern cvar_t *g_bot_debug;
+
 /*
 ====================
 Attack state
@@ -124,6 +126,20 @@ bool BotController::CheckCondition_Attack(void)
 
             m_pEnemy        = sent;
             m_vLastEnemyPos = m_pEnemy->origin;
+
+            // Update enemy memory
+            if (!m_enemyMemory.enemy && g_bot_debug->integer >= 1) {
+                const char* enemyName = sent->IsSubclassOfPlayer()
+                    ? static_cast<Player*>(sent)->client->pers.netname
+                    : "AI";
+                gi.Printf("[BOT] %s: Acquired new target: %s\n",
+                    controlledEnt->client->pers.netname, enemyName);
+            }
+            m_enemyMemory.enemy = sent;
+            m_enemyMemory.lastKnownPosition = sent->origin;
+            m_enemyMemory.lastKnownVelocity = sent->velocity;
+            m_enemyMemory.lastSeenTime = level.svsTime;
+            m_enemyMemory.confidenceLevel = 1.0f;
         }
 
         if (m_pEnemy) {
@@ -312,12 +328,24 @@ void BotController::State_Attack(void)
             m_iAttackStopAimTime = level.inttime + 3000;
             m_iLastSeenTime      = level.inttime;
             m_vLastEnemyPos      = m_pEnemy->origin;
+
+            // Update enemy memory continuously while visible
+            m_enemyMemory.enemy = m_pEnemy;
+            m_enemyMemory.lastKnownPosition = m_pEnemy->origin;
+            m_enemyMemory.lastKnownVelocity = m_pEnemy->velocity;
+            m_enemyMemory.lastSeenTime = level.svsTime;
+            m_enemyMemory.confidenceLevel = 1.0f;
         }
     } else {
         m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
         fMinDistanceSquared = 0;
 
         if (level.inttime > m_iLastSeenTime + 2000) {
+            if (!m_iLastUnseenTime && g_bot_debug->integer >= 2) {
+                gi.Printf("[BOT] %s: Lost sight of enemy (%.1fs ago)\n",
+                    controlledEnt->client->pers.netname,
+                    (level.inttime - m_iLastSeenTime) / 1000.0f);
+            }
             m_iLastUnseenTime = level.inttime;
         }
     }

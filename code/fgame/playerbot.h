@@ -160,6 +160,16 @@ public:
         void (BotController::*ThinkState)(void);
     };
 
+    struct EnemyMemory {
+        SafePtr<Sentient> enemy;
+        Vector            lastKnownPosition;
+        Vector            lastKnownVelocity;
+        float             lastSeenTime;
+        float             confidenceLevel;
+        bool              investigationStarted;
+        int               searchAttempts;
+    };
+
 private:
     static botfunc_t botfuncs[];
 
@@ -184,6 +194,10 @@ private:
     Vector            m_vLastDeathPos;
     SafePtr<Sentient> m_pEnemy;
     int               m_iEnemyEyesTag;
+
+    // Enemy memory system for investigation
+    EnemyMemory m_enemyMemory;
+    int         m_iInvestigateStartTime;
 
     // Input
     usercmd_t  m_botCmd;
@@ -230,6 +244,12 @@ private:
     void        State_EndAttack(void);
     void        State_Attack(void);
     bool        IsValidEnemy(Sentient *sent) const;
+
+    static void InitState_Investigate(botfunc_t *func);
+    bool        CheckCondition_Investigate(void);
+    void        State_EndInvestigate(void);
+    void        State_Investigate(void);
+    Vector      CalculateSearchPosition(void);
 
     static void InitState_Grenade(botfunc_t *func);
     bool        CheckCondition_Grenade(void);

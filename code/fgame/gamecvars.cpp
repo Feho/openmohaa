@@ -289,6 +289,10 @@ cvar_t *g_bot_attack_react_min_delay;
 cvar_t *g_bot_attack_react_random_delay;
 cvar_t *g_bot_attack_spreadmult;
 cvar_t *g_bot_turn_speed;
+cvar_t *g_bot_memory_duration;
+cvar_t *g_bot_investigate_radius;
+cvar_t *g_bot_investigate_timeout;
+cvar_t *g_bot_debug;
 cvar_t *g_bot_instamsg_chance;
 cvar_t *g_bot_instamsg_delay;
 cvar_t *g_bot_initial_spawn_delay;
@@ -681,6 +685,10 @@ void CVAR_Init(void)
     g_bot_attack_react_random_delay            = gi.Cvar_Get("g_bot_attack_react_random_delay", "1.2", 0);
     g_bot_attack_spreadmult                    = gi.Cvar_Get("g_bot_attack_spreadmult", "1.0", 0);
     g_bot_turn_speed                           = gi.Cvar_Get("g_bot_turn_speed", "15", 0);
+    g_bot_memory_duration                      = gi.Cvar_Get("g_bot_memory_duration", "5.0", 0);
+    g_bot_investigate_radius                   = gi.Cvar_Get("g_bot_investigate_radius", "512", 0);
+    g_bot_investigate_timeout                  = gi.Cvar_Get("g_bot_investigate_timeout", "5.0", 0);
+    g_bot_debug                                = gi.Cvar_Get("g_bot_debug", "0", 0);
     g_bot_instamsg_chance                      = gi.Cvar_Get("g_bot_instamsg_chance", "5", 0);
     g_bot_instamsg_delay                       = gi.Cvar_Get("g_bot_instamsg_delay", "5.0", 0);
 
