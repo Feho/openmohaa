@@ -10,7 +10,7 @@
 ---
 
 ## Task 2.1: Perception System Implementation
-**Epic:** Perception System
+**Epic:** Perception System (`epics/02-perception-system.md`)
 **Estimate:** 2 weeks
 **Priority:** HIGH
 
@@ -81,7 +81,7 @@
 ---
 
 ## Task 2.2: Data-Driven Configuration
-**Epic:** Data-Driven Configuration
+**Epic:** Data-Driven Configuration (`epics/04-data-driven-configuration.md`)
 **Estimate:** 1.5 weeks
 **Priority:** HIGH
 
@@ -158,7 +158,7 @@
 ---
 
 ## Task 2.3: Basic Behavior Tree Framework
-**Epic:** Behavior Tree System
+**Epic:** Behavior Tree System (`epics/01-behavior-tree-system.md`)
 **Estimate:** 2 weeks
 **Priority:** HIGH
 
@@ -261,7 +261,7 @@
 ---
 
 ## Task 2.4: Integration Testing
-**Epic:** Testing
+**Epic:** Testing (`epics/06-testing-infrastructure.md`)
 **Estimate:** 3 days
 **Priority:** MEDIUM
 
@@ -295,7 +295,7 @@
 ---
 
 ## Task 2.5: Debug Visualization Improvements
-**Epic:** Debug Visualization
+**Epic:** Debug Visualization (`epics/07-debug-visualization.md`)
 **Estimate:** 1 week
 **Priority:** MEDIUM
 

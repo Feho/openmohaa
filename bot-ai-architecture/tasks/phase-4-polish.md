@@ -10,7 +10,7 @@
 ---
 
 ## Task 4.1: LOD AI System
-**Epic:** Performance Optimization
+**Epic:** Performance Optimization (`epics/08-performance-optimization.md`)
 **Estimate:** 2 weeks
 **Priority:** HIGH
 
@@ -75,7 +75,7 @@
 ---
 
 ## Task 4.2: Spatial Indexing
-**Epic:** Performance Optimization
+**Epic:** Performance Optimization (`epics/08-performance-optimization.md`)
 **Estimate:** 1 week
 **Priority:** MEDIUM
 
@@ -106,7 +106,7 @@
 ---
 
 ## Task 4.3: Async Pathfinding
-**Epic:** Performance Optimization
+**Epic:** Performance Optimization (`epics/08-performance-optimization.md`)
 **Estimate:** 2 weeks
 **Priority:** MEDIUM
 
@@ -163,7 +163,7 @@
 ---
 
 ## Task 4.4: Plugin System
-**Epic:** Modularity & Plugins
+**Epic:** Modularity & Plugins (`epics/09-modularity-plugins.md`)
 **Estimate:** 3 weeks
 **Priority:** LOW
 
@@ -232,7 +232,7 @@
 ---
 
 ## Task 4.5: Component-Based Architecture (ECS)
-**Epic:** Component-Based Architecture
+**Epic:** Component-Based Architecture (`epics/05-component-based-architecture.md`)
 **Estimate:** 4 weeks (OPTIONAL - big refactor)
 **Priority:** LOW
 
@@ -288,7 +288,7 @@
 ---
 
 ## Task 4.6: Full Test Coverage
-**Epic:** Testing Infrastructure
+**Epic:** Testing Infrastructure (`epics/06-testing-infrastructure.md`)
 **Estimate:** 2 weeks
 **Priority:** MEDIUM
 
@@ -318,7 +318,7 @@
 ---
 
 ## Task 4.7: Documentation
-**Epic:** Code Quality
+**Epic:** Code Quality (`epics/10-code-quality-refactoring.md`)
 **Estimate:** 1.5 weeks
 **Priority:** MEDIUM
 
@@ -363,7 +363,7 @@
 ---
 
 ## Task 4.8: Profile & Behavior Library
-**Epic:** Data-Driven Configuration
+**Epic:** Data-Driven Configuration (`epics/04-data-driven-configuration.md`)
 **Estimate:** 1 week
 **Priority:** LOW
 

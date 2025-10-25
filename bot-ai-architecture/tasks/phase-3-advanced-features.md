@@ -10,7 +10,7 @@
 ---
 
 ## Task 3.1: Migrate Attack Behavior to BT
-**Epic:** Behavior Tree System
+**Epic:** Behavior Tree System (`epics/01-behavior-tree-system.md`)
 **Estimate:** 2 weeks
 **Priority:** HIGH
 
@@ -88,7 +88,7 @@
 ---
 
 ## Task 3.2: Migrate Investigation Behavior to BT
-**Epic:** Behavior Tree System
+**Epic:** Behavior Tree System (`epics/01-behavior-tree-system.md`)
 **Estimate:** 1 week
 **Priority:** MEDIUM
 
@@ -114,7 +114,7 @@
 ---
 
 ## Task 3.3: Migrate Curious/Idle Behaviors to BT
-**Epic:** Behavior Tree System
+**Epic:** Behavior Tree System (`epics/01-behavior-tree-system.md`)
 **Estimate:** 1 week
 **Priority:** MEDIUM
 
@@ -137,7 +137,7 @@
 ---
 
 ## Task 3.4: Implement Utility AI
-**Epic:** Utility AI
+**Epic:** Utility AI (`epics/03-utility-ai.md`)
 **Estimate:** 2 weeks
 **Priority:** MEDIUM
 
@@ -217,7 +217,7 @@
 ---
 
 ## Task 3.5: Advanced Debug Visualization
-**Epic:** Debug Visualization
+**Epic:** Debug Visualization (`epics/07-debug-visualization.md`)
 **Estimate:** 1.5 weeks
 **Priority:** MEDIUM
 
@@ -270,7 +270,7 @@
 ---
 
 ## Task 3.6: Remove Old State Machine
-**Epic:** Code Quality
+**Epic:** Code Quality (`epics/10-code-quality-refactoring.md`)
 **Estimate:** 1 week
 **Priority:** LOW
 
@@ -317,7 +317,7 @@
 ---
 
 ## Task 3.7: Performance Tuning
-**Epic:** Performance Optimization
+**Epic:** Performance Optimization (`epics/08-performance-optimization.md`)
 **Estimate:** 1 week
 **Priority:** MEDIUM
 

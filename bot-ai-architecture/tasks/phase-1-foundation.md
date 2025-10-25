@@ -8,7 +8,7 @@
 ---
 
 ## Task 1.1: Extract Long Functions
-**Epic:** Code Quality
+**Epic:** Code Quality (`epics/10-code-quality-refactoring.md`)
 **Estimate:** 3 days
 **Priority:** HIGH
 
@@ -51,7 +51,7 @@
 ---
 
 ## Task 1.2: Create Data Structures
-**Epic:** Code Quality
+**Epic:** Code Quality (`epics/10-code-quality-refactoring.md`)
 **Estimate:** 2 days
 **Priority:** HIGH
 
@@ -116,7 +116,7 @@
 ---
 
 ## Task 1.3: Set Up Test Infrastructure
-**Epic:** Testing
+**Epic:** Testing (`epics/06-testing-infrastructure.md`)
 **Estimate:** 2 days
 **Priority:** HIGH
 
@@ -157,7 +157,7 @@
 ---
 
 ## Task 1.4: Improve Debug Visualization
-**Epic:** Debug Visualization
+**Epic:** Debug Visualization (`epics/07-debug-visualization.md`)
 **Estimate:** 2 days
 **Priority:** MEDIUM
 
@@ -195,7 +195,7 @@
 ---
 
 ## Task 1.5: Code Cleanup & Style
-**Epic:** Code Quality
+**Epic:** Code Quality (`epics/10-code-quality-refactoring.md`)
 **Estimate:** 2 days
 **Priority:** MEDIUM
 
@@ -231,7 +231,7 @@
 ---
 
 ## Task 1.6: Documentation
-**Epic:** Code Quality
+**Epic:** Code Quality (`epics/10-code-quality-refactoring.md`)
 **Estimate:** 1 day
 **Priority:** LOW
 
