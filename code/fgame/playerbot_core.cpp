@@ -88,6 +88,17 @@ BotController::BotController()
     m_fPeekDuration = 0.0f;
     m_iLastCoverSearchTime = 0;
 
+    // Initialize tactical combat system
+    m_fireMode = FIRE_BURST;
+    m_combatProfile = CAUTIOUS;
+    m_iSuppressionEndTime = 0;
+    m_fRecentDamage = 0.0f;
+    m_iDamageWindowStart = 0;
+    m_fBurstDuration = 1.0f;
+    m_fBurstDelay = 0.5f;
+    m_bRequireLowSpread = false;
+    m_bAmmoLow = false;
+
     m_StateFlags = 0;
 }
 

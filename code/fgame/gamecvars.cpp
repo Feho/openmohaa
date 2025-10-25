@@ -302,6 +302,13 @@ cvar_t *g_bot_cover_hide_max_time;
 cvar_t *g_bot_instamsg_chance;
 cvar_t *g_bot_instamsg_delay;
 cvar_t *g_bot_initial_spawn_delay;
+cvar_t *g_bot_suppression_duration;
+cvar_t *g_bot_suppression_spread;
+cvar_t *g_bot_retreat_health_threshold;
+cvar_t *g_bot_retreat_distance;
+cvar_t *g_bot_burst_range_long;
+cvar_t *g_bot_burst_range_medium;
+cvar_t *g_bot_ammo_low_threshold;
 
 cvar_t *g_rankedserver;
 cvar_t *g_spectatefollow_firstperson;
@@ -703,6 +710,13 @@ void CVAR_Init(void)
     g_bot_cover_hide_max_time                  = gi.Cvar_Get("g_bot_cover_hide_max_time", "1.5", 0);
     g_bot_instamsg_chance                      = gi.Cvar_Get("g_bot_instamsg_chance", "5", 0);
     g_bot_instamsg_delay                       = gi.Cvar_Get("g_bot_instamsg_delay", "5.0", 0);
+    g_bot_suppression_duration                 = gi.Cvar_Get("g_bot_suppression_duration", "3.0", 0);
+    g_bot_suppression_spread                   = gi.Cvar_Get("g_bot_suppression_spread", "64", 0);
+    g_bot_retreat_health_threshold             = gi.Cvar_Get("g_bot_retreat_health_threshold", "30", 0);
+    g_bot_retreat_distance                     = gi.Cvar_Get("g_bot_retreat_distance", "512", 0);
+    g_bot_burst_range_long                     = gi.Cvar_Get("g_bot_burst_range_long", "1024", 0);
+    g_bot_burst_range_medium                   = gi.Cvar_Get("g_bot_burst_range_medium", "512", 0);
+    g_bot_ammo_low_threshold                   = gi.Cvar_Get("g_bot_ammo_low_threshold", "0.3", 0);
 
     g_rankedserver               = gi.Cvar_Get("g_rankedserver", "0", 0);
     g_spectatefollow_firstperson = gi.Cvar_Get("g_spectatefollow_firstperson", "0", 0);

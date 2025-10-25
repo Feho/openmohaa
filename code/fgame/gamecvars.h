@@ -361,6 +361,35 @@ extern cvar_t *g_bot_instamsg_delay;
  */
 extern cvar_t *g_bot_initial_spawn_delay;
 
+/**
+ * @brief How long (in seconds) the bot suppresses an area.
+ */
+extern cvar_t *g_bot_suppression_duration;
+/**
+ * @brief Random offset (in units) for suppression fire spread.
+ */
+extern cvar_t *g_bot_suppression_spread;
+/**
+ * @brief Health percentage threshold to trigger retreat.
+ */
+extern cvar_t *g_bot_retreat_health_threshold;
+/**
+ * @brief Distance (in units) to retreat from enemy.
+ */
+extern cvar_t *g_bot_retreat_distance;
+/**
+ * @brief Distance (in units) for long range burst control.
+ */
+extern cvar_t *g_bot_burst_range_long;
+/**
+ * @brief Distance (in units) for medium range burst control.
+ */
+extern cvar_t *g_bot_burst_range_medium;
+/**
+ * @brief Ammo percentage threshold for conservation mode.
+ */
+extern cvar_t *g_bot_ammo_low_threshold;
+
 extern cvar_t *g_rankedserver;
 extern cvar_t *g_spectatefollow_firstperson;
 

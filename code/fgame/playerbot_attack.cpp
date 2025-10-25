@@ -217,10 +217,9 @@ void BotController::State_Attack(void)
             float     fSecondaryBulletRangeSquared = fSecondaryBulletRange * fSecondaryBulletRange;
             float     fSpreadFactor                = pWeap->GetSpreadFactor(FIRE_PRIMARY);
 
-            const int maxcontinuousFireTime = fireDelay + g_bot_attack_continuousfire_min_firetime->value * 1000
-                                           + G_Random(g_bot_attack_continuousfire_random_firetime->value * 1000);
-            const int maxBurstTime = fireDelay + g_bot_attack_burst_min_time->value * 1000
-                                   + G_Random(g_bot_attack_burst_random_delay->value * 1000);
+            // Use tactical combat burst timing (calculated based on range and combat profile)
+            const int maxcontinuousFireTime = fireDelay + (int)(m_fBurstDuration * 1000);
+            const int maxBurstTime = fireDelay + (int)(m_fBurstDelay * 1000);
 
             //
             // check the fire movement speed if the weapon has a max fire movement
@@ -276,8 +275,16 @@ void BotController::State_Attack(void)
                         movement.ClearMove();
                     }
                 } else {
-                    bFiring = true;
-                    m_botCmd.buttons |= BUTTON_ATTACKLEFT;
+                    // Full-auto: check if low spread required (accurate fire mode)
+                    if (m_bRequireLowSpread && fSpreadFactor >= 0.25) {
+                        // Need low spread but don't have it - stop moving
+                        bNoMove = true;
+                        movement.ClearMove();
+                        m_botCmd.buttons &= ~BUTTON_ATTACKLEFT;
+                    } else {
+                        bFiring = true;
+                        m_botCmd.buttons |= BUTTON_ATTACKLEFT;
+                    }
                 }
             }
 
@@ -393,6 +400,9 @@ void BotController::State_Attack(void)
 
     // Update cover behavior
     UpdateCoverBehavior();
+
+    // Update tactical combat system
+    UpdateTacticalCombat();
 
     // Handle cover-based movement and firing
     if (m_coverState == COVER_IN_COVER) {

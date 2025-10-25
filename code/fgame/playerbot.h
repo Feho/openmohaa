@@ -187,6 +187,20 @@ public:
         COVER_REPOSITIONING
     };
 
+    enum FireMode {
+        FIRE_ACCURATE,      // Aimed shots, low spread required
+        FIRE_BURST,         // Short controlled bursts
+        FIRE_SUPPRESSION,   // Sustained fire at area, not specific target
+        FIRE_MELEE          // Close combat
+    };
+
+    enum CombatProfile {
+        AGGRESSIVE,    // Push forward, sustained fire
+        CAUTIOUS,      // Use cover, controlled bursts
+        DEFENSIVE,     // Hold position, suppression
+        RETREATING     // Fall back, covering fire
+    };
+
 private:
     static botfunc_t botfuncs[];
 
@@ -223,6 +237,17 @@ private:
     int         m_iPeekStartTime;
     float       m_fPeekDuration;
     int         m_iLastCoverSearchTime;
+
+    // Tactical combat system
+    FireMode      m_fireMode;
+    CombatProfile m_combatProfile;
+    int           m_iSuppressionEndTime;
+    float         m_fRecentDamage;
+    int           m_iDamageWindowStart;
+    float         m_fBurstDuration;
+    float         m_fBurstDelay;
+    bool          m_bRequireLowSpread;
+    bool          m_bAmmoLow;
 
     // Input
     usercmd_t  m_botCmd;
@@ -282,6 +307,18 @@ private:
     bool        IsInCover(Vector pos, Vector enemyPos);
     bool        IsCoverCompromised(void);
     void        UpdateCoverBehavior(void);
+
+    // Tactical combat system
+    void          UpdateTacticalCombat(void);
+    void          UpdateSuppressionFire(void);
+    bool          ShouldRetreat(void);
+    void          ExecuteRetreat(void);
+    void          CalculateBurstTiming(void);
+    void          CheckAmmoConservation(void);
+    CombatProfile DetermineCombatProfile(void);
+    int           CountEnemiesInRadius(float radius);
+    int           CountAlliesInRadius(float radius);
+    void          SetFireMode(FireMode mode);
 
     static void InitState_Grenade(botfunc_t *func);
     bool        CheckCondition_Grenade(void);
