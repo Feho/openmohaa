@@ -219,34 +219,25 @@ private:
 
     static void InitState_Idle(botfunc_t *func);
     bool        CheckCondition_Idle(void);
-    void        State_BeginIdle(void);
-    void        State_EndIdle(void);
     void        State_Idle(void);
 
     static void InitState_Curious(botfunc_t *func);
     bool        CheckCondition_Curious(void);
-    void        State_BeginCurious(void);
-    void        State_EndCurious(void);
     void        State_Curious(void);
 
     static void InitState_Attack(botfunc_t *func);
     bool        CheckCondition_Attack(void);
-    void        State_BeginAttack(void);
     void        State_EndAttack(void);
     void        State_Attack(void);
     bool        IsValidEnemy(Sentient *sent) const;
 
     static void InitState_Grenade(botfunc_t *func);
     bool        CheckCondition_Grenade(void);
-    void        State_BeginGrenade(void);
-    void        State_EndGrenade(void);
     void        State_Grenade(void);
 
     static void InitState_Weapon(botfunc_t *func);
     bool        CheckCondition_Weapon(void);
     void        State_BeginWeapon(void);
-    void        State_EndWeapon(void);
-    void        State_Weapon(void);
 
     void CheckStates(void);
 
