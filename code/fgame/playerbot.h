@@ -170,6 +170,23 @@ public:
         int               searchAttempts;
     };
 
+    struct CoverPoint {
+        Vector position;
+        float  quality;           // 0.0-1.0 rating
+        float  protectionAngle;   // Angle of protection from enemy
+        float  distanceToEnemy;
+        bool   hasEscapeRoute;
+        int    evaluatedTime;     // When this cover was evaluated
+    };
+
+    enum CoverState {
+        COVER_NONE,
+        COVER_MOVING_TO,
+        COVER_IN_COVER,
+        COVER_PEEKING,
+        COVER_REPOSITIONING
+    };
+
 private:
     static botfunc_t botfuncs[];
 
@@ -198,6 +215,14 @@ private:
     // Enemy memory system for investigation
     EnemyMemory m_enemyMemory;
     int         m_iInvestigateStartTime;
+
+    // Cover system
+    CoverPoint  m_currentCover;
+    CoverState  m_coverState;
+    int         m_iNextPeekTime;
+    int         m_iPeekStartTime;
+    float       m_fPeekDuration;
+    int         m_iLastCoverSearchTime;
 
     // Input
     usercmd_t  m_botCmd;
@@ -250,6 +275,13 @@ private:
     void        State_EndInvestigate(void);
     void        State_Investigate(void);
     Vector      CalculateSearchPosition(void);
+
+    // Cover system
+    CoverPoint  FindBestCover(Vector enemyPos);
+    float       EvaluateCoverQuality(Vector pos, Vector enemyPos);
+    bool        IsInCover(Vector pos, Vector enemyPos);
+    bool        IsCoverCompromised(void);
+    void        UpdateCoverBehavior(void);
 
     static void InitState_Grenade(botfunc_t *func);
     bool        CheckCondition_Grenade(void);

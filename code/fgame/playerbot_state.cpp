@@ -103,4 +103,9 @@ void BotController::State_Reset(void)
     m_enemyMemory.investigationStarted = false;
     m_enemyMemory.searchAttempts = 0;
     m_iInvestigateStartTime = 0;
+
+    // Clear cover state
+    m_currentCover.quality = 0.0f;
+    m_coverState = COVER_NONE;
+    m_iLastCoverSearchTime = 0;
 }

@@ -75,6 +75,19 @@ BotController::BotController()
     m_enemyMemory.searchAttempts = 0;
     m_iInvestigateStartTime = 0;
 
+    // Initialize cover system
+    m_currentCover.position = vec_zero;
+    m_currentCover.quality = 0.0f;
+    m_currentCover.protectionAngle = 0.0f;
+    m_currentCover.distanceToEnemy = 0.0f;
+    m_currentCover.hasEscapeRoute = false;
+    m_currentCover.evaluatedTime = 0;
+    m_coverState = COVER_NONE;
+    m_iNextPeekTime = 0;
+    m_iPeekStartTime = 0;
+    m_fPeekDuration = 0.0f;
+    m_iLastCoverSearchTime = 0;
+
     m_StateFlags = 0;
 }
 

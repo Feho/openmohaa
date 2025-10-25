@@ -322,6 +322,30 @@ extern cvar_t *g_bot_investigate_timeout;
  */
 extern cvar_t *g_bot_debug;
 /**
+ * @brief How far (in units) the bot searches for cover positions.
+ */
+extern cvar_t *g_bot_cover_search_radius;
+/**
+ * @brief Minimum quality (0.0-1.0) for a position to be considered valid cover.
+ */
+extern cvar_t *g_bot_cover_min_quality;
+/**
+ * @brief Minimum time (in seconds) the bot stays peeking from cover.
+ */
+extern cvar_t *g_bot_cover_peek_min_time;
+/**
+ * @brief Maximum time (in seconds) the bot stays peeking from cover.
+ */
+extern cvar_t *g_bot_cover_peek_max_time;
+/**
+ * @brief Minimum time (in seconds) the bot stays hiding in cover.
+ */
+extern cvar_t *g_bot_cover_hide_min_time;
+/**
+ * @brief Maximum time (in seconds) the bot stays hiding in cover.
+ */
+extern cvar_t *g_bot_cover_hide_max_time;
+/**
  * @brief A value that determines the chance of the bot sending an instant message on kill.
  * 0 = disable
  * The higher the value, the lower the frequency of instant messages.

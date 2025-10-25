@@ -23,6 +23,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "playerbot.h"
 
 extern cvar_t *g_bot_debug;
+extern cvar_t *g_bot_cover_search_radius;
+extern cvar_t *g_bot_cover_min_quality;
 
 /*
 ====================
@@ -388,6 +390,26 @@ void BotController::State_Attack(void)
     } else {
         AimAtAimNode();
     }
+
+    // Update cover behavior
+    UpdateCoverBehavior();
+
+    // Handle cover-based movement and firing
+    if (m_coverState == COVER_IN_COVER) {
+        // In cover, not shooting
+        m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
+        movement.ClearMove();
+        return;
+    } else if (m_coverState == COVER_MOVING_TO || m_coverState == COVER_REPOSITIONING) {
+        // Moving to cover, stop shooting
+        m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
+
+        if (!movement.IsMoving() || movement.MoveDone()) {
+            movement.MoveTo(m_currentCover.position);
+        }
+        return;
+    }
+    // COVER_PEEKING or COVER_NONE: continue with normal combat behavior
 
     if (bNoMove) {
         return;

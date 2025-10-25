@@ -293,6 +293,12 @@ cvar_t *g_bot_memory_duration;
 cvar_t *g_bot_investigate_radius;
 cvar_t *g_bot_investigate_timeout;
 cvar_t *g_bot_debug;
+cvar_t *g_bot_cover_search_radius;
+cvar_t *g_bot_cover_min_quality;
+cvar_t *g_bot_cover_peek_min_time;
+cvar_t *g_bot_cover_peek_max_time;
+cvar_t *g_bot_cover_hide_min_time;
+cvar_t *g_bot_cover_hide_max_time;
 cvar_t *g_bot_instamsg_chance;
 cvar_t *g_bot_instamsg_delay;
 cvar_t *g_bot_initial_spawn_delay;
@@ -689,6 +695,12 @@ void CVAR_Init(void)
     g_bot_investigate_radius                   = gi.Cvar_Get("g_bot_investigate_radius", "512", 0);
     g_bot_investigate_timeout                  = gi.Cvar_Get("g_bot_investigate_timeout", "5.0", 0);
     g_bot_debug                                = gi.Cvar_Get("g_bot_debug", "0", 0);
+    g_bot_cover_search_radius                  = gi.Cvar_Get("g_bot_cover_search_radius", "512", 0);
+    g_bot_cover_min_quality                    = gi.Cvar_Get("g_bot_cover_min_quality", "0.6", 0);
+    g_bot_cover_peek_min_time                  = gi.Cvar_Get("g_bot_cover_peek_min_time", "1.0", 0);
+    g_bot_cover_peek_max_time                  = gi.Cvar_Get("g_bot_cover_peek_max_time", "3.0", 0);
+    g_bot_cover_hide_min_time                  = gi.Cvar_Get("g_bot_cover_hide_min_time", "0.5", 0);
+    g_bot_cover_hide_max_time                  = gi.Cvar_Get("g_bot_cover_hide_max_time", "1.5", 0);
     g_bot_instamsg_chance                      = gi.Cvar_Get("g_bot_instamsg_chance", "5", 0);
     g_bot_instamsg_delay                       = gi.Cvar_Get("g_bot_instamsg_delay", "5.0", 0);
 
