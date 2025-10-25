@@ -37,15 +37,27 @@ void BotController::InitState_Curious(botfunc_t *func)
 
 bool BotController::CheckCondition_Curious(void)
 {
+    // Don't be curious if in Attack state
     if (m_iAttackTime) {
         m_iCuriousTime = 0;
         return false;
     }
 
+    // Don't be curious if in Investigation state (higher priority)
+    if (m_iInvestigateEventTime > 0 || m_enemyMemory.enemy) {
+        // Investigation has higher priority, defer to it
+        return false;
+    }
+
+    // Check if curious time has expired
     if (level.inttime > m_iCuriousTime) {
         if (m_iCuriousTime) {
             movement.ClearMove();
             m_iCuriousTime = 0;
+            // Clear event priority when Curious state ends
+            if (m_iCurrentEventPriority == 1) {
+                m_iCurrentEventPriority = 0;
+            }
         }
 
         return false;

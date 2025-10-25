@@ -292,6 +292,7 @@ cvar_t *g_bot_turn_speed;
 cvar_t *g_bot_memory_duration;
 cvar_t *g_bot_investigate_radius;
 cvar_t *g_bot_investigate_timeout;
+cvar_t *g_bot_investigate_sound_timeout;
 cvar_t *g_bot_debug;
 cvar_t *g_bot_cover_search_radius;
 cvar_t *g_bot_cover_min_quality;
@@ -711,6 +712,7 @@ void CVAR_Init(void)
     g_bot_memory_duration                      = gi.Cvar_Get("g_bot_memory_duration", "5.0", 0);
     g_bot_investigate_radius                   = gi.Cvar_Get("g_bot_investigate_radius", "512", 0);
     g_bot_investigate_timeout                  = gi.Cvar_Get("g_bot_investigate_timeout", "5.0", 0);
+    g_bot_investigate_sound_timeout            = gi.Cvar_Get("g_bot_investigate_sound_timeout", "10.0", 0);
     g_bot_debug                                = gi.Cvar_Get("g_bot_debug", "0", 0);
     g_bot_cover_search_radius                  = gi.Cvar_Get("g_bot_cover_search_radius", "512", 0);
     g_bot_cover_min_quality                    = gi.Cvar_Get("g_bot_cover_min_quality", "0.6", 0);

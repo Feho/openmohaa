@@ -247,6 +247,11 @@ private:
     EnemyMemory m_enemyMemory;
     int         m_iInvestigateStartTime;
 
+    // Sound-based investigation tracking
+    int    m_iInvestigateEventTime;  // When high-priority sound was heard (for sound investigation mode)
+    Vector m_vInvestigateEventPos;   // Location of high-priority sound event
+    int    m_iCurrentEventPriority;  // Priority of current investigation (0=none, 1=low/curious, 2=high/investigate)
+
     // Cover system
     CoverPoint  m_currentCover;
     CoverState  m_coverState;
@@ -386,6 +391,7 @@ public:
     void AimAtAimNode(void);
 
     void NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDistanceSquared, float fRadiusSquared);
+    int  GetEventPriority(int eventType);
     void ClearEnemy(void);
 
     void SendCommand(const char *text);

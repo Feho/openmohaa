@@ -79,6 +79,11 @@ BotController::BotController()
     m_enemyMemory.searchAttempts = 0;
     m_iInvestigateStartTime = 0;
 
+    // Initialize sound-based investigation tracking
+    m_iInvestigateEventTime = 0;
+    m_vInvestigateEventPos = vec_zero;
+    m_iCurrentEventPriority = 0;
+
     // Initialize cover system
     m_currentCover.position = vec_zero;
     m_currentCover.quality = 0.0f;

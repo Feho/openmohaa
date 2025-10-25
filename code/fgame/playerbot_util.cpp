@@ -145,6 +145,42 @@ void BotController::CheckReload(void)
 
 /*
 ====================
+GetEventPriority
+
+Get priority level for event type
+Returns: 0=none, 1=low priority (Curious state), 2=high priority (Investigation state)
+====================
+*/
+int BotController::GetEventPriority(int eventType)
+{
+    switch (eventType) {
+    // High priority events - trigger Investigation state
+    case AI_EVENT_WEAPON_FIRE:
+    case AI_EVENT_WEAPON_IMPACT:
+    case AI_EVENT_EXPLOSION:
+    case AI_EVENT_GRENADE:
+    case AI_EVENT_AMERICAN_URGENT:
+    case AI_EVENT_GERMAN_URGENT:
+        return 2;
+
+    // Low priority events - trigger Curious state
+    case AI_EVENT_FOOTSTEP:
+    case AI_EVENT_AMERICAN_VOICE:
+    case AI_EVENT_GERMAN_VOICE:
+    case AI_EVENT_MISC:
+    case AI_EVENT_MISC_LOUD:
+        return 1;
+
+    // No priority
+    case AI_EVENT_NONE:
+    case AI_EVENT_BADPLACE:
+    default:
+        return 0;
+    }
+}
+
+/*
+====================
 NoticeEvent
 
 Warn the bot of an event
@@ -154,22 +190,21 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
 {
     Sentient *pSentOwner;
     float     fRangeFactor;
-    Vector    delta1, delta2;
 
-    if (m_iCuriousTime) {
-        delta1 = vPos - controlledEnt->origin;
-        delta2 = m_vNewCuriousPos - controlledEnt->origin;
-        if (delta1.lengthSquared() < delta2.lengthSquared()) {
-            return;
-        }
+    // Determine event priority level
+    int newEventPriority = GetEventPriority(iType);
+    if (newEventPriority == 0) {
+        // Not a relevant event type
+        return;
     }
 
+    // Random chance based on distance (closer events more likely to be noticed)
     fRangeFactor = 1.0 - (fDistanceSquared / fRadiusSquared);
-
     if (fRangeFactor < random()) {
         return;
     }
 
+    // Get event owner to filter out teammates
     if (pEnt->IsSubclassOfSentient()) {
         pSentOwner = static_cast<Sentient *>(pEnt);
     } else if (pEnt->IsSubclassOfVehicleTurretGun()) {
@@ -205,23 +240,60 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
         }
     }
 
-    switch (iType) {
-    case AI_EVENT_MISC:
-    case AI_EVENT_MISC_LOUD:
-        break;
-    case AI_EVENT_WEAPON_FIRE:
-    case AI_EVENT_WEAPON_IMPACT:
-    case AI_EVENT_EXPLOSION:
-    case AI_EVENT_AMERICAN_VOICE:
-    case AI_EVENT_GERMAN_VOICE:
-    case AI_EVENT_AMERICAN_URGENT:
-    case AI_EVENT_GERMAN_URGENT:
-    case AI_EVENT_FOOTSTEP:
-    case AI_EVENT_GRENADE:
-    default:
+    // If in Attack state, ignore all sound events (already engaged with visible enemy)
+    if (m_pEnemy) {
+        return;
+    }
+
+    // Priority-based event handling
+    bool shouldAcceptEvent = false;
+
+    if (m_iCurrentEventPriority == 0) {
+        // No active investigation, always accept
+        shouldAcceptEvent = true;
+    } else if (newEventPriority > m_iCurrentEventPriority) {
+        // Higher priority event interrupts lower priority investigation
+        shouldAcceptEvent = true;
+    } else if (newEventPriority == m_iCurrentEventPriority) {
+        // Same priority - compare distances
+        Vector currentInvestigatePos = (m_iCurrentEventPriority == 2) ? m_vInvestigateEventPos : m_vNewCuriousPos;
+        Vector deltaNew     = vPos - controlledEnt->origin;
+        Vector deltaCurrent = currentInvestigatePos - controlledEnt->origin;
+
+        if (deltaNew.lengthSquared() < deltaCurrent.lengthSquared()) {
+            // New event is closer, accept it
+            shouldAcceptEvent = true;
+        }
+    }
+
+    if (!shouldAcceptEvent) {
+        // Ignore this event
+        return;
+    }
+
+    // Accept the event and set appropriate state variables based on priority
+    m_iCurrentEventPriority = newEventPriority;
+
+    if (newEventPriority == 2) {
+        // High priority event - trigger Investigation state
+        m_iInvestigateEventTime = level.svsTime;
+        m_vInvestigateEventPos  = vPos;
+
+        if (g_bot_debug->integer >= 1) {
+            const char* eventName = G_AIEventStringFromType(iType);
+            gi.Printf("[BOT] %s: High-priority sound event '%s' at distance %.0f - investigating\n",
+                controlledEnt->client->pers.netname, eventName, sqrt(fDistanceSquared));
+        }
+    } else {
+        // Low priority event - trigger Curious state
         m_iCuriousTime   = level.inttime + 20000;
         m_vNewCuriousPos = vPos;
-        break;
+
+        if (g_bot_debug->integer >= 2) {
+            const char* eventName = G_AIEventStringFromType(iType);
+            gi.Printf("[BOT] %s: Low-priority sound event '%s' at distance %.0f - curious\n",
+                controlledEnt->client->pers.netname, eventName, sqrt(fDistanceSquared));
+        }
     }
 }
 

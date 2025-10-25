@@ -318,6 +318,10 @@ extern cvar_t *g_bot_investigate_radius;
  */
 extern cvar_t *g_bot_investigate_timeout;
 /**
+ * @brief Timeout (in seconds) for sound-triggered investigations (weapon fire, explosions).
+ */
+extern cvar_t *g_bot_investigate_sound_timeout;
+/**
  * @brief Enable debug console output for bot behavior (0=off, 1=basic, 2=verbose).
  */
 extern cvar_t *g_bot_debug;

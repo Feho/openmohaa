@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 extern cvar_t *g_bot_memory_duration;
 extern cvar_t *g_bot_investigate_radius;
 extern cvar_t *g_bot_investigate_timeout;
+extern cvar_t *g_bot_investigate_sound_timeout;
 extern cvar_t *g_bot_debug;
 
 /*
@@ -51,41 +52,61 @@ bool BotController::CheckCondition_Investigate(void)
         return false;
     }
 
-    // Check if we have enemy memory
-    if (!m_enemyMemory.enemy) {
-        return false;
-    }
+    // Check for enemy tracking mode (original behavior)
+    bool hasEnemyMemory = false;
+    if (m_enemyMemory.enemy) {
+        // Check if memory is still fresh
+        float timeSinceSeen = level.svsTime - m_enemyMemory.lastSeenTime;
+        float memoryDuration = g_bot_memory_duration->value;
 
-    // Check if memory is still fresh
-    float timeSinceSeen = level.svsTime - m_enemyMemory.lastSeenTime;
-    float memoryDuration = g_bot_memory_duration->value;
-
-    if (timeSinceSeen >= memoryDuration) {
-        // Memory expired, clear it
-        if (g_bot_debug->integer >= 1) {
-            gi.Printf("[BOT] %s: Memory expired (%.1fs since last seen)\n",
-                controlledEnt->client->pers.netname, timeSinceSeen);
-        }
-        m_enemyMemory.enemy = NULL;
-        return false;
-    }
-
-    // Check if investigation timeout has expired
-    if (m_iInvestigateStartTime > 0) {
-        float investigateTime = (level.svsTime - m_iInvestigateStartTime);
-        if (investigateTime >= g_bot_investigate_timeout->value) {
-            // Give up investigation
+        if (timeSinceSeen >= memoryDuration) {
+            // Memory expired, clear it
             if (g_bot_debug->integer >= 1) {
-                gi.Printf("[BOT] %s: Investigation timeout (%.1fs), giving up\n",
-                    controlledEnt->client->pers.netname, investigateTime);
+                gi.Printf("[BOT] %s: Enemy memory expired (%.1fs since last seen)\n",
+                    controlledEnt->client->pers.netname, timeSinceSeen);
             }
             m_enemyMemory.enemy = NULL;
-            return false;
+        } else {
+            // Check if investigation timeout has expired
+            if (m_iInvestigateStartTime > 0) {
+                float investigateTime = (level.svsTime - m_iInvestigateStartTime);
+                if (investigateTime >= g_bot_investigate_timeout->value) {
+                    // Give up enemy investigation
+                    if (g_bot_debug->integer >= 1) {
+                        gi.Printf("[BOT] %s: Enemy investigation timeout (%.1fs), giving up\n",
+                            controlledEnt->client->pers.netname, investigateTime);
+                    }
+                    m_enemyMemory.enemy = NULL;
+                } else {
+                    hasEnemyMemory = true;
+                }
+            } else {
+                hasEnemyMemory = true;
+            }
         }
     }
 
-    // Active investigation
-    return true;
+    // Check for sound investigation mode (new behavior)
+    bool hasSoundInvestigation = false;
+    if (m_iInvestigateEventTime > 0) {
+        float timeSinceEvent = (level.svsTime - m_iInvestigateEventTime);
+        float soundTimeout = g_bot_investigate_sound_timeout->value;
+
+        if (timeSinceEvent >= soundTimeout) {
+            // Sound investigation timeout
+            if (g_bot_debug->integer >= 2) {
+                gi.Printf("[BOT] %s: Sound investigation timeout (%.1fs), giving up\n",
+                    controlledEnt->client->pers.netname, timeSinceEvent);
+            }
+            m_iInvestigateEventTime = 0;
+            m_vInvestigateEventPos = vec_zero;
+        } else {
+            hasSoundInvestigation = true;
+        }
+    }
+
+    // Investigation is active if either mode is active
+    return hasEnemyMemory || hasSoundInvestigation;
 }
 
 void BotController::State_EndInvestigate(void)
@@ -95,10 +116,19 @@ void BotController::State_EndInvestigate(void)
             controlledEnt->client->pers.netname, m_enemyMemory.searchAttempts);
     }
 
-    // Clear investigation state
+    // Clear enemy tracking investigation state
     m_enemyMemory.investigationStarted = false;
     m_enemyMemory.searchAttempts = 0;
     m_iInvestigateStartTime = 0;
+
+    // Clear sound investigation state
+    m_iInvestigateEventTime = 0;
+    m_vInvestigateEventPos = vec_zero;
+
+    // Reset event priority (Investigation state is ending)
+    if (m_iCurrentEventPriority == 2) {
+        m_iCurrentEventPriority = 0;
+    }
 }
 
 Vector BotController::CalculateSearchPosition(void)
@@ -158,78 +188,112 @@ Vector BotController::CalculateSearchPosition(void)
 
 void BotController::State_Investigate(void)
 {
-    if (!m_enemyMemory.enemy) {
-        return;
-    }
+    // Determine investigation mode
+    bool hasEnemyMemory = (m_enemyMemory.enemy != NULL);
+    bool hasSoundInvestigation = (m_iInvestigateEventTime > 0);
 
-    // Initialize investigation on first frame
-    if (m_iInvestigateStartTime == 0) {
-        m_iInvestigateStartTime = level.svsTime;
-        m_enemyMemory.investigationStarted = true;
-        m_enemyMemory.searchAttempts = 0;
-
-        if (g_bot_debug->integer >= 1) {
-            const char* enemyName = m_enemyMemory.enemy->IsSubclassOfPlayer()
-                ? static_cast<Player*>(m_enemyMemory.enemy.Pointer())->client->pers.netname
-                : "unknown";
-            gi.Printf("[BOT] %s: Starting investigation for %s at (%.0f, %.0f, %.0f)\n",
-                controlledEnt->client->pers.netname, enemyName,
-                m_enemyMemory.lastKnownPosition.x,
-                m_enemyMemory.lastKnownPosition.y,
-                m_enemyMemory.lastKnownPosition.z);
-        }
-    }
-
-    // Check if we can see the enemy now (re-acquisition)
+    // Check if we can see an enemy now (re-acquisition for both modes)
     if (CheckCondition_Attack()) {
-        // Found the enemy again, attack state will take over
+        // Found an enemy, attack state will take over
         if (g_bot_debug->integer >= 1) {
-            gi.Printf("[BOT] %s: Re-acquired target during investigation!\n",
+            gi.Printf("[BOT] %s: Acquired target during investigation!\n",
                 controlledEnt->client->pers.netname);
         }
         return;
     }
 
-    // Move to search positions
-    if (movement.MoveDone()) {
-        // Calculate next search position
-        Vector searchPos = CalculateSearchPosition();
+    // Handle sound investigation mode
+    if (hasSoundInvestigation && !hasEnemyMemory) {
+        // Sound investigation - move directly to sound location
+        if (!movement.IsMoving() || movement.MoveDone()) {
+            if (movement.CanMoveTo(m_vInvestigateEventPos)) {
+                movement.MoveNear(m_vInvestigateEventPos, 128.0f);
 
-        // Try to pathfind to the search position
-        if (movement.CanMoveTo(searchPos)) {
-            movement.MoveNear(searchPos, 128.0f);
-            m_enemyMemory.searchAttempts++;
-
-            if (g_bot_debug->integer >= 2) {
-                gi.Printf("[BOT] %s: Searching position %d at (%.0f, %.0f, %.0f)\n",
-                    controlledEnt->client->pers.netname, m_enemyMemory.searchAttempts,
-                    searchPos.x, searchPos.y, searchPos.z);
-            }
-        } else {
-            // Can't reach this position, try next one
-            m_enemyMemory.searchAttempts++;
-
-            if (g_bot_debug->integer >= 2) {
-                gi.Printf("[BOT] %s: Can't reach search position %d, skipping\n",
-                    controlledEnt->client->pers.netname, m_enemyMemory.searchAttempts);
-            }
-
-            if (m_enemyMemory.searchAttempts > 12) {
-                // Exhausted search attempts, give up
-                if (g_bot_debug->integer >= 1) {
-                    gi.Printf("[BOT] %s: Exhausted all search positions\n",
+                if (g_bot_debug->integer >= 2) {
+                    gi.Printf("[BOT] %s: Investigating sound at (%.0f, %.0f, %.0f)\n",
+                        controlledEnt->client->pers.netname,
+                        m_vInvestigateEventPos.x,
+                        m_vInvestigateEventPos.y,
+                        m_vInvestigateEventPos.z);
+                }
+            } else {
+                // Can't reach sound location, give up
+                if (g_bot_debug->integer >= 2) {
+                    gi.Printf("[BOT] %s: Can't reach sound investigation position\n",
                         controlledEnt->client->pers.netname);
                 }
-                m_enemyMemory.enemy = NULL;
+                m_iInvestigateEventTime = 0;
+                m_vInvestigateEventPos = vec_zero;
                 return;
             }
         }
+
+        // Aim at sound location while moving
+        rotation.AimAt(m_vInvestigateEventPos);
+        return;
     }
 
-    // Aim at last known position while moving
-    rotation.AimAt(m_enemyMemory.lastKnownPosition);
+    // Handle enemy tracking mode (original behavior)
+    if (hasEnemyMemory) {
+        // Initialize investigation on first frame
+        if (m_iInvestigateStartTime == 0) {
+            m_iInvestigateStartTime = level.svsTime;
+            m_enemyMemory.investigationStarted = true;
+            m_enemyMemory.searchAttempts = 0;
 
-    // Decay confidence over time
-    float timeSinceSeen = level.svsTime - m_enemyMemory.lastSeenTime;
-    m_enemyMemory.confidenceLevel = 1.0f - (timeSinceSeen / g_bot_memory_duration->value);
+            if (g_bot_debug->integer >= 1) {
+                const char* enemyName = m_enemyMemory.enemy->IsSubclassOfPlayer()
+                    ? static_cast<Player*>(m_enemyMemory.enemy.Pointer())->client->pers.netname
+                    : "unknown";
+                gi.Printf("[BOT] %s: Starting enemy investigation for %s at (%.0f, %.0f, %.0f)\n",
+                    controlledEnt->client->pers.netname, enemyName,
+                    m_enemyMemory.lastKnownPosition.x,
+                    m_enemyMemory.lastKnownPosition.y,
+                    m_enemyMemory.lastKnownPosition.z);
+            }
+        }
+
+        // Move to search positions
+        if (movement.MoveDone()) {
+            // Calculate next search position
+            Vector searchPos = CalculateSearchPosition();
+
+            // Try to pathfind to the search position
+            if (movement.CanMoveTo(searchPos)) {
+                movement.MoveNear(searchPos, 128.0f);
+                m_enemyMemory.searchAttempts++;
+
+                if (g_bot_debug->integer >= 2) {
+                    gi.Printf("[BOT] %s: Searching enemy position %d at (%.0f, %.0f, %.0f)\n",
+                        controlledEnt->client->pers.netname, m_enemyMemory.searchAttempts,
+                        searchPos.x, searchPos.y, searchPos.z);
+                }
+            } else {
+                // Can't reach this position, try next one
+                m_enemyMemory.searchAttempts++;
+
+                if (g_bot_debug->integer >= 2) {
+                    gi.Printf("[BOT] %s: Can't reach enemy search position %d, skipping\n",
+                        controlledEnt->client->pers.netname, m_enemyMemory.searchAttempts);
+                }
+
+                if (m_enemyMemory.searchAttempts > 12) {
+                    // Exhausted search attempts, give up
+                    if (g_bot_debug->integer >= 1) {
+                        gi.Printf("[BOT] %s: Exhausted all enemy search positions\n",
+                            controlledEnt->client->pers.netname);
+                    }
+                    m_enemyMemory.enemy = NULL;
+                    return;
+                }
+            }
+        }
+
+        // Aim at last known position while moving
+        rotation.AimAt(m_enemyMemory.lastKnownPosition);
+
+        // Decay confidence over time
+        float timeSinceSeen = level.svsTime - m_enemyMemory.lastSeenTime;
+        m_enemyMemory.confidenceLevel = 1.0f - (timeSinceSeen / g_bot_memory_duration->value);
+    }
 }
