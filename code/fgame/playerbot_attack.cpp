@@ -25,6 +25,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 extern cvar_t *g_bot_debug;
 extern cvar_t *g_bot_cover_search_radius;
 extern cvar_t *g_bot_cover_min_quality;
+extern cvar_t *g_bot_target_switch_threshold;
+extern cvar_t *g_bot_target_lock_time;
 
 /*
 ====================
@@ -108,6 +110,10 @@ bool BotController::CheckCondition_Attack(void)
     bot_origin = controlledEnt->origin;
     sents.Sort(sentients_compare);
 
+    // Scan for enemies (even if we already have one, we might want to switch)
+    Sentient* bestEnemy = NULL;
+    float bestDistanceSq = 999999.0f;
+
     for (int i = 1; i <= sents.NumObjects(); i++) {
         Sentient *sent = sents.ObjectAt(i);
 
@@ -117,39 +123,127 @@ bool BotController::CheckCondition_Attack(void)
 
         maxDistance = Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828);
 
-        if (controlledEnt->CanSee(sent, 80, maxDistance, false)) {
-            if (m_pEnemy != sent) {
-                m_iEnemyEyesTag = -1;
+        // Increased FOV from 80 to 100 degrees for better peripheral vision
+        if (controlledEnt->CanSee(sent, 100, maxDistance, false)) {
+            float distSq = (sent->origin - controlledEnt->origin).lengthSquared();
+
+            // Target stickiness: prefer current target unless new target is significantly closer
+            if (!bestEnemy) {
+                // No candidate yet, select this enemy
+                bestEnemy = sent;
+                bestDistanceSq = distSq;
+            } else {
+                // Already have a candidate, only switch if new enemy is significantly closer
+                float switchThreshold = g_bot_target_switch_threshold->value;
+                float switchThresholdSq = switchThreshold * switchThreshold;
+
+                // Calculate distance advantage (positive if new enemy is closer)
+                float distAdvantage = bestDistanceSq - distSq;
+
+                // Switch if new enemy is much closer, or if we don't have a locked current target
+                if (distAdvantage > switchThresholdSq || !m_pEnemy) {
+                    bestEnemy = sent;
+                    bestDistanceSq = distSq;
+                }
             }
-
-            if (!m_pEnemy) {
-                m_iLastUnseenTime = level.inttime;
-            }
-
-            m_pEnemy        = sent;
-            m_vLastEnemyPos = m_pEnemy->origin;
-
-            // Update enemy memory
-            if (!m_enemyMemory.enemy && g_bot_debug->integer >= 1) {
-                const char* enemyName = sent->IsSubclassOfPlayer()
-                    ? static_cast<Player*>(sent)->client->pers.netname
-                    : "AI";
-                gi.Printf("[BOT] %s: Acquired new target: %s\n",
-                    controlledEnt->client->pers.netname, enemyName);
-            }
-            m_enemyMemory.enemy = sent;
-            m_enemyMemory.lastKnownPosition = sent->origin;
-            m_enemyMemory.lastKnownVelocity = sent->velocity;
-            m_enemyMemory.lastSeenTime = level.svsTime;
-            m_enemyMemory.confidenceLevel = 1.0f;
-        }
-
-        if (m_pEnemy) {
-            m_iAttackTime = level.inttime + 1000;
-            return true;
         }
     }
 
+    // If we found a visible enemy, target it
+    if (bestEnemy) {
+        bool shouldSwitch = false;
+
+        if (m_pEnemy != bestEnemy) {
+            // Trying to switch to a different target - check time lock
+            if (!m_pEnemy) {
+                // No current target, always allow
+                shouldSwitch = true;
+            } else if (!IsValidEnemy(m_pEnemy)) {
+                // Current target became invalid (dead, hidden, etc), always allow switch
+                shouldSwitch = true;
+            } else {
+                // Check if enough time has passed since target lock
+                float timeSinceLock = (level.svsTime - m_iTargetLockTime);
+                float minLockTime = g_bot_target_lock_time->value;
+
+                if (timeSinceLock >= minLockTime) {
+                    shouldSwitch = true;
+                } else {
+                    // Time lock still active, stick with current target if still visible
+                    shouldSwitch = false;
+
+                    // Keep current target if it's still in the visible list
+                    for (int i = 1; i <= SentientList.NumObjects(); i++) {
+                        Sentient *sent = SentientList.ObjectAt(i);
+                        if (sent == m_pEnemy && controlledEnt->CanSee(sent, 100, maxDistance, false)) {
+                            bestEnemy = m_pEnemy;
+                            bestDistanceSq = (m_pEnemy->origin - controlledEnt->origin).lengthSquared();
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (shouldSwitch) {
+                m_iEnemyEyesTag = -1;
+
+                // Debug output for target switching
+                if (m_pEnemy && g_bot_debug->integer >= 1) {
+                    const char* oldName = "AI";
+                    const char* newName = "AI";
+
+                    Sentient* oldEnemy = static_cast<Sentient*>(m_pEnemy.Pointer());
+                    if (oldEnemy && oldEnemy->IsSubclassOfPlayer()) {
+                        oldName = static_cast<Player*>(oldEnemy)->client->pers.netname;
+                    }
+                    if (bestEnemy->IsSubclassOfPlayer()) {
+                        newName = static_cast<Player*>(bestEnemy)->client->pers.netname;
+                    }
+
+                    gi.Printf("[BOT] %s: Switching target from %s to %s (lock time: %.1fs)\n",
+                        controlledEnt->client->pers.netname, oldName, newName,
+                        (level.svsTime - m_iTargetLockTime));
+                }
+            }
+        } else {
+            // Same target, no switch needed
+            shouldSwitch = false;
+        }
+
+        // Acquire new target or refresh lock time
+        if (!m_pEnemy || shouldSwitch) {
+            if (!m_pEnemy) {
+                m_iLastUnseenTime = level.inttime;
+
+                // Debug output for initial target acquisition
+                if (g_bot_debug->integer >= 1) {
+                    const char* enemyName = "AI";
+                    if (bestEnemy->IsSubclassOfPlayer()) {
+                        enemyName = static_cast<Player*>(bestEnemy)->client->pers.netname;
+                    }
+                    gi.Printf("[BOT] %s: Acquired new target: %s at distance %.0f\n",
+                        controlledEnt->client->pers.netname, enemyName, sqrt(bestDistanceSq));
+                }
+            }
+
+            m_pEnemy = bestEnemy;
+            m_iTargetLockTime = level.svsTime;
+        }
+
+        m_vLastEnemyPos = m_pEnemy->origin;
+
+        // Update enemy memory
+        m_enemyMemory.enemy = bestEnemy;
+        m_enemyMemory.lastKnownPosition = bestEnemy->origin;
+        m_enemyMemory.lastKnownVelocity = bestEnemy->velocity;
+        m_enemyMemory.lastSeenTime = level.svsTime;
+        m_enemyMemory.confidenceLevel = 1.0f;
+
+        m_iAttackTime = level.inttime + 1000;
+        return true;
+    }
+
+    // No visible enemies found
     if (level.inttime > m_iAttackTime) {
         if (m_iAttackTime) {
             movement.ClearMove();
@@ -404,22 +498,32 @@ void BotController::State_Attack(void)
     // Update tactical combat system
     UpdateTacticalCombat();
 
-    // Handle cover-based movement and firing
-    if (m_coverState == COVER_IN_COVER) {
-        // In cover, not shooting
-        m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
-        movement.ClearMove();
-        return;
-    } else if (m_coverState == COVER_MOVING_TO || m_coverState == COVER_REPOSITIONING) {
-        // Moving to cover, stop shooting
-        m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
+    // Update squad coordination
+    CoordinateAttack();
 
-        if (!movement.IsMoving() || movement.MoveDone()) {
-            movement.MoveTo(m_currentCover.position);
+    // Disable cover behavior at close range - prioritize direct combat
+    const float closeRangeThreshold = 384.0f;
+    const float closeRangeThresholdSquared = closeRangeThreshold * closeRangeThreshold;
+    const bool isCloseRange = fDistanceSquared < closeRangeThresholdSquared;
+
+    // Handle cover-based movement and firing (disabled at close range)
+    if (!isCloseRange) {
+        if (m_coverState == COVER_IN_COVER) {
+            // In cover, not shooting
+            m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
+            movement.ClearMove();
+            return;
+        } else if (m_coverState == COVER_MOVING_TO || m_coverState == COVER_REPOSITIONING) {
+            // Moving to cover, stop shooting
+            m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
+
+            if (!movement.IsMoving() || movement.MoveDone()) {
+                movement.MoveTo(m_currentCover.position);
+            }
+            return;
         }
-        return;
     }
-    // COVER_PEEKING or COVER_NONE: continue with normal combat behavior
+    // COVER_PEEKING, COVER_NONE, or close range: continue with normal combat behavior
 
     if (bNoMove) {
         return;

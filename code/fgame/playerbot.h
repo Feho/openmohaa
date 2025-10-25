@@ -201,6 +201,21 @@ public:
         RETREATING     // Fall back, covering fire
     };
 
+    enum SquadRole {
+        ROLE_NONE,
+        ROLE_AGGRESSOR,   // Direct assault
+        ROLE_FLANKER,     // Circle to enemy sides
+        ROLE_SUPPORT,     // Cover fire, hold position
+        ROLE_DEFENDER     // Protect objective/teammate
+    };
+
+    struct SquadInfo {
+        Container<BotController*> members;      // Bots within coordination range
+        SafePtr<Sentient>         sharedTarget; // Current squad target
+        Vector                    rallyPoint;
+        int                       lastUpdate;   // Last update time
+    };
+
 private:
     static botfunc_t botfuncs[];
 
@@ -217,6 +232,8 @@ private:
     int    m_iContinuousFireTime;
     Vector m_vAimOffset;
     int    m_iLastAimTime;
+    int    m_iStateEntryTime[MAX_BOT_FUNCTIONS];  // Track when each state was entered (for minimum duration)
+    int    m_iTargetLockTime;                      // Track when current target was acquired (for target stickiness)
 
     Vector            m_vLastCuriousPos;
     Vector            m_vNewCuriousPos;
@@ -248,6 +265,14 @@ private:
     float         m_fBurstDelay;
     bool          m_bRequireLowSpread;
     bool          m_bAmmoLow;
+
+    // Squad coordination system
+    SquadInfo  m_squad;
+    SquadRole  m_squadRole;
+    int        m_iLastSquadUpdateTime;
+    int        m_iRoleAssignmentTime;
+    Vector     m_vFlankPosition;
+    bool       m_bFlankPositionValid;
 
     // Input
     usercmd_t  m_botCmd;
@@ -320,6 +345,19 @@ private:
     int           CountAlliesInRadius(float radius);
     void          SetFireMode(FireMode mode);
 
+    // Squad coordination system
+    void      UpdateSquadAwareness(void);
+    SquadRole AssignSquadRole(void);
+    void      ExecuteFlankingManeuver(void);
+    void      ShareEnemyInformation(void);
+    void      ReceiveEnemyInfo(Sentient* enemy, Vector position);
+    void      CoordinateAttack(void);
+    void      CheckStaggeredEngagement(void);
+    int       CountAlliesNearPosition(Vector pos, float radius);
+    SquadRole GetSquadRole(void) const;
+    bool      HasEnemy(void) const;
+    Sentient* GetEnemy(void) const;
+
     static void InitState_Grenade(botfunc_t *func);
     bool        CheckCondition_Grenade(void);
     void        State_Grenade(void);
@@ -329,6 +367,7 @@ private:
     void        State_BeginWeapon(void);
 
     void CheckStates(void);
+    bool CanExitState(int stateIndex);
 
 public:
     CLASS_PROTOTYPE(BotController);

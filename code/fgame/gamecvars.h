@@ -390,6 +390,44 @@ extern cvar_t *g_bot_burst_range_medium;
  */
 extern cvar_t *g_bot_ammo_low_threshold;
 
+/**
+ * @brief Range (in units) to consider bots as squadmates.
+ */
+extern cvar_t *g_bot_squad_range;
+/**
+ * @brief Distance (in units) for flanking maneuvers.
+ */
+extern cvar_t *g_bot_squad_flank_distance;
+/**
+ * @brief Enable enemy information sharing (0=off, 1=on).
+ */
+extern cvar_t *g_bot_squad_share_info;
+/**
+ * @brief Wait time (in seconds) for flankers to get in position.
+ */
+extern cvar_t *g_bot_squad_coordination_delay;
+/**
+ * @brief Maximum number of bots pushing aggressively at once.
+ */
+extern cvar_t *g_bot_squad_max_simultaneous_push;
+
+/**
+ * @brief Minimum duration (seconds) a bot must remain in Attack state before transitioning.
+ */
+extern cvar_t *g_bot_state_minduration_attack;
+/**
+ * @brief Minimum duration (seconds) a bot must remain in Investigate state before transitioning.
+ */
+extern cvar_t *g_bot_state_minduration_investigate;
+/**
+ * @brief Distance threshold (units) required for bot to switch targets. New target must be this much closer.
+ */
+extern cvar_t *g_bot_target_switch_threshold;
+/**
+ * @brief Minimum time (seconds) a bot must stick with current target before considering switching.
+ */
+extern cvar_t *g_bot_target_lock_time;
+
 extern cvar_t *g_rankedserver;
 extern cvar_t *g_spectatefollow_firstperson;
 

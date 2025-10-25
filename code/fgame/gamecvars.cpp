@@ -309,6 +309,16 @@ cvar_t *g_bot_retreat_distance;
 cvar_t *g_bot_burst_range_long;
 cvar_t *g_bot_burst_range_medium;
 cvar_t *g_bot_ammo_low_threshold;
+cvar_t *g_bot_squad_range;
+cvar_t *g_bot_squad_flank_distance;
+cvar_t *g_bot_squad_share_info;
+cvar_t *g_bot_squad_coordination_delay;
+cvar_t *g_bot_squad_max_simultaneous_push;
+
+cvar_t *g_bot_state_minduration_attack;
+cvar_t *g_bot_state_minduration_investigate;
+cvar_t *g_bot_target_switch_threshold;
+cvar_t *g_bot_target_lock_time;
 
 cvar_t *g_rankedserver;
 cvar_t *g_spectatefollow_firstperson;
@@ -717,6 +727,16 @@ void CVAR_Init(void)
     g_bot_burst_range_long                     = gi.Cvar_Get("g_bot_burst_range_long", "1024", 0);
     g_bot_burst_range_medium                   = gi.Cvar_Get("g_bot_burst_range_medium", "512", 0);
     g_bot_ammo_low_threshold                   = gi.Cvar_Get("g_bot_ammo_low_threshold", "0.3", 0);
+    g_bot_squad_range                          = gi.Cvar_Get("g_bot_squad_range", "768", 0);
+    g_bot_squad_flank_distance                 = gi.Cvar_Get("g_bot_squad_flank_distance", "512", 0);
+    g_bot_squad_share_info                     = gi.Cvar_Get("g_bot_squad_share_info", "1", 0);
+    g_bot_squad_coordination_delay             = gi.Cvar_Get("g_bot_squad_coordination_delay", "2.0", 0);
+    g_bot_squad_max_simultaneous_push          = gi.Cvar_Get("g_bot_squad_max_simultaneous_push", "2", 0);
+
+    g_bot_state_minduration_attack             = gi.Cvar_Get("g_bot_state_minduration_attack", "1.5", 0);
+    g_bot_state_minduration_investigate        = gi.Cvar_Get("g_bot_state_minduration_investigate", "1.5", 0);
+    g_bot_target_switch_threshold              = gi.Cvar_Get("g_bot_target_switch_threshold", "256", 0);
+    g_bot_target_lock_time                     = gi.Cvar_Get("g_bot_target_lock_time", "1.0", 0);
 
     g_rankedserver               = gi.Cvar_Get("g_rankedserver", "0", 0);
     g_spectatefollow_firstperson = gi.Cvar_Get("g_spectatefollow_firstperson", "0", 0);

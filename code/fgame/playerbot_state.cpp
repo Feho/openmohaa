@@ -24,6 +24,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "g_local.h"
 #include "playerbot.h"
 
+extern cvar_t *g_bot_state_minduration_attack;
+extern cvar_t *g_bot_state_minduration_investigate;
+
 void BotController::CheckStates(void)
 {
     m_StateCount = 0;
@@ -32,9 +35,14 @@ void BotController::CheckStates(void)
         botfunc_t *func = &botfuncs[i];
 
         if (func->CheckCondition) {
-            if ((this->*func->CheckCondition)()) {
-                if (!(m_StateFlags & (1 << i))) {
+            bool conditionMet = (this->*func->CheckCondition)();
+            bool stateActive = (m_StateFlags & (1 << i)) != 0;
+
+            if (conditionMet) {
+                if (!stateActive) {
+                    // State is becoming active - record entry time
                     m_StateFlags |= 1 << i;
+                    m_iStateEntryTime[i] = level.svsTime;
 
                     if (func->BeginState) {
                         (this->*func->BeginState)();
@@ -46,11 +54,22 @@ void BotController::CheckStates(void)
                     (this->*func->ThinkState)();
                 }
             } else {
-                if ((m_StateFlags & (1 << i))) {
-                    m_StateFlags &= ~(1 << i);
+                if (stateActive) {
+                    // Condition no longer met, but check if we can exit based on minimum duration
+                    if (CanExitState(i)) {
+                        // Enough time has passed, allow state exit
+                        m_StateFlags &= ~(1 << i);
+                        m_iStateEntryTime[i] = 0;
 
-                    if (func->EndState) {
-                        (this->*func->EndState)();
+                        if (func->EndState) {
+                            (this->*func->EndState)();
+                        }
+                    } else {
+                        // Minimum duration not met, keep state active
+                        if (func->ThinkState) {
+                            m_StateCount++;
+                            (this->*func->ThinkState)();
+                        }
                     }
                 }
             }
@@ -67,6 +86,38 @@ void BotController::CheckStates(void)
         gi.DPrintf("*** WARNING *** %s was stuck with no states !!!", controlledEnt->client->pers.netname);
         State_Reset();
     }
+}
+
+bool BotController::CanExitState(int stateIndex)
+{
+    // Check if this state has a minimum duration requirement
+    float minDuration = 0.0f;
+
+    switch (stateIndex) {
+        case 0: // Attack state
+            minDuration = g_bot_state_minduration_attack->value;
+            break;
+        case 1: // Investigate state
+            minDuration = g_bot_state_minduration_investigate->value;
+            break;
+        default:
+            // Other states (Curious, Grenade, Idle, Weapon) have no minimum duration
+            return true;
+    }
+
+    // If no minimum duration, always allow exit
+    if (minDuration <= 0.0f) {
+        return true;
+    }
+
+    // Check if state was never entered (should not happen, but be safe)
+    if (m_iStateEntryTime[stateIndex] == 0) {
+        return true;
+    }
+
+    // Check if enough time has passed
+    float timeInState = (level.svsTime - m_iStateEntryTime[stateIndex]);
+    return timeInState >= minDuration;
 }
 
 /*

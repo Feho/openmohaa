@@ -65,6 +65,10 @@ BotController::BotController()
 
     m_iNextTauntTime = 0;
 
+    // Initialize state entry times and target lock time
+    memset(m_iStateEntryTime, 0, sizeof(m_iStateEntryTime));
+    m_iTargetLockTime = 0;
+
     // Initialize enemy memory
     m_enemyMemory.enemy = NULL;
     m_enemyMemory.lastKnownPosition = vec_zero;
@@ -98,6 +102,16 @@ BotController::BotController()
     m_fBurstDelay = 0.5f;
     m_bRequireLowSpread = false;
     m_bAmmoLow = false;
+
+    // Initialize squad coordination system
+    m_squad.sharedTarget = NULL;
+    m_squad.rallyPoint = vec_zero;
+    m_squad.lastUpdate = 0;
+    m_squadRole = ROLE_NONE;
+    m_iLastSquadUpdateTime = 0;
+    m_iRoleAssignmentTime = 0;
+    m_vFlankPosition = vec_zero;
+    m_bFlankPositionValid = false;
 
     m_StateFlags = 0;
 }
