@@ -42,6 +42,11 @@ cmake --build .
 cmake --install .
 ```
 
+To build the dedicated server only, use the `-DBUILD_CLIENT=OFF` flag:
+```sh
+cmake -DBUILD_CLIENT=OFF ../
+```
+
 Usually binaries get installed inside the `/usr/local/lib/openmohaa` directory.
 
 Other compilers can be specified by appending `-DCMAKE_C_COMPILER=/path/to/compiler -DCMAKE_CXX_COMPILER=path/to/compiler` to the CMake command-line.
@@ -77,7 +82,7 @@ afterwards you can can append `-DCURL_ROOT=path\to\curl\install` to specify the 
 
 ## Tweaking the build
 
-- `-DBUILD_NO_CLIENT=1` Don't build client binaries. This will only build the dedicated server binaries.
+- `-DBUILD_CLIENT=OFF` Don't build client binaries. This will only build the dedicated server binaries.
 - `-DCMAKE_LIB_SUFFIX=suffix` Default suffix to use for the default `lib` directory. For example `-DCMAKE_LIB_SUFFIX=64`
 - `-DNO_MODERN_DMA=1` Use the basic DMA sound system from quake3. This lacks many features such as soundtracks and movie audio from the modern OpenAL-based DMA sound system. This option is not recommended, unless openal is not available.
 - `-DTARGET_LOCAL_SYSTEM=1` for compiling and installing on the local system. This will remove the architecture suffix at the end of each binary. This option can be useful for packaging builds.
