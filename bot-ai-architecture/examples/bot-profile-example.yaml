@@ -1,0 +1,217 @@
+# Bot Profile Example: Complete Configuration
+# This shows all available parameters for customizing bot behavior
+
+profile:
+  # === METADATA ===
+  metadata:
+    name: "Elite Tactical Operator"
+    description: "Highly skilled, uses cover effectively, coordinated tactics"
+    difficulty: hard
+    author: "YourName"
+    version: "1.0"
+
+  # === PERSONALITY ===
+  # These traits influence high-level decision making (Utility AI)
+  personality:
+    aggression: 0.6       # 0.0 (passive, defensive) - 1.0 (aggressive, offensive)
+    caution: 0.7          # 0.0 (reckless) - 1.0 (careful, risk-averse)
+    teamwork: 0.8         # 0.0 (lone wolf) - 1.0 (squad-focused)
+    creativity: 0.6       # 0.0 (predictable) - 1.0 (creative, unconventional)
+
+  # === COMBAT PARAMETERS ===
+  combat:
+    # Range preferences (units)
+    preferred_range: 512.0       # Ideal combat distance
+    min_range_factor: 0.5        # Multiplier for weapon min range
+    max_range_factor: 1.2        # Multiplier for weapon max range
+
+    # Firing behavior
+    fire_discipline: 0.7         # 0.0 (spray and pray) - 1.0 (controlled bursts)
+    burst_length: [0.3, 0.8]     # [min, max] seconds of continuous fire
+    burst_delay: [0.2, 0.5]      # [min, max] seconds between bursts
+    trigger_discipline: 0.8      # Only fire when spread < this value (semi-auto)
+
+    # Ammo management
+    ammo_conservation: 0.6       # 0.0 (spray) - 1.0 (conservative)
+    reload_threshold: 0.3        # Reload when ammo < 30% (if safe)
+    reload_under_fire: false     # Will bot reload while taking damage?
+
+    # Weapon preferences
+    preferred_weapons:           # Ranked by preference
+      - rifle
+      - smg
+      - pistol
+    avoid_weapons:               # Won't use these unless desperate
+      - melee
+
+  # === MOVEMENT PARAMETERS ===
+  movement:
+    speed_preference: 1.0        # Multiplier on base movement speed
+    crouch_frequency: 0.4        # How often to crouch (0.0 - 1.0)
+    jump_frequency: 0.3          # How often to jump obstacles (0.0 - 1.0)
+    strafe_usage: 0.8            # How much to strafe in combat (0.0 - 1.0)
+
+    # Path behavior
+    path_deviation: 0.2          # How much to deviate from optimal path (variety)
+    shortcut_tendency: 0.5       # Likelihood to take risky shortcuts
+    avoid_danger_zones: 0.8      # How much to avoid known danger areas
+
+  # === AIM PARAMETERS ===
+  aim:
+    # Reaction time
+    reaction_time: [0.15, 0.35]  # [min, max] seconds to acquire target
+    target_switch_delay: 0.2     # Delay when switching between targets
+
+    # Accuracy
+    tracking_smoothness: 0.7     # 0.0 (instant snap) - 1.0 (smooth tracking)
+    spread_multiplier: 0.8       # Multiplier on weapon spread (lower = more accurate)
+    headshot_bias: 0.6           # 0.0 (center mass) - 1.0 (always headshot)
+
+    # Leading/prediction
+    lead_target: true            # Predict moving target position?
+    lead_accuracy: 0.7           # How accurate is prediction (0.0 - 1.0)
+
+  # === TACTICAL PARAMETERS ===
+  tactics:
+    # Cover usage
+    cover_usage: 0.8             # How much bot values cover (0.0 - 1.0)
+    cover_quality_threshold: 0.5 # Min cover quality to use (0.0 - 1.0)
+    peek_frequency: 0.6          # How often to peek from cover
+    peek_duration: [1.0, 2.5]    # [min, max] seconds of peeking
+
+    # Decision thresholds
+    retreat_threshold: 0.25      # HP % to trigger retreat
+    aggress_threshold: 0.7       # HP % to play aggressively
+    suppression_threshold: 3     # Bullets nearby to trigger suppression
+
+    # Tactical behaviors
+    flank_preference: 0.7        # How much bot likes flanking (0.0 - 1.0)
+    grenade_frequency: 0.4       # How often to throw grenades
+    use_equipment: true          # Use special equipment (smoke, etc.)
+
+  # === PERCEPTION PARAMETERS ===
+  perception:
+    # Vision
+    vision:
+      fov: 85.0                  # Field of view (degrees)
+      range: 2500.0              # Max vision distance (units)
+      peripheral_range: 0.6      # Peripheral vision effectiveness (0.0 - 1.0)
+      requires_light: false      # Can bot see in dark?
+
+    # Hearing
+    hearing:
+      range: 1200.0              # Max hearing distance (units)
+      priority_threshold: 0.4    # Ignore sounds below this priority
+      max_tracked_sounds: 8      # How many sounds to remember
+
+    # Memory
+    memory:
+      decay_rate: 0.15           # Confidence loss per second
+      min_confidence: 0.2        # Forget enemy below this confidence
+      predict_movement: true     # Extrapolate enemy position?
+      max_memories: 5            # Max remembered enemies
+
+  # === SQUAD COORDINATION ===
+  squad:
+    coordination_range: 800.0    # Max distance to coordinate with allies
+    role_preference: "auto"      # auto, aggressor, flanker, support, defender
+    share_targets: true          # Tell allies about enemies?
+    follow_leader: 0.7           # How much to follow squad leader (0.0 - 1.0)
+
+    # Roles
+    roles:
+      aggressor_weight: 0.4      # Likelihood to be aggressor
+      flanker_weight: 0.5        # Likelihood to be flanker
+      support_weight: 0.3        # Likelihood to be support
+      defender_weight: 0.2       # Likelihood to be defender
+
+  # === COMMUNICATION ===
+  communication:
+    taunt_frequency: 0.3         # How often to taunt (0.0 - 1.0)
+    call_out_enemies: true       # Announce enemy positions?
+    voice_language: "auto"       # auto, american, german, etc.
+
+---
+
+# === PROFILE INHERITANCE EXAMPLE ===
+# You can create variants by inheriting from base profiles
+
+aggressive_sniper:
+  inherits: "sniper"  # Start with sniper base
+
+  # Override specific values
+  personality:
+    aggression: 0.9   # More aggressive than default sniper
+
+  combat:
+    preferred_range: 1024.0  # Longer range
+
+---
+
+# === DIFFICULTY VARIANTS ===
+# Same profile, different difficulty levels
+
+elite_easy:
+  inherits: "elite"
+
+  aim:
+    reaction_time: [0.4, 0.8]      # Slower reactions
+    spread_multiplier: 1.5         # Less accurate
+
+  combat:
+    fire_discipline: 0.4           # Worse trigger control
+
+elite_medium:
+  inherits: "elite"
+  # Use default values (balanced)
+
+elite_hard:
+  inherits: "elite"
+
+  aim:
+    reaction_time: [0.1, 0.25]     # Faster reactions
+    spread_multiplier: 0.6         # More accurate
+    headshot_bias: 0.8             # Loves headshots
+
+  tactics:
+    flank_preference: 0.9          # Expert flanking
+
+elite_expert:
+  inherits: "elite_hard"
+
+  aim:
+    reaction_time: [0.05, 0.15]    # Near-instant
+    spread_multiplier: 0.4         # Deadly accurate
+    headshot_bias: 0.95            # Almost always headshots
+
+  combat:
+    fire_discipline: 0.95          # Perfect trigger control
+
+  tactics:
+    cover_usage: 0.95              # Excellent tactics
+
+---
+
+# === NOTES ===
+
+# Value Ranges:
+# - 0.0 - 1.0: Normalized values (percentages, tendencies)
+# - Units: Game units (usually inches in Quake engines)
+# - Seconds: Time values
+# - Degrees: Angles
+
+# Special Values:
+# - "auto": Let system decide
+# - [min, max]: Random range
+# - true/false: Boolean flags
+
+# Inheritance:
+# - Use "inherits" to base on another profile
+# - Only override what you want to change
+# - Can inherit multiple levels deep
+
+# Profile Selection:
+# - Server can specify profile via config
+# - Bots can randomize from profile pool
+# - Difficulty can map to specific profiles
+# - Individual bots can be assigned profiles

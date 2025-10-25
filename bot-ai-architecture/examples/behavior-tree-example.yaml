@@ -1,0 +1,264 @@
+# Behavior Tree Example: Combat Behavior
+# This shows the ideal YAML structure for defining bot behaviors
+
+# Main combat tree - handles all combat situations
+combat_tree:
+  name: "Combat Behavior"
+  description: "Complete combat behavior with emergency handling, engagement, and fallback"
+
+  root:
+    type: selector
+    name: "Combat Root"
+    children:
+      # Priority 1: Emergency situations (override everything)
+      - type: sequence
+        name: "Emergency Retreat"
+        children:
+          - type: condition
+            check: "health < retreat_threshold"
+            params:
+              retreat_threshold: 0.25  # From profile
+
+          - type: action
+            action: "FindNearestCover"
+            params:
+              search_radius: 500.0
+              quality_threshold: 0.5
+
+          - type: action
+            action: "RetreatToCover"
+            params:
+              run_speed: 1.5  # Sprint
+
+          - type: action
+            action: "Heal"
+            params:
+              wait_duration: 3.0
+
+      # Priority 2: Active combat
+      - type: sequence
+        name: "Engage Enemy"
+        children:
+          - type: condition
+            check: "HasVisibleEnemy()"
+
+          # Weapon check
+          - type: selector
+            name: "Ensure Armed"
+            children:
+              - type: condition
+                check: "HasWeaponWithAmmo()"
+
+              - type: action
+                action: "SwitchToWeaponWithAmmo"
+
+          # Parallel combat actions
+          - type: parallel
+            policy: "RequireAll"
+            name: "Combat Actions"
+            children:
+              # Movement subtree
+              - type: sequence
+                name: "Combat Movement"
+                children:
+                  # Include reusable subtree
+                  - include: "subtrees/manage_distance.btree"
+
+              # Aiming subtree
+              - type: sequence
+                name: "Aim and Fire"
+                children:
+                  - type: action
+                    action: "AimAtEnemy"
+                    params:
+                      aim_offset_scale: "profile.spread_multiplier"
+                      smooth_factor: "profile.tracking_smoothness"
+
+                  - type: action
+                    action: "Fire"
+                    params:
+                      fire_mode: "profile.fire_mode"
+                      burst_duration: "profile.burst_duration"
+
+      # Priority 3: Lost sight of enemy, investigate
+      - type: sequence
+        name: "Investigate Last Known Position"
+        children:
+          - type: condition
+            check: "HasEnemyMemory()"
+
+          - type: condition
+            check: "confidence > 0.5"
+            params:
+              confidence: "enemyMemory.confidenceLevel"
+
+          - include: "investigation.btree"
+
+      # Priority 4: Heard something, be curious
+      - type: sequence
+        name: "Investigate Sound"
+        children:
+          - type: condition
+            check: "HeardRecentSound()"
+
+          - type: condition
+            check: "soundPriority > 0.3"
+
+          - type: action
+            action: "MoveToSoundLocation"
+
+          - type: action
+            action: "LookAround"
+            params:
+              duration: 3.0
+
+      # Priority 5: Nothing happening, patrol
+      - include: "idle.btree"
+
+---
+
+# Subtree: Manage Distance
+# Reusable distance management logic
+# File: subtrees/manage_distance.btree
+
+manage_distance_subtree:
+  name: "Manage Combat Distance"
+
+  root:
+    type: selector
+    name: "Distance Manager"
+    children:
+      # Too close? Back away
+      - type: sequence
+        children:
+          - type: condition
+            check: "EnemyDistance() < weapon.minRange"
+
+          - type: action
+            action: "BackAwayFromEnemy"
+            params:
+              target_distance: "weapon.minRange * 1.2"
+
+      # Too far? Move closer
+      - type: sequence
+        children:
+          - type: condition
+            check: "EnemyDistance() > weapon.maxRange"
+
+          - type: action
+            action: "MoveTowardEnemy"
+            params:
+              target_distance: "weapon.preferredRange"
+
+      # Good range? Maintain position
+      - type: action
+        action: "MaintainDistance"
+        params:
+          strafe_enabled: true
+
+---
+
+# Subtree: Investigation
+# File: investigation.btree
+
+investigation_tree:
+  name: "Investigation Behavior"
+
+  root:
+    type: sequence
+    name: "Search for Enemy"
+    children:
+      # Move to last known position
+      - type: action
+        action: "MoveToPosition"
+        params:
+          position: "enemyMemory.predictedPosition"
+          acceptable_radius: 64.0
+
+      # Search pattern (spiral out from center)
+      - type: action
+        action: "SearchArea"
+        params:
+          pattern: "spiral"
+          radius: 256.0
+          duration: 10.0
+
+      # Look around
+      - type: action
+        action: "LookAround"
+        params:
+          duration: 5.0
+          scan_speed: 45.0  # degrees per second
+
+---
+
+# Subtree: Idle/Patrol
+# File: idle.btree
+
+idle_tree:
+  name: "Idle Patrol Behavior"
+
+  root:
+    type: selector
+    name: "Idle Activities"
+    children:
+      # Use attractive nodes (objectives, items)
+      - type: sequence
+        children:
+          - type: condition
+            check: "HasAttractiveNode()"
+
+          - type: action
+            action: "MoveToAttractiveNode"
+
+      # Patrol waypoints
+      - type: sequence
+        children:
+          - type: condition
+            check: "HasPatrolRoute()"
+
+          - type: action
+            action: "PatrolWaypoints"
+            params:
+              wait_at_waypoint: 2.0
+
+      # Random wander
+      - type: action
+        action: "RandomWander"
+        params:
+          wander_radius: 512.0
+          wait_duration: [3.0, 8.0]  # Random range
+
+---
+
+# Notes on YAML Behavior Trees:
+
+# Condition Checks:
+# - Can reference bot state: "health < 0.25"
+# - Can reference profile: "profile.aggression > 0.7"
+# - Can reference perception: "visibleEnemies.Count() > 2"
+# - Can call functions: "HasVisibleEnemy()", "EnemyDistance()"
+
+# Action Parameters:
+# - Literal values: 500.0, "sprint", true
+# - Profile references: "profile.burst_duration"
+# - State references: "enemyMemory.predictedPosition"
+# - Expressions: "weapon.minRange * 1.2"
+
+# Node Types:
+# - selector: OR logic (first success wins)
+# - sequence: AND logic (all must succeed)
+# - parallel: Multiple concurrent (policy decides success)
+# - condition: Boolean check
+# - action: Actual behavior
+# - include: Reference external subtree file
+
+# Parallel Policies:
+# - RequireAll: All children must succeed
+# - RequireOne: At least one must succeed
+# - RequireN: Specific number must succeed
+
+# Node Status:
+# - SUCCESS: Node completed successfully
+# - FAILURE: Node failed
+# - RUNNING: Node still executing (multi-frame action)
