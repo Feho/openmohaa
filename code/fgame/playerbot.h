@@ -325,6 +325,32 @@ private:
     void        State_Attack(void);
     bool        IsValidEnemy(Sentient *sent) const;
 
+    // Added in OPM
+    //  Extracted functions from State_Attack for improved readability
+    bool      ValidateAttackPreconditions(void);
+    Sentient *SelectBestTarget(float maxDistance, float& outDistanceSq);
+    void      AimAtTarget(bool canSee);
+    void      HandleMeleeAttack(bool canSee, float distanceSq, float secondaryRangeSq, Weapon *weapon, bool& outMelee);
+    void      HandleBurstControl(bool firing, int fireDelay, int maxContinuousFireTime, int maxBurstTime);
+    void      HandleWeaponFiring(
+                 bool    canSee,
+                 float   distanceSq,
+                 float   primaryRangeSq,
+                 float   secondaryRangeSq,
+                 Weapon *weapon,
+                 bool&   outNoMove,
+                 bool&   outFiring,
+                 bool&   outMelee
+             );
+    float ExecuteFiring(
+             bool  canSee,
+             float distanceSq,
+             bool& outNoMove,
+             bool& outFiring,
+             bool& outMelee
+         );
+    void UpdateAttackMovement(bool noMove, bool melee, bool canSee, float minDistanceSq);
+
     static void InitState_Investigate(botfunc_t *func);
     bool        CheckCondition_Investigate(void);
     void        State_EndInvestigate(void);

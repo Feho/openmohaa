@@ -102,6 +102,8 @@ bool BotController::IsValidEnemy(Sentient *sent) const
     return true;
 }
 
+// Changed in OPM
+//  Refactored to use SelectBestTarget() helper function
 bool BotController::CheckCondition_Attack(void)
 {
     Container<Sentient *> sents       = SentientList;
@@ -110,44 +112,11 @@ bool BotController::CheckCondition_Attack(void)
     bot_origin = controlledEnt->origin;
     sents.Sort(sentients_compare);
 
+    maxDistance = Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828);
+
     // Scan for enemies (even if we already have one, we might want to switch)
-    Sentient* bestEnemy = NULL;
-    float bestDistanceSq = 999999.0f;
-
-    for (int i = 1; i <= sents.NumObjects(); i++) {
-        Sentient *sent = sents.ObjectAt(i);
-
-        if (!IsValidEnemy(sent)) {
-            continue;
-        }
-
-        maxDistance = Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828);
-
-        // Increased FOV from 80 to 100 degrees for better peripheral vision
-        if (controlledEnt->CanSee(sent, 100, maxDistance, false)) {
-            float distSq = (sent->origin - controlledEnt->origin).lengthSquared();
-
-            // Target stickiness: prefer current target unless new target is significantly closer
-            if (!bestEnemy) {
-                // No candidate yet, select this enemy
-                bestEnemy = sent;
-                bestDistanceSq = distSq;
-            } else {
-                // Already have a candidate, only switch if new enemy is significantly closer
-                float switchThreshold = g_bot_target_switch_threshold->value;
-                float switchThresholdSq = switchThreshold * switchThreshold;
-
-                // Calculate distance advantage (positive if new enemy is closer)
-                float distAdvantage = bestDistanceSq - distSq;
-
-                // Switch if new enemy is much closer, or if we don't have a locked current target
-                if (distAdvantage > switchThresholdSq || !m_pEnemy) {
-                    bestEnemy = sent;
-                    bestDistanceSq = distSq;
-                }
-            }
-        }
-    }
+    float     bestDistanceSq = 999999.0f;
+    Sentient *bestEnemy      = SelectBestTarget(maxDistance, bestDistanceSq);
 
     // If we found a visible enemy, target it
     if (bestEnemy) {
@@ -262,198 +231,67 @@ void BotController::State_EndAttack(void)
     controlledEnt->ZoomOff();
 }
 
-void BotController::State_Attack(void)
+// Added in OPM
+//  Validate that attack preconditions are still met
+bool BotController::ValidateAttackPreconditions(void)
 {
-    bool    bMelee              = false;
-    bool    bCanSee             = false;
-    bool    bCanAttack          = false;
-    float   fMinDistance        = 128;
-    float   fMinDistanceSquared = fMinDistance * fMinDistance;
-    float   fEnemyDistanceSquared;
-    Weapon *pWeap   = controlledEnt->GetActiveWeapon(WEAPON_MAIN);
-    bool    bNoMove = false;
-    bool    bFiring = false;
-
     if (!m_pEnemy || !IsValidEnemy(m_pEnemy)) {
         // Ignore dead enemies
-        m_iAttackTime = 0;
-        return;
+        return false;
     }
-    float fDistanceSquared = (m_pEnemy->origin - controlledEnt->origin).lengthSquared();
 
-    m_vOldEnemyPos = m_vLastEnemyPos;
+    return true;
+}
 
-    bCanSee =
-        controlledEnt->CanSee(m_pEnemy, 20, Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828), false);
+// Added in OPM
+//  Scan visible enemies and select the best target based on distance and target stickiness
+Sentient *BotController::SelectBestTarget(float maxDistance, float& outDistanceSq)
+{
+    Sentient *bestEnemy     = NULL;
+    float     bestDistanceSq = 999999.0f;
 
-    if (bCanSee) {
-        if (!pWeap) {
-            return;
+    for (int i = 1; i <= SentientList.NumObjects(); i++) {
+        Sentient *sent = SentientList.ObjectAt(i);
+
+        if (!IsValidEnemy(sent)) {
+            continue;
         }
 
-        bCanAttack = true;
-        if (m_iLastUnseenTime) {
-            const float reactionTime = Q_min(1000 * Q_min(1, fDistanceSquared / Square(2048)), 1000);
-            const unsigned int minDelay = g_bot_attack_react_min_delay->value * 1000;
-            const unsigned int randomDelay = g_bot_attack_react_random_delay->value * 1000;
-            if (level.inttime <= m_iLastUnseenTime + minDelay + G_Random(randomDelay)) {
-                bCanAttack = false;
+        // Increased FOV from 80 to 100 degrees for better peripheral vision
+        if (controlledEnt->CanSee(sent, 100, maxDistance, false)) {
+            float distSq = (sent->origin - controlledEnt->origin).lengthSquared();
+
+            // Target stickiness: prefer current target unless new target is significantly closer
+            if (!bestEnemy) {
+                // No candidate yet, select this enemy
+                bestEnemy      = sent;
+                bestDistanceSq = distSq;
             } else {
-                m_iLastUnseenTime = 0;
-            }
-        }
+                // Already have a candidate, only switch if new enemy is significantly closer
+                float switchThreshold   = g_bot_target_switch_threshold->value;
+                float switchThresholdSq = switchThreshold * switchThreshold;
 
-        if (bCanAttack) {
-            const int fireDelay                    = pWeap->FireDelay(FIRE_PRIMARY) * 1000;
-            float     fPrimaryBulletRange          = pWeap->GetBulletRange(FIRE_PRIMARY) / 1.25f;
-            float     fPrimaryBulletRangeSquared   = fPrimaryBulletRange * fPrimaryBulletRange;
-            float     fSecondaryBulletRange        = pWeap->GetBulletRange(FIRE_SECONDARY);
-            float     fSecondaryBulletRangeSquared = fSecondaryBulletRange * fSecondaryBulletRange;
-            float     fSpreadFactor                = pWeap->GetSpreadFactor(FIRE_PRIMARY);
+                // Calculate distance advantage (positive if new enemy is closer)
+                float distAdvantage = bestDistanceSq - distSq;
 
-            // Use tactical combat burst timing (calculated based on range and combat profile)
-            const int maxcontinuousFireTime = fireDelay + (int)(m_fBurstDuration * 1000);
-            const int maxBurstTime = fireDelay + (int)(m_fBurstDelay * 1000);
-
-            //
-            // check the fire movement speed if the weapon has a max fire movement
-            //
-            if (pWeap->GetMaxFireMovement() < 1 && pWeap->HasAmmoInClip(FIRE_PRIMARY)) {
-                float length;
-
-                length = controlledEnt->velocity.length();
-                if ((length / sv_runspeed->value) > (pWeap->GetMaxFireMovementMult())) {
-                    bNoMove = true;
-                    movement.ClearMove();
+                // Switch if new enemy is much closer, or if we don't have a locked current target
+                if (distAdvantage > switchThresholdSq || !m_pEnemy) {
+                    bestEnemy      = sent;
+                    bestDistanceSq = distSq;
                 }
             }
-
-            fMinDistance = fPrimaryBulletRange;
-
-            if (fMinDistance > 256) {
-                fMinDistance = 256;
-            }
-
-            fMinDistanceSquared = fMinDistance * fMinDistance;
-
-            if (controlledEnt->client->ps.stats[STAT_AMMO] <= 0
-                && controlledEnt->client->ps.stats[STAT_CLIPAMMO] <= 0) {
-                m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
-                controlledEnt->ZoomOff();
-            } else if (fDistanceSquared > fPrimaryBulletRangeSquared) {
-                m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
-                controlledEnt->ZoomOff();
-            } else {
-                //
-                // Attacking
-                //
-
-                if (pWeap->IsSemiAuto()) {
-                    if (controlledEnt->client->ps.iViewModelAnim != VM_ANIM_IDLE
-                        && (controlledEnt->client->ps.iViewModelAnim < VM_ANIM_IDLE_0
-                            || controlledEnt->client->ps.iViewModelAnim > VM_ANIM_IDLE_2)) {
-                        m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
-                        controlledEnt->ZoomOff();
-                    } else if (fSpreadFactor < 0.25) {
-                        bFiring = true;
-                        m_botCmd.buttons ^= BUTTON_ATTACKLEFT;
-                        if (pWeap->GetZoom()) {
-                            if (!controlledEnt->IsZoomed()) {
-                                m_botCmd.buttons |= BUTTON_ATTACKRIGHT;
-                            } else {
-                                m_botCmd.buttons &= ~BUTTON_ATTACKRIGHT;
-                            }
-                        }
-                    } else {
-                        bNoMove = true;
-                        movement.ClearMove();
-                    }
-                } else {
-                    // Full-auto: check if low spread required (accurate fire mode)
-                    if (m_bRequireLowSpread && fSpreadFactor >= 0.25) {
-                        // Need low spread but don't have it - stop moving
-                        bNoMove = true;
-                        movement.ClearMove();
-                        m_botCmd.buttons &= ~BUTTON_ATTACKLEFT;
-                    } else {
-                        bFiring = true;
-                        m_botCmd.buttons |= BUTTON_ATTACKLEFT;
-                    }
-                }
-            }
-
-            //
-            // Burst
-            //
-
-            if (m_iLastBurstTime) {
-                if (level.inttime > m_iLastBurstTime + maxBurstTime) {
-                    m_iLastBurstTime      = 0;
-                    m_iContinuousFireTime = 0;
-                } else {
-                    m_botCmd.buttons &= ~BUTTON_ATTACKLEFT;
-                }
-            } else {
-                if (bFiring) {
-                    m_iContinuousFireTime += level.intframetime;
-                } else {
-                    m_iContinuousFireTime = 0;
-                }
-
-                if (!m_iLastBurstTime && m_iContinuousFireTime > maxcontinuousFireTime) {
-                    m_iLastBurstTime      = level.inttime;
-                    m_iContinuousFireTime = 0;
-                }
-            }
-
-            m_iLastFireTime = level.inttime;
-
-            if (pWeap->GetFireType(FIRE_SECONDARY) == FT_MELEE) {
-                if (controlledEnt->client->ps.stats[STAT_AMMO] <= 0
-                    && controlledEnt->client->ps.stats[STAT_CLIPAMMO] <= 0) {
-                    bMelee = true;
-                } else if (fDistanceSquared <= fSecondaryBulletRangeSquared) {
-                    bMelee = true;
-                }
-            }
-
-            if (bMelee) {
-                m_botCmd.buttons &= ~BUTTON_ATTACKLEFT;
-
-                if (fDistanceSquared <= fSecondaryBulletRangeSquared) {
-                    m_botCmd.buttons ^= BUTTON_ATTACKRIGHT;
-                } else {
-                    m_botCmd.buttons &= ~BUTTON_ATTACKRIGHT;
-                }
-            }
-
-            m_iAttackTime        = level.inttime + 1000;
-            m_iAttackStopAimTime = level.inttime + 3000;
-            m_iLastSeenTime      = level.inttime;
-            m_vLastEnemyPos      = m_pEnemy->origin;
-
-            // Update enemy memory continuously while visible
-            m_enemyMemory.enemy = m_pEnemy;
-            m_enemyMemory.lastKnownPosition = m_pEnemy->origin;
-            m_enemyMemory.lastKnownVelocity = m_pEnemy->velocity;
-            m_enemyMemory.lastSeenTime = level.svsTime;
-            m_enemyMemory.confidenceLevel = 1.0f;
-        }
-    } else {
-        m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
-        fMinDistanceSquared = 0;
-
-        if (level.inttime > m_iLastSeenTime + 2000) {
-            if (!m_iLastUnseenTime && g_bot_debug->integer >= 2) {
-                gi.Printf("[BOT] %s: Lost sight of enemy (%.1fs ago)\n",
-                    controlledEnt->client->pers.netname,
-                    (level.inttime - m_iLastSeenTime) / 1000.0f);
-            }
-            m_iLastUnseenTime = level.inttime;
         }
     }
 
-    if (bCanSee || level.inttime < m_iAttackStopAimTime) {
+    outDistanceSq = bestDistanceSq;
+    return bestEnemy;
+}
+
+// Added in OPM
+//  Calculate aim offset and aim at target or aim node
+void BotController::AimAtTarget(bool canSee)
+{
+    if (canSee || level.inttime < m_iAttackStopAimTime) {
         Vector        vRandomOffset;
         Vector        vTarget;
         orientation_t eyes_or;
@@ -491,6 +329,297 @@ void BotController::State_Attack(void)
     } else {
         AimAtAimNode();
     }
+}
+
+// Added in OPM
+//  Handle melee attack logic
+// Changed in OPM
+//  Now accepts weapon pointer to avoid redundant GetActiveWeapon() call
+void BotController::HandleMeleeAttack(bool canSee, float distanceSq, float secondaryRangeSq, Weapon *weapon, bool& outMelee)
+{
+    if (!weapon) {
+        return;
+    }
+
+    if (weapon->GetFireType(FIRE_SECONDARY) == FT_MELEE) {
+        if (controlledEnt->client->ps.stats[STAT_AMMO] <= 0 && controlledEnt->client->ps.stats[STAT_CLIPAMMO] <= 0) {
+            outMelee = true;
+        } else if (distanceSq <= secondaryRangeSq) {
+            outMelee = true;
+        }
+    }
+
+    if (outMelee) {
+        m_botCmd.buttons &= ~BUTTON_ATTACKLEFT;
+
+        if (distanceSq <= secondaryRangeSq) {
+            m_botCmd.buttons ^= BUTTON_ATTACKRIGHT;
+        } else {
+            m_botCmd.buttons &= ~BUTTON_ATTACKRIGHT;
+        }
+    }
+}
+
+// Added in OPM
+//  Handle burst fire control timing
+void BotController::HandleBurstControl(bool firing, int fireDelay, int maxContinuousFireTime, int maxBurstTime)
+{
+    if (m_iLastBurstTime) {
+        if (level.inttime > m_iLastBurstTime + maxBurstTime) {
+            m_iLastBurstTime      = 0;
+            m_iContinuousFireTime = 0;
+        } else {
+            m_botCmd.buttons &= ~BUTTON_ATTACKLEFT;
+        }
+    } else {
+        if (firing) {
+            m_iContinuousFireTime += level.intframetime;
+        } else {
+            m_iContinuousFireTime = 0;
+        }
+
+        if (!m_iLastBurstTime && m_iContinuousFireTime > maxContinuousFireTime) {
+            m_iLastBurstTime      = level.inttime;
+            m_iContinuousFireTime = 0;
+        }
+    }
+}
+
+// Added in OPM
+//  Handle weapon firing logic including semi-auto, full-auto, and zoom
+// Changed in OPM
+//  Accepts weapon pointer to avoid redundant GetActiveWeapon() call
+void BotController::HandleWeaponFiring(
+    bool    canSee,
+    float   distanceSq,
+    float   primaryRangeSq,
+    float   secondaryRangeSq,
+    Weapon *weapon,
+    bool&   outNoMove,
+    bool&   outFiring,
+    bool&   outMelee
+)
+{
+    if (!weapon) {
+        return;
+    }
+
+    float fSpreadFactor = weapon->GetSpreadFactor(FIRE_PRIMARY);
+
+    //
+    // check the fire movement speed if the weapon has a max fire movement
+    //
+    if (weapon->GetMaxFireMovement() < 1 && weapon->HasAmmoInClip(FIRE_PRIMARY)) {
+        float length;
+
+        length = controlledEnt->velocity.length();
+        if ((length / sv_runspeed->value) > (weapon->GetMaxFireMovementMult())) {
+            outNoMove = true;
+            movement.ClearMove();
+        }
+    }
+
+    if (controlledEnt->client->ps.stats[STAT_AMMO] <= 0 && controlledEnt->client->ps.stats[STAT_CLIPAMMO] <= 0) {
+        m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
+        controlledEnt->ZoomOff();
+    } else if (distanceSq > primaryRangeSq) {
+        m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
+        controlledEnt->ZoomOff();
+    } else {
+        //
+        // Attacking
+        //
+
+        if (weapon->IsSemiAuto()) {
+            if (controlledEnt->client->ps.iViewModelAnim != VM_ANIM_IDLE
+                && (controlledEnt->client->ps.iViewModelAnim < VM_ANIM_IDLE_0
+                    || controlledEnt->client->ps.iViewModelAnim > VM_ANIM_IDLE_2)) {
+                m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
+                controlledEnt->ZoomOff();
+            } else if (fSpreadFactor < 0.25) {
+                outFiring = true;
+                m_botCmd.buttons ^= BUTTON_ATTACKLEFT;
+                if (weapon->GetZoom()) {
+                    if (!controlledEnt->IsZoomed()) {
+                        m_botCmd.buttons |= BUTTON_ATTACKRIGHT;
+                    } else {
+                        m_botCmd.buttons &= ~BUTTON_ATTACKRIGHT;
+                    }
+                }
+            } else {
+                outNoMove = true;
+                movement.ClearMove();
+            }
+        } else {
+            // Full-auto: check if low spread required (accurate fire mode)
+            if (m_bRequireLowSpread && fSpreadFactor >= 0.25) {
+                // Need low spread but don't have it - stop moving
+                outNoMove = true;
+                movement.ClearMove();
+                m_botCmd.buttons &= ~BUTTON_ATTACKLEFT;
+            } else {
+                outFiring = true;
+                m_botCmd.buttons |= BUTTON_ATTACKLEFT;
+            }
+        }
+    }
+}
+
+// Added in OPM
+//  Execute all firing logic including weapon firing, burst control, and melee
+// Changed in OPM
+//  Now returns fMinDistance based on weapon range instead of accepting it as parameter
+float BotController::ExecuteFiring(
+    bool  canSee,
+    float distanceSq,
+    bool& outNoMove,
+    bool& outFiring,
+    bool& outMelee
+)
+{
+    static constexpr float DEFAULT_MIN_ATTACK_DISTANCE = 128.0f;
+    static constexpr float MAX_MIN_ATTACK_DISTANCE     = 256.0f;
+    static constexpr float ATTACK_RANGE_DIVISOR        = 1.25f;  // Safety factor for primary weapon range
+
+    if (!canSee) {
+        m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
+
+        if (level.inttime > m_iLastSeenTime + 2000) {
+            if (!m_iLastUnseenTime && g_bot_debug->integer >= 2) {
+                gi.Printf(
+                    "[BOT] %s: Lost sight of enemy (%.1fs ago)\n",
+                    controlledEnt->client->pers.netname,
+                    (level.inttime - m_iLastSeenTime) / 1000.0f
+                );
+            }
+            m_iLastUnseenTime = level.inttime;
+        }
+        return DEFAULT_MIN_ATTACK_DISTANCE;
+    }
+
+    Weapon *weapon = controlledEnt->GetActiveWeapon(WEAPON_MAIN);
+    if (!weapon) {
+        return DEFAULT_MIN_ATTACK_DISTANCE;
+    }
+
+    bool bCanAttack = true;
+    if (m_iLastUnseenTime) {
+        const float        reactionTime  = Q_min(1000 * Q_min(1, distanceSq / Square(2048)), 1000);
+        const unsigned int minDelay      = g_bot_attack_react_min_delay->value * 1000;
+        const unsigned int randomDelay   = g_bot_attack_react_random_delay->value * 1000;
+        if (level.inttime <= m_iLastUnseenTime + minDelay + G_Random(randomDelay)) {
+            bCanAttack = false;
+        } else {
+            m_iLastUnseenTime = 0;
+        }
+    }
+
+    if (!bCanAttack) {
+        return DEFAULT_MIN_ATTACK_DISTANCE;
+    }
+
+    const int fireDelay                    = weapon->FireDelay(FIRE_PRIMARY) * 1000;
+    float     fPrimaryBulletRange          = weapon->GetBulletRange(FIRE_PRIMARY) / ATTACK_RANGE_DIVISOR;
+    float     fPrimaryBulletRangeSquared   = fPrimaryBulletRange * fPrimaryBulletRange;
+    float     fSecondaryBulletRange        = weapon->GetBulletRange(FIRE_SECONDARY);
+    float     fSecondaryBulletRangeSquared = fSecondaryBulletRange * fSecondaryBulletRange;
+
+    // Use tactical combat burst timing (calculated based on range and combat profile)
+    const int maxcontinuousFireTime = fireDelay + (int)(m_fBurstDuration * 1000);
+    const int maxBurstTime          = fireDelay + (int)(m_fBurstDelay * 1000);
+
+    HandleWeaponFiring(canSee, distanceSq, fPrimaryBulletRangeSquared, fSecondaryBulletRangeSquared, weapon, outNoMove, outFiring, outMelee);
+
+    //
+    // Burst
+    //
+    HandleBurstControl(outFiring, fireDelay, maxcontinuousFireTime, maxBurstTime);
+
+    m_iLastFireTime = level.inttime;
+
+    HandleMeleeAttack(canSee, distanceSq, fSecondaryBulletRangeSquared, weapon, outMelee);
+
+    m_iAttackTime        = level.inttime + 1000;
+    m_iAttackStopAimTime = level.inttime + 3000;
+    m_iLastSeenTime      = level.inttime;
+    m_vLastEnemyPos      = m_pEnemy->origin;
+
+    // Update enemy memory continuously while visible
+    m_enemyMemory.enemy                = m_pEnemy;
+    m_enemyMemory.lastKnownPosition    = m_pEnemy->origin;
+    m_enemyMemory.lastKnownVelocity    = m_pEnemy->velocity;
+    m_enemyMemory.lastSeenTime         = level.svsTime;
+    m_enemyMemory.confidenceLevel      = 1.0f;
+
+    // Calculate minimum attack distance based on weapon range (matching original behavior)
+    float fMinDistance = fPrimaryBulletRange;
+    if (fMinDistance > MAX_MIN_ATTACK_DISTANCE) {
+        fMinDistance = MAX_MIN_ATTACK_DISTANCE;
+    }
+
+    return fMinDistance;
+}
+
+// Added in OPM
+//  Handle movement towards/away from enemy during attack
+void BotController::UpdateAttackMovement(bool noMove, bool melee, bool canSee, float minDistanceSq)
+{
+    float fEnemyDistanceSquared = (controlledEnt->origin - m_vLastEnemyPos).lengthSquared();
+
+    if ((!movement.MoveToBestAttractivePoint(5) && !movement.IsMoving())
+        || (m_vOldEnemyPos != m_vLastEnemyPos && !movement.MoveDone()) || fEnemyDistanceSquared < minDistanceSq) {
+        if (!melee || !canSee) {
+            if (fEnemyDistanceSquared < minDistanceSq) {
+                Vector vDir = controlledEnt->origin - m_vLastEnemyPos;
+                VectorNormalizeFast(vDir);
+
+                float fMinDistance = sqrt(minDistanceSq);
+                movement.AvoidPath(m_vLastEnemyPos, fMinDistance, Vector(controlledEnt->orientation[1]) * 512);
+            } else {
+                movement.MoveTo(m_vLastEnemyPos);
+            }
+
+            if (!canSee && movement.MoveDone()) {
+                // Lost track of the enemy
+                ClearEnemy();
+                return;
+            }
+        } else {
+            movement.MoveTo(m_vLastEnemyPos);
+        }
+    }
+
+    if (movement.IsMoving()) {
+        m_iAttackTime = level.inttime + 1000;
+    }
+}
+
+// Changed in OPM
+//  Refactored to use extracted helper functions for improved readability
+void BotController::State_Attack(void)
+{
+    // Validate preconditions
+    if (!ValidateAttackPreconditions()) {
+        m_iAttackTime = 0;
+        return;
+    }
+
+    bool  bMelee   = false;
+    bool  bCanSee  = false;
+    bool  bNoMove  = false;
+    bool  bFiring  = false;
+    float fDistanceSquared = (m_pEnemy->origin - controlledEnt->origin).lengthSquared();
+    m_vOldEnemyPos         = m_vLastEnemyPos;
+
+    bCanSee =
+        controlledEnt->CanSee(m_pEnemy, 20, Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828), false);
+
+    // Execute firing logic and get calculated minimum distance based on weapon range
+    float fMinDistance        = ExecuteFiring(bCanSee, fDistanceSquared, bNoMove, bFiring, bMelee);
+    float fMinDistanceSquared = fMinDistance * fMinDistance;
+
+    // Aim at target
+    AimAtTarget(bCanSee);
 
     // Update cover behavior
     UpdateCoverBehavior();
@@ -529,31 +658,6 @@ void BotController::State_Attack(void)
         return;
     }
 
-    fEnemyDistanceSquared = (controlledEnt->origin - m_vLastEnemyPos).lengthSquared();
-
-    if ((!movement.MoveToBestAttractivePoint(5) && !movement.IsMoving())
-        || (m_vOldEnemyPos != m_vLastEnemyPos && !movement.MoveDone()) || fEnemyDistanceSquared < fMinDistanceSquared) {
-        if (!bMelee || !bCanSee) {
-            if (fEnemyDistanceSquared < fMinDistanceSquared) {
-                Vector vDir = controlledEnt->origin - m_vLastEnemyPos;
-                VectorNormalizeFast(vDir);
-
-                movement.AvoidPath(m_vLastEnemyPos, fMinDistance, Vector(controlledEnt->orientation[1]) * 512);
-            } else {
-                movement.MoveTo(m_vLastEnemyPos);
-            }
-
-            if (!bCanSee && movement.MoveDone()) {
-                // Lost track of the enemy
-                ClearEnemy();
-                return;
-            }
-        } else {
-            movement.MoveTo(m_vLastEnemyPos);
-        }
-    }
-
-    if (movement.IsMoving()) {
-        m_iAttackTime = level.inttime + 1000;
-    }
+    // Update attack movement
+    UpdateAttackMovement(bNoMove, bMelee, bCanSee, fMinDistanceSquared);
 }
