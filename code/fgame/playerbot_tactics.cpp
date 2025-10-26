@@ -162,12 +162,16 @@ BotController::CombatProfile BotController::DetermineCombatProfile(void)
     float health = controlledEnt->health;
     float maxHealth = controlledEnt->max_health;
     float healthRatio = health / maxHealth;
-    bool hasGoodCover = (m_currentCover.quality > 0.7f);
+    // Changed in OPM
+    //  Refactored to use CoverStateData struct
+    bool hasGoodCover = (coverState.current.quality > 0.7f);
 
     if (healthRatio > 0.7f && !hasGoodCover) {
         return AGGRESSIVE;
     }
-    if (healthRatio < 0.5f || m_bAmmoLow) {
+    // Changed in OPM
+    //  Refactored to use CombatState struct
+    if (healthRatio < 0.5f || combatState.ammoLow) {
         return DEFENSIVE;
     }
     return CAUTIOUS;
@@ -204,9 +208,11 @@ bool BotController::ShouldRetreat(void)
         return true;
     }
 
+    // Changed in OPM
+    //  Refactored to use CombatState struct
     // Sustained damage check (>30 damage in 2 seconds)
-    float damageWindow = (level.inttime - m_iDamageWindowStart) / 1000.0f;
-    if (m_fRecentDamage > 30.0f && damageWindow < 2.0f) {
+    float damageWindow = (level.inttime - combatState.damageWindowStart) / 1000.0f;
+    if (combatState.recentDamage > 30.0f && damageWindow < 2.0f) {
         return true;
     }
 
@@ -251,10 +257,14 @@ Fires at the last known enemy position with random spread for area denial
 */
 void BotController::UpdateSuppressionFire(void)
 {
-    if (!m_enemyMemory.enemy) return;
+    // Changed in OPM
+    //  Refactored to use MemoryState struct
+    if (!memoryState.enemyMemory.enemy) return;
 
+    // Changed in OPM
+    //  Refactored to use MemoryState struct
     // Fire at last known position even without LOS
-    Vector targetPos = m_enemyMemory.lastKnownPosition;
+    Vector targetPos = memoryState.enemyMemory.lastKnownPosition;
 
     // Add random spread for area denial
     float spread = g_bot_suppression_spread->value;
@@ -288,11 +298,13 @@ void BotController::CalculateBurstTiming(void)
 
     float distToEnemy = (m_pEnemy->origin - controlledEnt->origin).length();
 
+    // Changed in OPM
+    //  Refactored to use CombatState struct
     if (distToEnemy > g_bot_burst_range_long->value) {
         // Long range: short, accurate bursts
-        m_fBurstDuration = G_Random(0.3f) + 0.3f;  // 0.3-0.6s
-        m_fBurstDelay = G_Random(0.4f) + 0.4f;     // 0.4-0.8s
-        m_bRequireLowSpread = true;
+        combatState.burstDuration = G_Random(0.3f) + 0.3f;  // 0.3-0.6s
+        combatState.burstDelay = G_Random(0.4f) + 0.4f;     // 0.4-0.8s
+        combatState.requireLowSpread = true;
 
         if (g_bot_debug->integer >= 2) {
             gi.Printf("[BOT] %s: Long range burst (%.1f units)\n",
@@ -300,9 +312,9 @@ void BotController::CalculateBurstTiming(void)
         }
     } else if (distToEnemy > g_bot_burst_range_medium->value) {
         // Medium range: moderate bursts
-        m_fBurstDuration = G_Random(0.5f) + 0.5f;  // 0.5-1.0s
-        m_fBurstDelay = G_Random(0.3f) + 0.2f;     // 0.2-0.5s
-        m_bRequireLowSpread = false;
+        combatState.burstDuration = G_Random(0.5f) + 0.5f;  // 0.5-1.0s
+        combatState.burstDelay = G_Random(0.3f) + 0.2f;     // 0.2-0.5s
+        combatState.requireLowSpread = false;
 
         if (g_bot_debug->integer >= 2) {
             gi.Printf("[BOT] %s: Medium range burst (%.1f units)\n",
@@ -310,9 +322,9 @@ void BotController::CalculateBurstTiming(void)
         }
     } else {
         // Close range: sustained fire
-        m_fBurstDuration = G_Random(1.0f) + 1.0f;  // 1.0-2.0s
-        m_fBurstDelay = G_Random(0.2f) + 0.1f;     // 0.1-0.3s
-        m_bRequireLowSpread = false;
+        combatState.burstDuration = G_Random(1.0f) + 1.0f;  // 1.0-2.0s
+        combatState.burstDelay = G_Random(0.2f) + 0.1f;     // 0.1-0.3s
+        combatState.requireLowSpread = false;
 
         if (g_bot_debug->integer >= 2) {
             gi.Printf("[BOT] %s: Close range burst (%.1f units)\n",
@@ -328,11 +340,13 @@ CheckAmmoConservation
 Checks ammo levels and adjusts fire mode for conservation
 ====================
 */
+// Changed in OPM
+//  Refactored to use CombatState struct
 void BotController::CheckAmmoConservation(void)
 {
     Weapon *weapon = controlledEnt->GetActiveWeapon(WEAPON_MAIN);
     if (!weapon) {
-        m_bAmmoLow = false;
+        combatState.ammoLow = false;
         return;
     }
 
@@ -344,10 +358,10 @@ void BotController::CheckAmmoConservation(void)
     // Simple check: if total ammo is low (<=10 rounds), enable conservation
     if (totalAmmo <= 10 && totalAmmo > 0) {
         // Low ammo: single shots only
-        m_bAmmoLow = true;
+        combatState.ammoLow = true;
         SetFireMode(FIRE_ACCURATE);
-        m_fBurstDuration = 0.1f;
-        m_bRequireLowSpread = true;
+        combatState.burstDuration = 0.1f;
+        combatState.requireLowSpread = true;
 
         if (g_bot_debug->integer >= 1) {
             gi.Printf("[BOT] %s: Low ammo conservation mode (%d rounds remaining)\n",
@@ -355,10 +369,10 @@ void BotController::CheckAmmoConservation(void)
         }
     } else if (totalAmmo <= 30 && totalAmmo > 10) {
         // Medium ammo: controlled bursts
-        m_bAmmoLow = false;
+        combatState.ammoLow = false;
         SetFireMode(FIRE_BURST);
     } else {
-        m_bAmmoLow = false;
+        combatState.ammoLow = false;
     }
 }
 
@@ -396,10 +410,12 @@ void BotController::UpdateTacticalCombat(void)
         CalculateBurstTiming();
     }
 
+    // Changed in OPM
+    //  Refactored to use CombatState and MemoryState structs
     // Apply fire mode based on profile
     switch (m_combatProfile) {
         case AGGRESSIVE:
-            if (!m_bAmmoLow) {
+            if (!combatState.ammoLow) {
                 SetFireMode(FIRE_BURST);
             }
             break;
@@ -408,7 +424,7 @@ void BotController::UpdateTacticalCombat(void)
             break;
         case DEFENSIVE:
             // Use suppression if we have enemy memory but no current LOS
-            if (!m_pEnemy && m_enemyMemory.enemy) {
+            if (!m_pEnemy && memoryState.enemyMemory.enemy) {
                 SetFireMode(FIRE_SUPPRESSION);
                 if (level.inttime > m_iSuppressionEndTime) {
                     m_iSuppressionEndTime = level.inttime + (int)(g_bot_suppression_duration->value * 1000);

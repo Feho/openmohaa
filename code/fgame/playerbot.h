@@ -160,23 +160,25 @@ public:
         void (BotController::*ThinkState)(void);
     };
 
+    // Changed in OPM
+    //  Added in-class member initializers for safer default initialization
     struct EnemyMemory {
-        SafePtr<Sentient> enemy;
-        Vector            lastKnownPosition;
-        Vector            lastKnownVelocity;
-        float             lastSeenTime;
-        float             confidenceLevel;
-        bool              investigationStarted;
-        int               searchAttempts;
+        SafePtr<Sentient> enemy                = nullptr;
+        Vector            lastKnownPosition    = vec_zero;
+        Vector            lastKnownVelocity    = vec_zero;
+        float             lastSeenTime         = 0.0f;
+        float             confidenceLevel      = 0.0f;
+        bool              investigationStarted = false;
+        int               searchAttempts       = 0;
     };
 
     struct CoverPoint {
-        Vector position;
-        float  quality;           // 0.0-1.0 rating
-        float  protectionAngle;   // Angle of protection from enemy
-        float  distanceToEnemy;
-        bool   hasEscapeRoute;
-        int    evaluatedTime;     // When this cover was evaluated
+        Vector position        = vec_zero;
+        float  quality         = 0.0f;     // 0.0-1.0 rating
+        float  protectionAngle = 0.0f;     // Angle of protection from enemy
+        float  distanceToEnemy = 0.0f;
+        bool   hasEscapeRoute  = false;
+        int    evaluatedTime   = 0;        // When this cover was evaluated
     };
 
     enum CoverState {
@@ -209,11 +211,50 @@ public:
         ROLE_DEFENDER     // Protect objective/teammate
     };
 
+    // Changed in OPM
+    //  Added in-class member initializers for safer default initialization
     struct SquadInfo {
-        Container<BotController*> members;      // Bots within coordination range
-        SafePtr<Sentient>         sharedTarget; // Current squad target
-        Vector                    rallyPoint;
-        int                       lastUpdate;   // Last update time
+        Container<BotController*> members;                  // Bots within coordination range
+        SafePtr<Sentient>         sharedTarget = nullptr;   // Current squad target
+        Vector                    rallyPoint   = vec_zero;
+        int                       lastUpdate   = 0;         // Last update time
+    };
+
+    // Added in OPM
+    //  State data structures for improved organization
+    //  Changed in OPM: Added in-class member initializers for safer default initialization
+    struct CombatState {
+        float recentDamage      = 0.0f;  // Accumulated damage in recent time window
+        int   damageWindowStart = 0;     // Timestamp when damage tracking window started
+        float burstDuration     = 1.0f;  // Duration of current burst firing
+        float burstDelay        = 0.5f;  // Delay between bursts
+        bool  requireLowSpread  = false; // Whether current fire mode requires low weapon spread
+        bool  ammoLow           = false; // Whether bot is low on ammunition
+    };
+
+    struct CoverStateData {
+        CoverPoint current;                  // Current cover point being used
+        CoverState state        = COVER_NONE; // Current cover state (COVER_NONE, COVER_MOVING_TO, etc.)
+        int        nextPeekTime = 0;         // When bot should peek from cover next
+        int        peekStartTime = 0;        // When current peek started
+        float      peekDuration = 0.0f;      // How long to peek for
+    };
+
+    struct MemoryState {
+        EnemyMemory enemyMemory;                    // Memory of last seen enemy
+        int         investigateStartTime   = 0;     // When investigation state started
+        int         investigateEventTime   = 0;     // When high-priority sound was heard
+        Vector      investigateEventPos    = vec_zero; // Location of sound event being investigated
+        int         currentEventPriority   = 0;     // Priority level (0=none, 1=curious, 2=investigate)
+    };
+
+    struct SquadState {
+        SquadInfo squad;                          // Squad information (members, shared target, etc.)
+        SquadRole role                = ROLE_NONE; // Bot's role in the squad
+        int       lastSquadUpdateTime = 0;        // Last time squad awareness was updated
+        int       roleAssignmentTime  = 0;        // When current role was assigned
+        Vector    flankPosition       = vec_zero; // Target position for flanking maneuver
+        bool      flankPositionValid  = false;    // Whether flank position is valid
     };
 
 private:
@@ -243,41 +284,19 @@ private:
     SafePtr<Sentient> m_pEnemy;
     int               m_iEnemyEyesTag;
 
-    // Enemy memory system for investigation
-    EnemyMemory m_enemyMemory;
-    int         m_iInvestigateStartTime;
+    // Changed in OPM
+    //  Refactored state variables into logical structs for improved organization
+    CombatState    combatState;
+    CoverStateData coverState;
+    MemoryState    memoryState;
+    SquadState     squadState;
 
-    // Sound-based investigation tracking
-    int    m_iInvestigateEventTime;  // When high-priority sound was heard (for sound investigation mode)
-    Vector m_vInvestigateEventPos;   // Location of high-priority sound event
-    int    m_iCurrentEventPriority;  // Priority of current investigation (0=none, 1=low/curious, 2=high/investigate)
-
-    // Cover system
-    CoverPoint  m_currentCover;
-    CoverState  m_coverState;
-    int         m_iNextPeekTime;
-    int         m_iPeekStartTime;
-    float       m_fPeekDuration;
     int         m_iLastCoverSearchTime;
 
     // Tactical combat system
     FireMode      m_fireMode;
     CombatProfile m_combatProfile;
     int           m_iSuppressionEndTime;
-    float         m_fRecentDamage;
-    int           m_iDamageWindowStart;
-    float         m_fBurstDuration;
-    float         m_fBurstDelay;
-    bool          m_bRequireLowSpread;
-    bool          m_bAmmoLow;
-
-    // Squad coordination system
-    SquadInfo  m_squad;
-    SquadRole  m_squadRole;
-    int        m_iLastSquadUpdateTime;
-    int        m_iRoleAssignmentTime;
-    Vector     m_vFlankPosition;
-    bool       m_bFlankPositionValid;
 
     // Input
     usercmd_t  m_botCmd;

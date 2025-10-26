@@ -40,7 +40,7 @@ Returns the current squad role
 */
 BotController::SquadRole BotController::GetSquadRole(void) const
 {
-    return m_squadRole;
+    return squadState.role;
 }
 
 /*
@@ -78,14 +78,14 @@ Should be called periodically (every 500ms)
 void BotController::UpdateSquadAwareness(void)
 {
     // Only update every 500ms
-    if (level.inttime < m_iLastSquadUpdateTime + 500) {
+    if (level.inttime < squadState.lastSquadUpdateTime + 500) {
         return;
     }
 
-    m_iLastSquadUpdateTime = level.inttime;
+    squadState.lastSquadUpdateTime = level.inttime;
 
     // Clear current squad members
-    m_squad.members.ClearObjectList();
+    squadState.squad.members.ClearObjectList();
 
     // Find nearby friendly bots
     const Container<BotController*>& allControllers = botManager.getControllerManager().getControllers();
@@ -107,13 +107,13 @@ void BotController::UpdateSquadAwareness(void)
         // Check distance
         float distSq = (bot->getControlledEntity()->origin - controlledEnt->origin).lengthSquared();
         if (distSq <= squadRangeSq) {
-            m_squad.members.AddObject(bot);
+            squadState.squad.members.AddObject(bot);
         }
     }
 
     if (g_bot_debug->integer >= 2) {
         gi.Printf("[BOT] %s: Squad awareness updated - %d members nearby\n",
-            controlledEnt->client->pers.netname, m_squad.members.NumObjects());
+            controlledEnt->client->pers.netname, squadState.squad.members.NumObjects());
     }
 }
 
@@ -127,23 +127,23 @@ Determines and assigns a squad role based on current squad composition
 BotController::SquadRole BotController::AssignSquadRole(void)
 {
     // Reassign role every 5 seconds or if no role assigned
-    if (m_squadRole != ROLE_NONE && level.inttime < m_iRoleAssignmentTime + 5000) {
-        return m_squadRole;
+    if (squadState.role != ROLE_NONE && level.inttime < squadState.roleAssignmentTime + 5000) {
+        return squadState.role;
     }
 
-    m_iRoleAssignmentTime = level.inttime;
+    squadState.roleAssignmentTime = level.inttime;
 
-    if (m_squad.members.NumObjects() == 0) {
+    if (squadState.squad.members.NumObjects() == 0) {
         // Solo, default to aggressive behavior
-        m_squadRole = ROLE_AGGRESSOR;
-        return m_squadRole;
+        squadState.role = ROLE_AGGRESSOR;
+        return squadState.role;
     }
 
     // Count existing roles in squad
     int aggressors = 0, flankers = 0, support = 0;
 
-    for (int i = 1; i <= m_squad.members.NumObjects(); i++) {
-        BotController* bot = m_squad.members.ObjectAt(i);
+    for (int i = 1; i <= squadState.squad.members.NumObjects(); i++) {
+        BotController* bot = squadState.squad.members.ObjectAt(i);
         if (!bot) continue;
 
         switch (bot->GetSquadRole()) {
@@ -155,24 +155,24 @@ BotController::SquadRole BotController::AssignSquadRole(void)
     }
 
     // Balance roles: 1 support, 1-2 flankers, rest aggressors
-    SquadRole oldRole = m_squadRole;
+    SquadRole oldRole = squadState.role;
 
     if (support == 0) {
-        m_squadRole = ROLE_SUPPORT;
+        squadState.role = ROLE_SUPPORT;
     } else if (flankers < 2) {
-        m_squadRole = ROLE_FLANKER;
+        squadState.role = ROLE_FLANKER;
     } else {
-        m_squadRole = ROLE_AGGRESSOR;
+        squadState.role = ROLE_AGGRESSOR;
     }
 
-    if (oldRole != m_squadRole && g_bot_debug->integer >= 1) {
+    if (oldRole != squadState.role && g_bot_debug->integer >= 1) {
         const char* roleNames[] = {"NONE", "AGGRESSOR", "FLANKER", "SUPPORT", "DEFENDER"};
         gi.Printf("[BOT] %s: Squad role assigned: %s (squad: %d aggressors, %d flankers, %d support)\n",
-            controlledEnt->client->pers.netname, roleNames[m_squadRole],
+            controlledEnt->client->pers.netname, roleNames[squadState.role],
             aggressors, flankers, support);
     }
 
-    return m_squadRole;
+    return squadState.role;
 }
 
 /*
@@ -187,8 +187,8 @@ int BotController::CountAlliesNearPosition(Vector pos, float radius)
     int count = 0;
     float radiusSq = radius * radius;
 
-    for (int i = 1; i <= m_squad.members.NumObjects(); i++) {
-        BotController* bot = m_squad.members.ObjectAt(i);
+    for (int i = 1; i <= squadState.squad.members.NumObjects(); i++) {
+        BotController* bot = squadState.squad.members.ObjectAt(i);
         if (!bot || !bot->getControlledEntity()) continue;
 
         float distSq = (bot->getControlledEntity()->origin - pos).lengthSquared();
@@ -212,10 +212,10 @@ void BotController::ExecuteFlankingManeuver(void)
     if (!m_pEnemy) return;
 
     // Recalculate flank position every 3 seconds or if invalid
-    if (m_bFlankPositionValid && level.inttime < m_iRoleAssignmentTime + 3000) {
+    if (squadState.flankPositionValid && level.inttime < squadState.roleAssignmentTime + 3000) {
         // Move to existing flank position
         if (!movement.IsMoving() || movement.MoveDone()) {
-            movement.MoveNear(m_vFlankPosition, 128.0f);
+            movement.MoveNear(squadState.flankPosition, 128.0f);
         }
         return;
     }
@@ -238,16 +238,16 @@ void BotController::ExecuteFlankingManeuver(void)
     int leftTeammates = CountAlliesNearPosition(leftFlank, 256.0f);
     int rightTeammates = CountAlliesNearPosition(rightFlank, 256.0f);
 
-    m_vFlankPosition = (leftTeammates <= rightTeammates) ? leftFlank : rightFlank;
-    m_bFlankPositionValid = true;
+    squadState.flankPosition = (leftTeammates <= rightTeammates) ? leftFlank : rightFlank;
+    squadState.flankPositionValid = true;
 
     // Start moving to flank position
-    movement.MoveNear(m_vFlankPosition, 128.0f);
+    movement.MoveNear(squadState.flankPosition, 128.0f);
 
     if (g_bot_debug->integer >= 1) {
         gi.Printf("[BOT] %s: Executing flanking maneuver to (%.0f, %.0f, %.0f) [%s side, %d allies nearby]\n",
             controlledEnt->client->pers.netname,
-            m_vFlankPosition.x, m_vFlankPosition.y, m_vFlankPosition.z,
+            squadState.flankPosition.x, squadState.flankPosition.y, squadState.flankPosition.z,
             (leftTeammates <= rightTeammates) ? "left" : "right",
             (leftTeammates <= rightTeammates) ? leftTeammates : rightTeammates);
     }
@@ -266,8 +266,8 @@ void BotController::ShareEnemyInformation(void)
     if (g_bot_squad_share_info->integer == 0) return;
 
     // Share enemy info with squad members
-    for (int i = 1; i <= m_squad.members.NumObjects(); i++) {
-        BotController* bot = m_squad.members.ObjectAt(i);
+    for (int i = 1; i <= squadState.squad.members.NumObjects(); i++) {
+        BotController* bot = squadState.squad.members.ObjectAt(i);
         if (!bot) continue;
 
         if (!bot->HasEnemy()) {
@@ -294,11 +294,11 @@ void BotController::ReceiveEnemyInfo(Sentient* enemy, Vector position)
     if (!enemy) return;
 
     // If we don't have an enemy, investigate this one
-    if (!m_pEnemy && !m_enemyMemory.enemy) {
-        m_enemyMemory.enemy = enemy;
-        m_enemyMemory.lastKnownPosition = position;
-        m_enemyMemory.lastSeenTime = level.svsTime;
-        m_enemyMemory.confidenceLevel = 0.5f;  // Shared info is less certain
+    if (!m_pEnemy && !memoryState.enemyMemory.enemy) {
+        memoryState.enemyMemory.enemy = enemy;
+        memoryState.enemyMemory.lastKnownPosition = position;
+        memoryState.enemyMemory.lastSeenTime = level.svsTime;
+        memoryState.enemyMemory.confidenceLevel = 0.5f;  // Shared info is less certain
 
         if (g_bot_debug->integer >= 1) {
             gi.Printf("[BOT] %s: Received enemy info at (%.0f, %.0f, %.0f) from squadmate\n",
@@ -319,13 +319,13 @@ Maintains tactical spacing and staged attacks
 void BotController::CheckStaggeredEngagement(void)
 {
     if (!m_pEnemy) return;
-    if (m_squadRole != ROLE_AGGRESSOR) return;
+    if (squadState.role != ROLE_AGGRESSOR) return;
 
     // Count how many allies are actively pushing the enemy
     int aggressiveAllies = 0;
 
-    for (int i = 1; i <= m_squad.members.NumObjects(); i++) {
-        BotController* bot = m_squad.members.ObjectAt(i);
+    for (int i = 1; i <= squadState.squad.members.NumObjects(); i++) {
+        BotController* bot = squadState.squad.members.ObjectAt(i);
         if (!bot || !bot->getControlledEntity()) continue;
 
         if (bot->m_combatProfile == AGGRESSIVE && bot->GetEnemy()) {
@@ -372,15 +372,15 @@ void BotController::CoordinateAttack(void)
     CheckStaggeredEngagement();
 
     // Execute role-specific behavior
-    switch (m_squadRole) {
+    switch (squadState.role) {
         case ROLE_AGGRESSOR:
         {
             // Wait for flankers to get in position before pushing hard
             bool flankersReady = true;
             bool hasFlankers = false;
 
-            for (int i = 1; i <= m_squad.members.NumObjects(); i++) {
-                BotController* bot = m_squad.members.ObjectAt(i);
+            for (int i = 1; i <= squadState.squad.members.NumObjects(); i++) {
+                BotController* bot = squadState.squad.members.ObjectAt(i);
                 if (!bot) continue;
 
                 if (bot->GetSquadRole() == ROLE_FLANKER) {
@@ -429,7 +429,7 @@ void BotController::CoordinateAttack(void)
         case ROLE_SUPPORT:
         {
             // Hold position, provide covering fire
-            if (m_currentCover.quality > 0.0f) {
+            if (coverState.current.quality > 0.0f) {
                 // Use cover and suppression fire
                 SetFireMode(FIRE_SUPPRESSION);
                 if (level.inttime > m_iSuppressionEndTime) {

@@ -44,7 +44,7 @@ bool BotController::CheckCondition_Curious(void)
     }
 
     // Don't be curious if in Investigation state (higher priority)
-    if (m_iInvestigateEventTime > 0 || m_enemyMemory.enemy) {
+    if (memoryState.investigateEventTime > 0 || memoryState.enemyMemory.enemy) {
         // Investigation has higher priority, defer to it
         return false;
     }
@@ -55,8 +55,8 @@ bool BotController::CheckCondition_Curious(void)
             movement.ClearMove();
             m_iCuriousTime = 0;
             // Clear event priority when Curious state ends
-            if (m_iCurrentEventPriority == 1) {
-                m_iCurrentEventPriority = 0;
+            if (memoryState.currentEventPriority == 1) {
+                memoryState.currentEventPriority = 0;
             }
         }
 

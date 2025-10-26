@@ -201,12 +201,14 @@ bool BotController::CheckCondition_Attack(void)
 
         m_vLastEnemyPos = m_pEnemy->origin;
 
+        // Changed in OPM
+        //  Refactored to use MemoryState struct
         // Update enemy memory
-        m_enemyMemory.enemy = bestEnemy;
-        m_enemyMemory.lastKnownPosition = bestEnemy->origin;
-        m_enemyMemory.lastKnownVelocity = bestEnemy->velocity;
-        m_enemyMemory.lastSeenTime = level.svsTime;
-        m_enemyMemory.confidenceLevel = 1.0f;
+        memoryState.enemyMemory.enemy = bestEnemy;
+        memoryState.enemyMemory.lastKnownPosition = bestEnemy->origin;
+        memoryState.enemyMemory.lastKnownVelocity = bestEnemy->velocity;
+        memoryState.enemyMemory.lastSeenTime = level.svsTime;
+        memoryState.enemyMemory.confidenceLevel = 1.0f;
 
         m_iAttackTime = level.inttime + 1000;
         return true;
@@ -451,8 +453,10 @@ void BotController::HandleWeaponFiring(
                 movement.ClearMove();
             }
         } else {
+            // Changed in OPM
+            //  Refactored to use CombatState struct
             // Full-auto: check if low spread required (accurate fire mode)
-            if (m_bRequireLowSpread && fSpreadFactor >= 0.25) {
+            if (combatState.requireLowSpread && fSpreadFactor >= 0.25) {
                 // Need low spread but don't have it - stop moving
                 outNoMove = true;
                 movement.ClearMove();
@@ -524,9 +528,11 @@ float BotController::ExecuteFiring(
     float     fSecondaryBulletRange        = weapon->GetBulletRange(FIRE_SECONDARY);
     float     fSecondaryBulletRangeSquared = fSecondaryBulletRange * fSecondaryBulletRange;
 
+    // Changed in OPM
+    //  Refactored to use CombatState struct
     // Use tactical combat burst timing (calculated based on range and combat profile)
-    const int maxcontinuousFireTime = fireDelay + (int)(m_fBurstDuration * 1000);
-    const int maxBurstTime          = fireDelay + (int)(m_fBurstDelay * 1000);
+    const int maxcontinuousFireTime = fireDelay + (int)(combatState.burstDuration * 1000);
+    const int maxBurstTime          = fireDelay + (int)(combatState.burstDelay * 1000);
 
     HandleWeaponFiring(canSee, distanceSq, fPrimaryBulletRangeSquared, fSecondaryBulletRangeSquared, weapon, outNoMove, outFiring, outMelee);
 
@@ -544,12 +550,14 @@ float BotController::ExecuteFiring(
     m_iLastSeenTime      = level.inttime;
     m_vLastEnemyPos      = m_pEnemy->origin;
 
+    // Changed in OPM
+    //  Refactored to use MemoryState struct
     // Update enemy memory continuously while visible
-    m_enemyMemory.enemy                = m_pEnemy;
-    m_enemyMemory.lastKnownPosition    = m_pEnemy->origin;
-    m_enemyMemory.lastKnownVelocity    = m_pEnemy->velocity;
-    m_enemyMemory.lastSeenTime         = level.svsTime;
-    m_enemyMemory.confidenceLevel      = 1.0f;
+    memoryState.enemyMemory.enemy                = m_pEnemy;
+    memoryState.enemyMemory.lastKnownPosition    = m_pEnemy->origin;
+    memoryState.enemyMemory.lastKnownVelocity    = m_pEnemy->velocity;
+    memoryState.enemyMemory.lastSeenTime         = level.svsTime;
+    memoryState.enemyMemory.confidenceLevel      = 1.0f;
 
     // Calculate minimum attack distance based on weapon range (matching original behavior)
     float fMinDistance = fPrimaryBulletRange;
@@ -635,19 +643,21 @@ void BotController::State_Attack(void)
     const float closeRangeThresholdSquared = closeRangeThreshold * closeRangeThreshold;
     const bool isCloseRange = fDistanceSquared < closeRangeThresholdSquared;
 
+    // Changed in OPM
+    //  Refactored to use CoverStateData struct
     // Handle cover-based movement and firing (disabled at close range)
     if (!isCloseRange) {
-        if (m_coverState == COVER_IN_COVER) {
+        if (coverState.state == COVER_IN_COVER) {
             // In cover, not shooting
             m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
             movement.ClearMove();
             return;
-        } else if (m_coverState == COVER_MOVING_TO || m_coverState == COVER_REPOSITIONING) {
+        } else if (coverState.state == COVER_MOVING_TO || coverState.state == COVER_REPOSITIONING) {
             // Moving to cover, stop shooting
             m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
 
             if (!movement.IsMoving() || movement.MoveDone()) {
-                movement.MoveTo(m_currentCover.position);
+                movement.MoveTo(coverState.current.position);
             }
             return;
         }

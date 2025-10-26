@@ -69,54 +69,16 @@ BotController::BotController()
     memset(m_iStateEntryTime, 0, sizeof(m_iStateEntryTime));
     m_iTargetLockTime = 0;
 
-    // Initialize enemy memory
-    m_enemyMemory.enemy = NULL;
-    m_enemyMemory.lastKnownPosition = vec_zero;
-    m_enemyMemory.lastKnownVelocity = vec_zero;
-    m_enemyMemory.lastSeenTime = 0.0f;
-    m_enemyMemory.confidenceLevel = 0.0f;
-    m_enemyMemory.investigationStarted = false;
-    m_enemyMemory.searchAttempts = 0;
-    m_iInvestigateStartTime = 0;
+    // Changed in OPM
+    //  State structs now use in-class member initializers for automatic initialization
+    //  memoryState, coverState, combatState, and squadState are initialized with default values
 
-    // Initialize sound-based investigation tracking
-    m_iInvestigateEventTime = 0;
-    m_vInvestigateEventPos = vec_zero;
-    m_iCurrentEventPriority = 0;
-
-    // Initialize cover system
-    m_currentCover.position = vec_zero;
-    m_currentCover.quality = 0.0f;
-    m_currentCover.protectionAngle = 0.0f;
-    m_currentCover.distanceToEnemy = 0.0f;
-    m_currentCover.hasEscapeRoute = false;
-    m_currentCover.evaluatedTime = 0;
-    m_coverState = COVER_NONE;
-    m_iNextPeekTime = 0;
-    m_iPeekStartTime = 0;
-    m_fPeekDuration = 0.0f;
     m_iLastCoverSearchTime = 0;
 
-    // Initialize tactical combat system
+    // Initialize tactical combat system (non-struct members)
     m_fireMode = FIRE_BURST;
     m_combatProfile = CAUTIOUS;
     m_iSuppressionEndTime = 0;
-    m_fRecentDamage = 0.0f;
-    m_iDamageWindowStart = 0;
-    m_fBurstDuration = 1.0f;
-    m_fBurstDelay = 0.5f;
-    m_bRequireLowSpread = false;
-    m_bAmmoLow = false;
-
-    // Initialize squad coordination system
-    m_squad.sharedTarget = NULL;
-    m_squad.rallyPoint = vec_zero;
-    m_squad.lastUpdate = 0;
-    m_squadRole = ROLE_NONE;
-    m_iLastSquadUpdateTime = 0;
-    m_iRoleAssignmentTime = 0;
-    m_vFlankPosition = vec_zero;
-    m_bFlankPositionValid = false;
 
     m_StateFlags = 0;
 }

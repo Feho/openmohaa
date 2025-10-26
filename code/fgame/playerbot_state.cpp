@@ -146,17 +146,17 @@ void BotController::State_Reset(void)
     m_iEnemyEyesTag   = -1;
 
     // Clear enemy memory
-    m_enemyMemory.enemy = NULL;
-    m_enemyMemory.lastKnownPosition = vec_zero;
-    m_enemyMemory.lastKnownVelocity = vec_zero;
-    m_enemyMemory.lastSeenTime = 0.0f;
-    m_enemyMemory.confidenceLevel = 0.0f;
-    m_enemyMemory.investigationStarted = false;
-    m_enemyMemory.searchAttempts = 0;
-    m_iInvestigateStartTime = 0;
+    memoryState.enemyMemory.enemy = NULL;
+    memoryState.enemyMemory.lastKnownPosition = vec_zero;
+    memoryState.enemyMemory.lastKnownVelocity = vec_zero;
+    memoryState.enemyMemory.lastSeenTime = 0.0f;
+    memoryState.enemyMemory.confidenceLevel = 0.0f;
+    memoryState.enemyMemory.investigationStarted = false;
+    memoryState.enemyMemory.searchAttempts = 0;
+    memoryState.investigateStartTime = 0;
 
     // Clear cover state
-    m_currentCover.quality = 0.0f;
-    m_coverState = COVER_NONE;
+    coverState.current.quality = 0.0f;
+    coverState.state = COVER_NONE;
     m_iLastCoverSearchTime = 0;
 }

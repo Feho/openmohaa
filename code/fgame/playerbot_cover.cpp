@@ -205,9 +205,11 @@ IsCoverCompromised
 Checks if current cover is no longer effective.
 ====================
 */
+// Changed in OPM
+//  Refactored to use CoverStateData struct
 bool BotController::IsCoverCompromised(void)
 {
-    if (m_currentCover.quality == 0.0f) {
+    if (coverState.current.quality == 0.0f) {
         return true; // No cover to begin with
     }
 
@@ -219,14 +221,14 @@ bool BotController::IsCoverCompromised(void)
 
     // Check if enemy has moved significantly
     float distanceChange = (enemyPos - Vector(
-        m_currentCover.position.x,
-        m_currentCover.position.y,
+        coverState.current.position.x,
+        coverState.current.position.y,
         enemyPos.z
     )).length();
 
     if (distanceChange > 256.0f) {
         // Enemy moved significantly, re-evaluate cover
-        if (!IsInCover(m_currentCover.position, enemyPos)) {
+        if (!IsInCover(coverState.current.position, enemyPos)) {
             if (g_bot_debug->integer >= 1) {
                 gi.Printf("[BOT] %s: Cover compromised - enemy flanked\n",
                     controlledEnt->client->pers.netname);
@@ -235,8 +237,10 @@ bool BotController::IsCoverCompromised(void)
         }
     }
 
+    // Changed in OPM
+    //  Refactored to use CoverStateData struct
     // Check if taking damage while in cover
-    if (m_coverState == COVER_IN_COVER || m_coverState == COVER_PEEKING) {
+    if (coverState.state == COVER_IN_COVER || coverState.state == COVER_PEEKING) {
         // If bot's health dropped significantly in last second, cover may be compromised
         // This is a simplified check - in a real implementation you'd track damage events
     }
@@ -252,14 +256,16 @@ Updates the bot's cover behavior state machine.
 Called from the attack state when using cover.
 ====================
 */
+// Changed in OPM
+//  Refactored to use CoverStateData struct
 void BotController::UpdateCoverBehavior(void)
 {
     if (!m_pEnemy) {
-        m_coverState = COVER_NONE;
+        coverState.state = COVER_NONE;
         return;
     }
 
-    switch (m_coverState) {
+    switch (coverState.state) {
         case COVER_NONE:
             // Not using cover, try to find some
             if (level.inttime > m_iLastCoverSearchTime + 2000) {
@@ -267,8 +273,8 @@ void BotController::UpdateCoverBehavior(void)
                 CoverPoint newCover = FindBestCover(m_pEnemy->origin);
 
                 if (newCover.quality >= g_bot_cover_min_quality->value) {
-                    m_currentCover = newCover;
-                    m_coverState = COVER_MOVING_TO;
+                    coverState.current = newCover;
+                    coverState.state = COVER_MOVING_TO;
 
                     if (g_bot_debug->integer >= 1) {
                         gi.Printf("[BOT] %s: Moving to cover (quality: %.2f)\n",
@@ -281,12 +287,12 @@ void BotController::UpdateCoverBehavior(void)
         case COVER_MOVING_TO:
             // Check if we reached cover
             {
-                float distToCover = (controlledEnt->origin - m_currentCover.position).length();
+                float distToCover = (controlledEnt->origin - coverState.current.position).length();
                 if (distToCover < 64.0f || movement.MoveDone()) {
-                    m_coverState = COVER_IN_COVER;
+                    coverState.state = COVER_IN_COVER;
                     float hideMin = g_bot_cover_hide_min_time->value * 1000;
                     float hideMax = g_bot_cover_hide_max_time->value * 1000;
-                    m_iNextPeekTime = level.inttime + (int)(G_Random(hideMax - hideMin) + hideMin);
+                    coverState.nextPeekTime = level.inttime + (int)(G_Random(hideMax - hideMin) + hideMin);
 
                     if (g_bot_debug->integer >= 1) {
                         gi.Printf("[BOT] %s: Reached cover position\n",
@@ -298,27 +304,27 @@ void BotController::UpdateCoverBehavior(void)
 
         case COVER_IN_COVER:
             // Hiding in cover, wait before peeking
-            if (level.inttime >= m_iNextPeekTime) {
-                m_coverState = COVER_PEEKING;
-                m_iPeekStartTime = level.inttime;
+            if (level.inttime >= coverState.nextPeekTime) {
+                coverState.state = COVER_PEEKING;
+                coverState.peekStartTime = level.inttime;
                 float peekMin = g_bot_cover_peek_min_time->value * 1000;
                 float peekMax = g_bot_cover_peek_max_time->value * 1000;
-                m_fPeekDuration = G_Random(peekMax - peekMin) + peekMin;
+                coverState.peekDuration = G_Random(peekMax - peekMin) + peekMin;
 
                 if (g_bot_debug->integer >= 2) {
                     gi.Printf("[BOT] %s: Peeking from cover (%.1fs)\n",
-                        controlledEnt->client->pers.netname, m_fPeekDuration / 1000.0f);
+                        controlledEnt->client->pers.netname, coverState.peekDuration / 1000.0f);
                 }
             }
             break;
 
         case COVER_PEEKING:
             // Exposed and shooting
-            if (level.inttime >= m_iPeekStartTime + (int)m_fPeekDuration) {
-                m_coverState = COVER_IN_COVER;
+            if (level.inttime >= coverState.peekStartTime + (int)coverState.peekDuration) {
+                coverState.state = COVER_IN_COVER;
                 float hideMin = g_bot_cover_hide_min_time->value * 1000;
                 float hideMax = g_bot_cover_hide_max_time->value * 1000;
-                m_iNextPeekTime = level.inttime + (int)(G_Random(hideMax - hideMin) + hideMin);
+                coverState.nextPeekTime = level.inttime + (int)(G_Random(hideMax - hideMin) + hideMin);
 
                 if (g_bot_debug->integer >= 2) {
                     gi.Printf("[BOT] %s: Returning to cover\n",
@@ -330,29 +336,29 @@ void BotController::UpdateCoverBehavior(void)
         case COVER_REPOSITIONING:
             // Moving to new cover
             if (movement.MoveDone()) {
-                m_coverState = COVER_IN_COVER;
+                coverState.state = COVER_IN_COVER;
                 float hideMin = g_bot_cover_hide_min_time->value * 1000;
                 float hideMax = g_bot_cover_hide_max_time->value * 1000;
-                m_iNextPeekTime = level.inttime + (int)(G_Random(hideMax - hideMin) + hideMin);
+                coverState.nextPeekTime = level.inttime + (int)(G_Random(hideMax - hideMin) + hideMin);
             }
             break;
     }
 
     // Check if cover is compromised
-    if (m_coverState != COVER_NONE && IsCoverCompromised()) {
+    if (coverState.state != COVER_NONE && IsCoverCompromised()) {
         // Find new cover
         CoverPoint newCover = FindBestCover(m_pEnemy->origin);
 
         if (newCover.quality >= g_bot_cover_min_quality->value) {
-            m_currentCover = newCover;
-            m_coverState = COVER_REPOSITIONING;
+            coverState.current = newCover;
+            coverState.state = COVER_REPOSITIONING;
 
             if (g_bot_debug->integer >= 1) {
                 gi.Printf("[BOT] %s: Repositioning to new cover\n",
                     controlledEnt->client->pers.netname);
             }
         } else {
-            m_coverState = COVER_NONE;
+            coverState.state = COVER_NONE;
         }
     }
 }

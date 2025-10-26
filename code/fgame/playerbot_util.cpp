@@ -248,15 +248,15 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     // Priority-based event handling
     bool shouldAcceptEvent = false;
 
-    if (m_iCurrentEventPriority == 0) {
+    if (memoryState.currentEventPriority == 0) {
         // No active investigation, always accept
         shouldAcceptEvent = true;
-    } else if (newEventPriority > m_iCurrentEventPriority) {
+    } else if (newEventPriority > memoryState.currentEventPriority) {
         // Higher priority event interrupts lower priority investigation
         shouldAcceptEvent = true;
-    } else if (newEventPriority == m_iCurrentEventPriority) {
+    } else if (newEventPriority == memoryState.currentEventPriority) {
         // Same priority - compare distances
-        Vector currentInvestigatePos = (m_iCurrentEventPriority == 2) ? m_vInvestigateEventPos : m_vNewCuriousPos;
+        Vector currentInvestigatePos = (memoryState.currentEventPriority == 2) ? memoryState.investigateEventPos : m_vNewCuriousPos;
         Vector deltaNew     = vPos - controlledEnt->origin;
         Vector deltaCurrent = currentInvestigatePos - controlledEnt->origin;
 
@@ -272,12 +272,12 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     }
 
     // Accept the event and set appropriate state variables based on priority
-    m_iCurrentEventPriority = newEventPriority;
+    memoryState.currentEventPriority = newEventPriority;
 
     if (newEventPriority == 2) {
         // High priority event - trigger Investigation state
-        m_iInvestigateEventTime = level.svsTime;
-        m_vInvestigateEventPos  = vPos;
+        memoryState.investigateEventTime = level.svsTime;
+        memoryState.investigateEventPos  = vPos;
 
         if (g_bot_debug->integer >= 1) {
             const char* eventName = G_AIEventStringFromType(iType);
