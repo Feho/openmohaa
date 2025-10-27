@@ -882,6 +882,7 @@ void	AnglesSubtract( vec3_t v1, vec3_t v2, vec3_t v3 );
 float AngleNormalize360 ( float angle );
 float AngleNormalize180 ( float angle );
 float AngleDelta ( float angle1, float angle2 );
+float AngleDifference( float ang1, float ang2 ); // Added in OPM
 
 qboolean PlaneFromPoints( vec4_t plane, const vec3_t a, const vec3_t b, const vec3_t c );
 qboolean PlanesGetIntersectionPoint(const vec4_t plane1, const vec4_t plane2, const vec4_t plane3, vec3_t out);

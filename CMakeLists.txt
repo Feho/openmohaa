@@ -77,3 +77,9 @@ include(launcher)
 
 include(post_configure)
 #include(installer)
+
+# Added in OPM
+#  Add tests subdirectory for unit tests
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()

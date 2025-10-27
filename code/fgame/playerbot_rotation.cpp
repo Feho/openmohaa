@@ -36,23 +36,6 @@ void BotRotation::SetControlledEntity(Player *newEntity)
     controlledEntity = newEntity;
 }
 
-float AngleDifference(float ang1, float ang2)
-{
-    float diff;
-
-    diff = ang1 - ang2;
-    if (ang1 > ang2) {
-        if (diff > 180.0) {
-            diff -= 360.0;
-        }
-    } else {
-        if (diff < -180.0) {
-            diff += 360.0;
-        }
-    }
-    return diff;
-}
-
 void BotRotation::TurnThink(usercmd_t& botcmd, usereyes_t& eyeinfo)
 {
     float diff;

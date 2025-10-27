@@ -1326,6 +1326,27 @@ float AngleNormalize360 ( float angle ) {
     return angle;
 }
 
+// Added in OPM
+//  Calculates signed difference between two angles with wrapping
+//  Returns the shortest angular distance from ang2 to ang1
+//  Result is positive if ang1 is clockwise from ang2, negative if counter-clockwise
+float AngleDifference(float ang1, float ang2)
+{
+    float diff;
+
+    diff = ang1 - ang2;
+    if (ang1 > ang2) {
+        if (diff > 180.0f) {
+            diff -= 360.0f;
+        }
+    } else {
+        if (diff < -180.0f) {
+            diff += 360.0f;
+        }
+    }
+    return diff;
+}
+
 
 /*
 =================
