@@ -112,10 +112,10 @@ bool BotController::CheckCondition_Attack(void)
     bot_origin = controlledEnt->origin;
     sents.Sort(sentients_compare);
 
-    maxDistance = Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828);
+    maxDistance = Q_min(world->m_fAIVisionDistance, world->farplane_distance * BotConstants::FARPLANE_VISION_FACTOR);
 
     // Scan for enemies (even if we already have one, we might want to switch)
-    float     bestDistanceSq = 999999.0f;
+    float     bestDistanceSq = BotConstants::LARGE_DISTANCE_SQ;
     Sentient *bestEnemy      = SelectBestTarget(maxDistance, bestDistanceSq);
 
     // If we found a visible enemy, target it
@@ -144,7 +144,7 @@ bool BotController::CheckCondition_Attack(void)
                     // Keep current target if it's still in the visible list
                     for (int i = 1; i <= SentientList.NumObjects(); i++) {
                         Sentient *sent = SentientList.ObjectAt(i);
-                        if (sent == m_pEnemy && controlledEnt->CanSee(sent, 100, maxDistance, false)) {
+                        if (sent == m_pEnemy && controlledEnt->CanSee(sent, BotConstants::DEFAULT_FOV_DEGREES, maxDistance, false)) {
                             bestEnemy = m_pEnemy;
                             bestDistanceSq = (m_pEnemy->origin - controlledEnt->origin).lengthSquared();
                             break;
@@ -210,7 +210,7 @@ bool BotController::CheckCondition_Attack(void)
         memoryState.enemyMemory.lastSeenTime = level.svsTime;
         memoryState.enemyMemory.confidenceLevel = 1.0f;
 
-        m_iAttackTime = level.inttime + 1000;
+        m_iAttackTime = level.inttime + BotConstants::ATTACK_REACQUIRE_DELAY;
         return true;
     }
 
@@ -314,7 +314,7 @@ void BotController::AimAtTarget(bool canSee)
             vTarget = m_pEnemy->origin;
         }
 
-        if (level.inttime >= m_iLastAimTime + 100) {
+        if (level.inttime >= m_iLastAimTime + BotConstants::AIM_UPDATE_INTERVAL) {
             if (m_iEnemyEyesTag != -1) {
                 m_vAimOffset[0] = G_CRandom((m_pEnemy->maxs.x - m_pEnemy->mins.x) * 0.5);
                 m_vAimOffset[1] = G_CRandom((m_pEnemy->maxs.y - m_pEnemy->mins.y) * 0.5);
@@ -438,7 +438,7 @@ void BotController::HandleWeaponFiring(
                     || controlledEnt->client->ps.iViewModelAnim > VM_ANIM_IDLE_2)) {
                 m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
                 controlledEnt->ZoomOff();
-            } else if (fSpreadFactor < 0.25) {
+            } else if (fSpreadFactor < BotConstants::WEAPON_SPREAD_THRESHOLD) {
                 outFiring = true;
                 m_botCmd.buttons ^= BUTTON_ATTACKLEFT;
                 if (weapon->GetZoom()) {
@@ -456,7 +456,7 @@ void BotController::HandleWeaponFiring(
             // Changed in OPM
             //  Refactored to use CombatState struct
             // Full-auto: check if low spread required (accurate fire mode)
-            if (combatState.requireLowSpread && fSpreadFactor >= 0.25) {
+            if (combatState.requireLowSpread && fSpreadFactor >= BotConstants::WEAPON_SPREAD_THRESHOLD) {
                 // Need low spread but don't have it - stop moving
                 outNoMove = true;
                 movement.ClearMove();
@@ -481,14 +481,14 @@ float BotController::ExecuteFiring(
     bool& outMelee
 )
 {
-    static constexpr float DEFAULT_MIN_ATTACK_DISTANCE = 128.0f;
-    static constexpr float MAX_MIN_ATTACK_DISTANCE     = 256.0f;
+    static constexpr float DEFAULT_MIN_ATTACK_DISTANCE = BotConstants::OBSTACLE_AVOIDANCE_DISTANCE;
+    static constexpr float MAX_MIN_ATTACK_DISTANCE     = BotConstants::SEARCH_PATTERN_STEP;
     static constexpr float ATTACK_RANGE_DIVISOR        = 1.25f;  // Safety factor for primary weapon range
 
     if (!canSee) {
         m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
 
-        if (level.inttime > m_iLastSeenTime + 2000) {
+        if (level.inttime > m_iLastSeenTime + BotConstants::TARGET_UNSEEN_THRESHOLD) {
             if (!m_iLastUnseenTime && g_bot_debug->integer >= 2) {
                 gi.Printf(
                     "[BOT] %s: Lost sight of enemy (%.1fs ago)\n",
@@ -545,8 +545,8 @@ float BotController::ExecuteFiring(
 
     HandleMeleeAttack(canSee, distanceSq, fSecondaryBulletRangeSquared, weapon, outMelee);
 
-    m_iAttackTime        = level.inttime + 1000;
-    m_iAttackStopAimTime = level.inttime + 3000;
+    m_iAttackTime        = level.inttime + BotConstants::SECONDS_TO_MS;
+    m_iAttackStopAimTime = level.inttime + BotConstants::ATTACK_STOP_AIM_DURATION;
     m_iLastSeenTime      = level.inttime;
     m_vLastEnemyPos      = m_pEnemy->origin;
 
@@ -598,7 +598,7 @@ void BotController::UpdateAttackMovement(bool noMove, bool melee, bool canSee, f
     }
 
     if (movement.IsMoving()) {
-        m_iAttackTime = level.inttime + 1000;
+        m_iAttackTime = level.inttime + BotConstants::ATTACK_REACQUIRE_DELAY;
     }
 }
 
@@ -620,7 +620,7 @@ void BotController::State_Attack(void)
     m_vOldEnemyPos         = m_vLastEnemyPos;
 
     bCanSee =
-        controlledEnt->CanSee(m_pEnemy, 20, Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828), false);
+        controlledEnt->CanSee(m_pEnemy, 20, Q_min(world->m_fAIVisionDistance, world->farplane_distance * BotConstants::FARPLANE_VISION_FACTOR), false);
 
     // Execute firing logic and get calculated minimum distance based on weapon range
     float fMinDistance        = ExecuteFiring(bCanSee, fDistanceSquared, bNoMove, bFiring, bMelee);

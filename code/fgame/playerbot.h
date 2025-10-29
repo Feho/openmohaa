@@ -29,6 +29,95 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #define MAX_BOT_FUNCTIONS 5
 
+// Added in OPM
+//  Bot AI Configuration Constants for improved code readability
+namespace BotConstants {
+    // Vision and Perception
+    constexpr float DEFAULT_FOV_DEGREES          = 100.0f;  // Field of view in degrees
+    constexpr float NARROW_FOV_DEGREES           = 20.0f;   // Narrow FOV for precise checks
+    constexpr float FARPLANE_VISION_FACTOR       = 0.828f;  // Factor of farplane distance for vision
+
+    // Combat Distances (units)
+    constexpr float MELEE_RANGE                  = 64.0f;   // Maximum melee attack range
+    constexpr float DEFAULT_MIN_ATTACK_DISTANCE  = 128.0f;  // Default minimum attack distance
+    constexpr float MAX_MIN_ATTACK_DISTANCE      = 256.0f;  // Maximum minimum attack distance
+    constexpr float CLOSE_RANGE_THRESHOLD        = 384.0f;  // Threshold for close range combat
+    constexpr float IDEAL_COVER_DISTANCE         = 512.0f;  // Ideal distance from enemy when in cover
+    constexpr float AWARENESS_RADIUS             = 512.0f;  // Radius for nearby enemies/allies
+    constexpr float ATTACK_RANGE_DIVISOR         = 1.25f;   // Safety factor for primary weapon range
+
+    // Movement Distances (units)
+    constexpr float WAYPOINT_REACHED_DISTANCE    = 32.0f;   // Distance to consider waypoint reached
+    constexpr float STUCK_CHECK_DISTANCE         = 10.0f;   // Distance threshold for stuck detection
+    constexpr float SEARCH_PATTERN_STEP          = 256.0f;  // Cardinal direction search step
+    constexpr float SEARCH_PATTERN_DIAGONAL      = 181.0f;  // Diagonal search step (256/√2 ≈ 181)
+    constexpr float SEARCH_PATTERN_EXTENDED      = 512.0f;  // Extended search distance
+    constexpr float ESCAPE_ROUTE_TEST_DISTANCE   = 64.0f;   // Distance to test for escape routes
+    constexpr float MOVEMENT_RANDOMNESS_RANGE    = 512.0f;  // Range for random movement offsets
+    constexpr float FLANK_POSITION_RADIUS        = 256.0f;  // Radius for flanking position checks
+    constexpr float SIGNIFICANT_DISTANCE_CHANGE  = 256.0f;  // Significant position change threshold
+    constexpr float TRACE_GROUND_CHECK           = 128.0f;  // Distance to trace down for ground
+    constexpr float MOVEMENT_PREDICTION_FACTOR   = 0.5f;    // Factor for movement prediction
+    constexpr float OBSTACLE_AVOIDANCE_DISTANCE  = 128.0f;  // Distance for obstacle avoidance
+    constexpr float PREFERRED_DIRECTION_FACTOR   = 512.0f;  // Factor for preferred movement direction
+
+    // Timing (milliseconds)
+    constexpr int ATTACK_REACQUIRE_DELAY         = 1000;    // Delay before reacquiring target
+    constexpr int ATTACK_STOP_AIM_DURATION       = 3000;    // How long to aim after stopping attack
+    constexpr int TARGET_UNSEEN_THRESHOLD        = 2000;    // Time before considering target truly lost
+    constexpr int RECENT_FIRE_WINDOW             = 2000;    // Window for considering recent fire
+    constexpr int PATH_CHECK_INTERVAL            = 1000;    // How often to check/recalculate path
+    constexpr int STUCK_RECOVERY_DELAY           = 1000;    // Delay for stuck recovery
+    constexpr int JUMP_CHECK_INTERVAL            = 100;     // How often to check for jump opportunities
+    constexpr int AIM_UPDATE_INTERVAL            = 100;     // How often to update aim offset
+    constexpr int COLLISION_CHECK_INTERVAL       = 250;     // How often to check for collisions
+    constexpr int ROLE_PERSISTENCE_DURATION      = 5000;    // How long to maintain assigned role
+    constexpr int FLANK_EXECUTION_DURATION       = 3000;    // How long to execute flanking maneuver
+    constexpr int DAMAGE_TRACKING_WINDOW         = 2000;    // Time window for tracking damage (2 seconds)
+    constexpr int SECONDS_TO_MS                  = 1000;    // Conversion factor: seconds to milliseconds
+
+    // Combat Behavior
+    constexpr float WEAPON_SPREAD_THRESHOLD      = 0.25f;   // Max spread for accurate fire
+    constexpr float AIM_OFFSET_BBOX_FACTOR       = 0.5f;    // Factor of bbox size for aim offset
+    constexpr float COVER_QUALITY_EXCELLENT      = 0.7f;    // Quality threshold for good cover
+    constexpr float COVER_QUALITY_BASE           = 0.5f;    // Base cover quality for obstruction
+    constexpr float COVER_QUALITY_PROTECTION     = 0.3f;    // Quality bonus for protection angles
+    constexpr float COVER_QUALITY_DISTANCE       = 0.2f;    // Quality bonus for ideal distance
+    constexpr float COVER_QUALITY_ESCAPE         = 0.1f;    // Quality bonus for escape routes
+    constexpr float COVER_DISTANCE_TOLERANCE     = 1024.0f; // Tolerance for cover distance evaluation
+    constexpr float ESCAPE_ROUTE_MIN_FRACTION    = 0.5f;    // Min trace fraction for valid escape
+    constexpr int   PROTECTION_ANGLE_SAMPLES     = 8;       // Number of angles to test for protection
+    constexpr int   ESCAPE_ROUTE_DIRECTIONS      = 4;       // Number of directions to test for escape
+    constexpr float HEALTH_RETREAT_THRESHOLD     = 0.5f;    // Health ratio to consider retreating
+    constexpr float HEALTH_AGGRESSIVE_THRESHOLD  = 0.7f;    // Health ratio for aggressive behavior
+    constexpr float DAMAGE_RETREAT_THRESHOLD     = 30.0f;   // Damage amount to trigger retreat
+    constexpr float COVER_DISTANCE_FACTOR        = 0.75f;   // Factor for cover search radius
+    constexpr float REACTION_DISTANCE_MAX        = 2048.0f; // Max distance for reaction time calculation
+    constexpr int   MAX_REACTION_TIME_MS         = 1000;    // Maximum reaction time in milliseconds
+
+    // Movement Command Values
+    constexpr signed char MAX_MOVE_SPEED         = 127;     // Maximum movement speed command
+    constexpr float       MOVE_COMMAND_SCALE     = 127.0f;  // Scale factor for move commands
+
+    // Angle Conversions
+    constexpr float FULL_CIRCLE_DEGREES          = 360.0f;  // Degrees in a full circle
+    constexpr float DEGREES_TO_RADIANS           = M_PI / 180.0f; // Conversion factor
+
+    // Directional Thresholds
+    constexpr float FORWARD_BACKWARD_THRESHOLD   = -0.75f;  // Dot product threshold for forward/back
+    constexpr float LATERAL_THRESHOLD            = 0.5f;    // Threshold for lateral movement
+
+    // Utility Constants
+    constexpr float EPSILON                      = 0.0001f; // Small value for float comparisons
+    constexpr float TRACE_COMPLETE               = 1.0f;    // Trace fraction for complete pass-through
+    constexpr float TRACE_ALMOST_COMPLETE        = 0.999f;  // Trace fraction for nearly complete
+    constexpr float LARGE_DISTANCE_SQ            = 999999.0f; // Large value for distance comparisons
+    constexpr float VERY_LARGE_DISTANCE_SQ       = 99999999.0f; // Very large value for initialization
+    constexpr int   LARGE_NEGATIVE_RANK          = -999999; // Large negative value for rank comparisons
+    constexpr float PERCENT_CONVERSION           = 100.0f;  // Convert ratio to percentage
+}
+
+
 typedef struct nodeAttract_s {
     float             m_fRespawnTime;
     AttractiveNodePtr m_pNode;

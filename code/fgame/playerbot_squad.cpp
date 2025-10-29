@@ -215,7 +215,7 @@ void BotController::ExecuteFlankingManeuver(void)
     if (squadState.flankPositionValid && level.inttime < squadState.roleAssignmentTime + 3000) {
         // Move to existing flank position
         if (!movement.IsMoving() || movement.MoveDone()) {
-            movement.MoveNear(squadState.flankPosition, 128.0f);
+            movement.MoveNear(squadState.flankPosition, BotConstants::OBSTACLE_AVOIDANCE_DISTANCE);
         }
         return;
     }
@@ -235,14 +235,14 @@ void BotController::ExecuteFlankingManeuver(void)
     Vector rightFlank = m_pEnemy->origin + (flankRight * flankDist);
 
     // Choose side with fewer teammates
-    int leftTeammates = CountAlliesNearPosition(leftFlank, 256.0f);
-    int rightTeammates = CountAlliesNearPosition(rightFlank, 256.0f);
+    int leftTeammates = CountAlliesNearPosition(leftFlank, BotConstants::SEARCH_PATTERN_STEP);
+    int rightTeammates = CountAlliesNearPosition(rightFlank, BotConstants::SEARCH_PATTERN_STEP);
 
     squadState.flankPosition = (leftTeammates <= rightTeammates) ? leftFlank : rightFlank;
     squadState.flankPositionValid = true;
 
     // Start moving to flank position
-    movement.MoveNear(squadState.flankPosition, 128.0f);
+    movement.MoveNear(squadState.flankPosition, BotConstants::OBSTACLE_AVOIDANCE_DISTANCE);
 
     if (g_bot_debug->integer >= 1) {
         gi.Printf("[BOT] %s: Executing flanking maneuver to (%.0f, %.0f, %.0f) [%s side, %d allies nearby]\n",
@@ -330,7 +330,7 @@ void BotController::CheckStaggeredEngagement(void)
 
         if (bot->m_combatProfile == AGGRESSIVE && bot->GetEnemy()) {
             float distToEnemy = (bot->GetEnemy()->origin - bot->getControlledEntity()->origin).length();
-            if (distToEnemy < 512.0f) {
+            if (distToEnemy < BotConstants::AWARENESS_RADIUS) {
                 aggressiveAllies++;
             }
         }

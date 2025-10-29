@@ -207,7 +207,7 @@ void BotController::State_Investigate(void)
         // Sound investigation - move directly to sound location
         if (!movement.IsMoving() || movement.MoveDone()) {
             if (movement.CanMoveTo(memoryState.investigateEventPos)) {
-                movement.MoveNear(memoryState.investigateEventPos, 128.0f);
+                movement.MoveNear(memoryState.investigateEventPos, BotConstants::OBSTACLE_AVOIDANCE_DISTANCE);
 
                 if (g_bot_debug->integer >= 2) {
                     gi.Printf("[BOT] %s: Investigating sound at (%.0f, %.0f, %.0f)\n",
@@ -260,7 +260,7 @@ void BotController::State_Investigate(void)
 
             // Try to pathfind to the search position
             if (movement.CanMoveTo(searchPos)) {
-                movement.MoveNear(searchPos, 128.0f);
+                movement.MoveNear(searchPos, BotConstants::OBSTACLE_AVOIDANCE_DISTANCE);
                 memoryState.enemyMemory.searchAttempts++;
 
                 if (g_bot_debug->integer >= 2) {

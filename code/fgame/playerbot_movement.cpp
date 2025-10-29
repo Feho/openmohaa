@@ -125,7 +125,7 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
     }
 
     // Check if we're blocked
-    if (level.inttime >= m_iCheckPathTime + 1000 && m_iTempAwayState != 2) {
+    if (level.inttime >= m_iCheckPathTime + BotConstants::SECONDS_TO_MS && m_iTempAwayState != 2) {
         bool blocked = false;
 
         m_iCheckPathTime = level.inttime;
@@ -158,7 +158,7 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
             m_iTempAwayState = 1;
         }
 
-        if (m_iTempAwayState && level.inttime >= m_iLastBlockTime + 1000) {
+        if (m_iTempAwayState && level.inttime >= m_iLastBlockTime + BotConstants::SECONDS_TO_MS) {
             Vector delta;
             Vector dir;
 
@@ -235,11 +235,11 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
     vWishDir = CalculateRelativeWishDirection(m_vCurrentDir);
 
     // Forward to the specified direction
-    float x = vWishDir.x * 127;
-    float y = -vWishDir.y * 127;
+    float x = vWishDir.x * BotConstants::MAX_MOVE_SPEED;
+    float y = -vWishDir.y * BotConstants::MAX_MOVE_SPEED;
 
-    botcmd.forwardmove = (signed char)Q_clamp(x, -127, 127);
-    botcmd.rightmove   = (signed char)Q_clamp(y, -127, 127);
+    botcmd.forwardmove = (signed char)Q_clamp(x, -BotConstants::MAX_MOVE_SPEED, BotConstants::MAX_MOVE_SPEED);
+    botcmd.rightmove   = (signed char)Q_clamp(y, -BotConstants::MAX_MOVE_SPEED, BotConstants::MAX_MOVE_SPEED);
     botcmd.upmove      = 0;
 
     CheckJump(botcmd);

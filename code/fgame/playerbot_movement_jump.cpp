@@ -34,10 +34,10 @@ void BotMovement::CheckJump(usercmd_t& botcmd)
 
     if (controlledEntity->GetLadder()) {
         if (g_navigation_legacy->integer) {
-            botcmd.upmove = botcmd.upmove ? 0 : 127;
+            botcmd.upmove = botcmd.upmove ? 0 : BotConstants::MAX_MOVE_SPEED;
         } else if (!m_pPath->GetNodeCount()) {
             // If the bot is not moving, cancel it
-            botcmd.upmove = botcmd.upmove ? 0 : 127;
+            botcmd.upmove = botcmd.upmove ? 0 : BotConstants::MAX_MOVE_SPEED;
         }
         return;
     }
@@ -126,12 +126,12 @@ void BotMovement::CheckJump(usercmd_t& botcmd)
         m_bJump          = true;
         m_iJumpCheckTime = level.inttime;
         m_vJumpLocation  = controlledEntity->origin;
-    } else if (level.inttime > m_iJumpCheckTime + 100) {
+    } else if (level.inttime > m_iJumpCheckTime + BotConstants::AIM_UPDATE_INTERVAL) {
         m_bJump = false;
 
         delta = m_vJumpLocation - controlledEntity->origin;
         if (delta.lengthSquared() < Square(32)) {
-            botcmd.upmove = 127;
+            botcmd.upmove = BotConstants::MAX_MOVE_SPEED;
         }
     }
 }
@@ -193,7 +193,7 @@ void BotMovement::CheckJumpOverEdge(usercmd_t& botcmd)
         "BotController::CheckJumpOverEdge"
     );
 
-    if (trace.fraction != 1.0) {
+    if (trace.fraction != BotConstants::TRACE_COMPLETE) {
         // Blocked
         return;
     }
@@ -221,7 +221,7 @@ void BotMovement::CheckJumpOverEdge(usercmd_t& botcmd)
     }
 
     if (!botcmd.upmove) {
-        botcmd.upmove = 127;
+        botcmd.upmove = BotConstants::MAX_MOVE_SPEED;
     } else {
         botcmd.upmove = 0;
     }

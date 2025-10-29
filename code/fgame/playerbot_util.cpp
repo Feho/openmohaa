@@ -132,7 +132,7 @@ void BotController::CheckReload(void)
 {
     Weapon *weap;
 
-    if (level.inttime < m_iLastFireTime + 2000) {
+    if (level.inttime < m_iLastFireTime + BotConstants::TARGET_UNSEEN_THRESHOLD) {
         // Don't reload while attacking
         return;
     }

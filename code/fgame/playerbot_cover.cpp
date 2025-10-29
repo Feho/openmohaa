@@ -72,7 +72,7 @@ BotController::CoverPoint BotController::FindBestCover(Vector enemyPos)
 
             trace = G_Trace(start, controlledEnt->mins, controlledEnt->maxs, end, controlledEnt, MASK_PLAYERSOLID, false, "BotController::FindBestCover");
 
-            if (trace.fraction == 1.0f || trace.allsolid || trace.startsolid) {
+            if (trace.fraction == BotConstants::TRACE_COMPLETE || trace.allsolid || trace.startsolid) {
                 // No ground or inside solid
                 continue;
             }
@@ -120,7 +120,7 @@ float BotController::EvaluateCoverQuality(Vector pos, Vector enemyPos)
 
     trace_t trace = G_Trace(eyePos, vec_zero, vec_zero, enemyEyePos, controlledEnt, MASK_SHOT, false, "BotController::EvaluateCoverQuality");
 
-    if (trace.fraction < 1.0f && trace.entityNum != ENTITYNUM_NONE) {
+    if (trace.fraction < BotConstants::TRACE_COMPLETE && trace.entityNum != ENTITYNUM_NONE) {
         // Something is blocking line of sight - this is good cover
         quality += 0.5f;
 
@@ -135,7 +135,7 @@ float BotController::EvaluateCoverQuality(Vector pos, Vector enemyPos)
 
             trace_t angleTrace = G_Trace(eyePos, vec_zero, vec_zero, checkPos, controlledEnt, MASK_SHOT, false, "BotController::EvaluateCoverQuality");
 
-            if (angleTrace.fraction < 1.0f) {
+            if (angleTrace.fraction < BotConstants::TRACE_COMPLETE) {
                 protectedAngles++;
             }
         }
@@ -147,7 +147,7 @@ float BotController::EvaluateCoverQuality(Vector pos, Vector enemyPos)
 
     // 2. Distance factor (prefer cover closer to enemy but not too close)
     float distToEnemy = (enemyPos - pos).length();
-    float idealDistance = 512.0f; // Ideal cover distance
+    float idealDistance = BotConstants::AWARENESS_RADIUS; // Ideal cover distance
     float distanceFactor = 1.0f - fabs(distToEnemy - idealDistance) / 1024.0f;
     if (distanceFactor < 0.0f) distanceFactor = 0.0f;
     quality += distanceFactor * 0.2f;
@@ -195,7 +195,7 @@ bool BotController::IsInCover(Vector pos, Vector enemyPos)
 
     trace_t trace = G_Trace(eyePos, vec_zero, vec_zero, enemyEyePos, controlledEnt, MASK_SHOT, false, "BotController::IsInCover");
 
-    return (trace.fraction < 1.0f && trace.entityNum != ENTITYNUM_NONE);
+    return (trace.fraction < BotConstants::TRACE_COMPLETE && trace.entityNum != ENTITYNUM_NONE);
 }
 
 /*
@@ -226,7 +226,7 @@ bool BotController::IsCoverCompromised(void)
         enemyPos.z
     )).length();
 
-    if (distanceChange > 256.0f) {
+    if (distanceChange > BotConstants::SEARCH_PATTERN_STEP) {
         // Enemy moved significantly, re-evaluate cover
         if (!IsInCover(coverState.current.position, enemyPos)) {
             if (g_bot_debug->integer >= 1) {
@@ -268,7 +268,7 @@ void BotController::UpdateCoverBehavior(void)
     switch (coverState.state) {
         case COVER_NONE:
             // Not using cover, try to find some
-            if (level.inttime > m_iLastCoverSearchTime + 2000) {
+            if (level.inttime > m_iLastCoverSearchTime + BotConstants::TARGET_UNSEEN_THRESHOLD) {
                 m_iLastCoverSearchTime = level.inttime;
                 CoverPoint newCover = FindBestCover(m_pEnemy->origin);
 
@@ -288,7 +288,7 @@ void BotController::UpdateCoverBehavior(void)
             // Check if we reached cover
             {
                 float distToCover = (controlledEnt->origin - coverState.current.position).length();
-                if (distToCover < 64.0f || movement.MoveDone()) {
+                if (distToCover < BotConstants::ESCAPE_ROUTE_TEST_DISTANCE || movement.MoveDone()) {
                     coverState.state = COVER_IN_COVER;
                     float hideMin = g_bot_cover_hide_min_time->value * 1000;
                     float hideMax = g_bot_cover_hide_max_time->value * 1000;

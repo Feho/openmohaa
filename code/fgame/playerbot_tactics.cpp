@@ -196,8 +196,8 @@ bool BotController::ShouldRetreat(void)
     }
 
     // Outnumbered check
-    int nearbyEnemies = CountEnemiesInRadius(512.0f);
-    int nearbyAllies = CountAlliesInRadius(512.0f);
+    int nearbyEnemies = CountEnemiesInRadius(BotConstants::AWARENESS_RADIUS);
+    int nearbyAllies = CountAlliesInRadius(BotConstants::AWARENESS_RADIUS);
     if (nearbyEnemies >= 2 && nearbyAllies <= 1) {
         return true;
     }
@@ -243,8 +243,8 @@ void BotController::ExecuteRetreat(void)
         gi.Printf("[BOT] %s: Executing tactical retreat (health: %.0f%%, enemies: %d, allies: %d)\n",
             controlledEnt->client->pers.netname,
             (controlledEnt->health / controlledEnt->max_health) * 100.0f,
-            CountEnemiesInRadius(512.0f),
-            CountAlliesInRadius(512.0f));
+            CountEnemiesInRadius(BotConstants::AWARENESS_RADIUS),
+            CountAlliesInRadius(BotConstants::AWARENESS_RADIUS));
     }
 }
 
