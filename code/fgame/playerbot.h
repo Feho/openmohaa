@@ -435,8 +435,8 @@ public:
 
     void AimAtAimNode(void);
 
-    void NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDistanceSquared, float fRadiusSquared);
-    int  GetEventPriority(int eventType);
+    void NoticeEvent(const Vector& vPos, int iType, Entity *pEnt, float fDistanceSquared, float fRadiusSquared);
+    int  GetEventPriority(int eventType) const;
     void ClearEnemy(void);
 
     void SendCommand(const char *text);

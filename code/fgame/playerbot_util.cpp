@@ -152,7 +152,9 @@ Get priority level for event type
 Returns: 0=none, 1=low priority (Curious state), 2=high priority (Investigation state)
 ====================
 */
-int BotController::GetEventPriority(int eventType)
+// Changed in OPM
+//  Added const qualifier - this is a pure function
+int BotController::GetEventPriority(int eventType) const
 {
     switch (eventType) {
     // High priority events - trigger Investigation state
@@ -187,7 +189,9 @@ NoticeEvent
 Warn the bot of an event
 ====================
 */
-void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDistanceSquared, float fRadiusSquared)
+// Changed in OPM
+//  Changed Vector parameter to const reference for efficiency
+void BotController::NoticeEvent(const Vector& vPos, int iType, Entity *pEnt, float fDistanceSquared, float fRadiusSquared)
 {
     Sentient *pSentOwner;
     float     fRangeFactor;
