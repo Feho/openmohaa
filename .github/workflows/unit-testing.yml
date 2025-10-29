@@ -48,6 +48,13 @@ jobs:
       run: |
         cmake --build ${{github.workspace}}/build --config Debug --parallel
 
+    - name: Check code formatting
+      working-directory: ${{github.workspace}}/source
+      run: |
+        clang-format --version
+        # Check that bot AI files are properly formatted
+        clang-format --dry-run --Werror code/fgame/playerbot*.cpp code/fgame/playerbot*.h
+
     - name: Test
       working-directory: ${{github.workspace}}
       run: |
