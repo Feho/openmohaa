@@ -56,6 +56,34 @@ set(GAME_MODULE_SHARED_SOURCES
     ${SCRIPT_SYSTEM_SOURCES}
 )
 
+# Added in OPM
+#  Enable strict warnings for bot AI code files
+file(GLOB BOT_SOURCE_FILES
+    ${SOURCE_DIR}/fgame/playerbot*.cpp
+)
+
+# Apply stricter warning flags for bot files
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    set(BOT_WARNING_FLAGS
+        -Wall           # Enable all common warnings
+        -Wextra         # Enable extra warnings
+        -Wpedantic      # Strict ISO C++ compliance
+        -Wcast-qual     # Warn about casts that drop qualifiers
+        -Wconversion    # Warn about implicit conversions
+        -Wsign-conversion  # Warn about sign conversions
+        -Wfloat-equal   # Warn about floating point equality comparisons
+        -Wshadow        # Warn about variable shadowing
+        -Wunused        # Warn about unused variables/functions
+    )
+
+    # Apply warning flags to bot source files
+    foreach(BOT_FILE ${BOT_SOURCE_FILES})
+        set_source_files_properties(${BOT_FILE}
+            PROPERTIES COMPILE_OPTIONS "${BOT_WARNING_FLAGS}"
+        )
+    endforeach()
+endif()
+
 set(CGAME_SOURCES_BASEGAME ${CGAME_SOURCES} ${GAME_MODULE_SHARED_SOURCES})
 set(GAME_SOURCES_BASEGAME ${GAME_SOURCES} ${GAME_MODULE_SHARED_SOURCES})
 set(UI_SOURCES_BASEGAME ${UI_SOURCES} ${GAME_MODULE_SHARED_SOURCES})
