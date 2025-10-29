@@ -76,8 +76,8 @@ BotController::BotController()
     m_iLastCoverSearchTime = 0;
 
     // Initialize tactical combat system (non-struct members)
-    m_fireMode = FIRE_BURST;
-    m_combatProfile = CAUTIOUS;
+    m_fireMode            = FIRE_BURST;
+    m_combatProfile       = CAUTIOUS;
     m_iSuppressionEndTime = 0;
 
     m_StateFlags = 0;

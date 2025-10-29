@@ -134,7 +134,8 @@ void BotController::GotKill(const Event& ev)
     ClearEnemy();
     m_iCuriousTime = 0;
 
-    if (g_bot_instamsg_chance->integer && level.inttime >= m_iNextTauntTime && (rand() % g_bot_instamsg_chance->integer) == 0) {
+    if (g_bot_instamsg_chance->integer && level.inttime >= m_iNextTauntTime
+        && (rand() % g_bot_instamsg_chance->integer) == 0) {
         //
         // Randomly play a taunt
         //

@@ -191,7 +191,9 @@ Warn the bot of an event
 */
 // Changed in OPM
 //  Changed Vector parameter to const reference for efficiency
-void BotController::NoticeEvent(const Vector& vPos, int iType, Entity *pEnt, float fDistanceSquared, float fRadiusSquared)
+void BotController::NoticeEvent(
+    const Vector& vPos, int iType, Entity *pEnt, float fDistanceSquared, float fRadiusSquared
+)
 {
     Sentient *pSentOwner;
     float     fRangeFactor;
@@ -261,7 +263,8 @@ void BotController::NoticeEvent(const Vector& vPos, int iType, Entity *pEnt, flo
         shouldAcceptEvent = true;
     } else if (newEventPriority == memoryState.currentEventPriority) {
         // Same priority - compare distances
-        Vector currentInvestigatePos = (memoryState.currentEventPriority == 2) ? memoryState.investigateEventPos : m_vNewCuriousPos;
+        Vector currentInvestigatePos =
+            (memoryState.currentEventPriority == 2) ? memoryState.investigateEventPos : m_vNewCuriousPos;
         Vector deltaNew     = vPos - controlledEnt->origin;
         Vector deltaCurrent = currentInvestigatePos - controlledEnt->origin;
 
@@ -285,9 +288,13 @@ void BotController::NoticeEvent(const Vector& vPos, int iType, Entity *pEnt, flo
         memoryState.investigateEventPos  = vPos;
 
         if (g_bot_debug->integer >= 1) {
-            const char* eventName = G_AIEventStringFromType(iType);
-            gi.Printf("[BOT] %s: High-priority sound event '%s' at distance %.0f - investigating\n",
-                controlledEnt->client->pers.netname, eventName, sqrt(fDistanceSquared));
+            const char *eventName = G_AIEventStringFromType(iType);
+            gi.Printf(
+                "[BOT] %s: High-priority sound event '%s' at distance %.0f - investigating\n",
+                controlledEnt->client->pers.netname,
+                eventName,
+                sqrt(fDistanceSquared)
+            );
         }
     } else {
         // Low priority event - trigger Curious state
@@ -295,9 +302,13 @@ void BotController::NoticeEvent(const Vector& vPos, int iType, Entity *pEnt, flo
         m_vNewCuriousPos = vPos;
 
         if (g_bot_debug->integer >= 2) {
-            const char* eventName = G_AIEventStringFromType(iType);
-            gi.Printf("[BOT] %s: Low-priority sound event '%s' at distance %.0f - curious\n",
-                controlledEnt->client->pers.netname, eventName, sqrt(fDistanceSquared));
+            const char *eventName = G_AIEventStringFromType(iType);
+            gi.Printf(
+                "[BOT] %s: Low-priority sound event '%s' at distance %.0f - curious\n",
+                controlledEnt->client->pers.netname,
+                eventName,
+                sqrt(fDistanceSquared)
+            );
         }
     }
 }
@@ -365,11 +376,15 @@ void BotController::PrintDebugInfo(void)
         }
     } else if (memoryState.enemyMemory.enemy) {
         gi.Printf("  Enemy Memory (lost):\n");
-        gi.Printf("    Last Known Position: %.1f %.1f %.1f\n",
-                  memoryState.enemyMemory.lastKnownPosition[0],
-                  memoryState.enemyMemory.lastKnownPosition[1],
-                  memoryState.enemyMemory.lastKnownPosition[2]);
-        gi.Printf("    Last Seen: %.1fs ago\n", (level.inttime - (int)(memoryState.enemyMemory.lastSeenTime * 1000)) / 1000.0f);
+        gi.Printf(
+            "    Last Known Position: %.1f %.1f %.1f\n",
+            memoryState.enemyMemory.lastKnownPosition[0],
+            memoryState.enemyMemory.lastKnownPosition[1],
+            memoryState.enemyMemory.lastKnownPosition[2]
+        );
+        gi.Printf(
+            "    Last Seen: %.1fs ago\n", (level.inttime - (int)(memoryState.enemyMemory.lastSeenTime * 1000)) / 1000.0f
+        );
         gi.Printf("    Confidence: %.2f\n", memoryState.enemyMemory.confidenceLevel);
     } else {
         gi.Printf("  No enemy\n");
@@ -389,9 +404,9 @@ void BotController::PrintDebugInfo(void)
     // Movement information
     gi.Printf("\n--- Movement Info ---\n");
     if (movement.IsMoving()) {
-        Vector goal = movement.GetCurrentGoal();
+        Vector goal  = movement.GetCurrentGoal();
         Vector delta = goal - player->origin;
-        float dist = delta.length();
+        float  dist  = delta.length();
         gi.Printf("  Moving to: %.1f %.1f %.1f\n", goal[0], goal[1], goal[2]);
         gi.Printf("  Distance to goal: %.1f units\n", dist);
     } else {
@@ -474,8 +489,9 @@ void BotController::ForceState(int stateIndex)
         (this->*func->BeginState)();
     }
 
-    gi.Printf("Forced bot '%s' into state [%d] %s\n",
-              controlledEnt->client->pers.netname, stateIndex, stateNames[stateIndex]);
+    gi.Printf(
+        "Forced bot '%s' into state [%d] %s\n", controlledEnt->client->pers.netname, stateIndex, stateNames[stateIndex]
+    );
 }
 
 /*
@@ -513,13 +529,13 @@ void BotController::DrawDebugVisualization(void)
     }
 
     Player *player = (Player *)controlledEnt.Pointer();
-    Vector origin  = player->origin + Vector(0, 0, player->viewheight);
+    Vector  origin = player->origin + Vector(0, 0, player->viewheight);
 
     // Draw state information overlay
     if (m_bShowState) {
         const char *stateNames[] = {"Attack", "Investigate", "Curious", "Grenade", "Idle"};
-        str stateText = "State: ";
-        bool hasState = false;
+        str         stateText    = "State: ";
+        bool        hasState     = false;
 
         for (int i = 0; i < MAX_BOT_FUNCTIONS; i++) {
             if (m_StateFlags & (1 << i)) {
@@ -583,7 +599,7 @@ void BotController::DrawDebugVisualization(void)
     // Draw path visualization
     if (m_bShowPath && movement.IsMoving()) {
         Vector goal = movement.GetCurrentGoal();
-        Vector dir = movement.GetCurrentPathDirection();
+        Vector dir  = movement.GetCurrentPathDirection();
 
         // Draw line to current goal (red)
         G_DebugLine(origin, goal, 1.0f, 0.0f, 0.0f, 1.0f);

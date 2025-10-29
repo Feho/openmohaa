@@ -161,4 +161,3 @@ void BotController::UseWeaponWithAmmo()
 
     controlledEnt->useWeapon(bestWeapon, WEAPON_MAIN);
 }
-

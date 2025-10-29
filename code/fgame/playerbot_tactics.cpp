@@ -46,9 +46,8 @@ void BotController::SetFireMode(FireMode mode)
         m_fireMode = mode;
 
         if (g_bot_debug->integer >= 2) {
-            const char* modeName[] = {"ACCURATE", "BURST", "SUPPRESSION", "MELEE"};
-            gi.Printf("[BOT] %s: Fire mode changed to %s\n",
-                controlledEnt->client->pers.netname, modeName[mode]);
+            const char *modeName[] = {"ACCURATE", "BURST", "SUPPRESSION", "MELEE"};
+            gi.Printf("[BOT] %s: Fire mode changed to %s\n", controlledEnt->client->pers.netname, modeName[mode]);
         }
     }
 }
@@ -62,9 +61,9 @@ Counts the number of enemies within the specified radius
 */
 int BotController::CountEnemiesInRadius(float radius)
 {
-    int count = 0;
-    float radiusSq = radius * radius;
-    Vector origin = controlledEnt->origin;
+    int    count    = 0;
+    float  radiusSq = radius * radius;
+    Vector origin   = controlledEnt->origin;
 
     for (int i = 0; i < game.maxclients; i++) {
         gentity_t *ent = &g_entities[i];
@@ -73,8 +72,12 @@ int BotController::CountEnemiesInRadius(float radius)
         }
 
         Sentient *sent = (Sentient *)ent->entity;
-        if (sent == controlledEnt) continue;
-        if (sent->deadflag) continue;
+        if (sent == controlledEnt) {
+            continue;
+        }
+        if (sent->deadflag) {
+            continue;
+        }
 
         // Check if enemy (not on same team)
         bool isEnemy = false;
@@ -109,9 +112,9 @@ Counts the number of allies within the specified radius
 */
 int BotController::CountAlliesInRadius(float radius)
 {
-    int count = 0;
-    float radiusSq = radius * radius;
-    Vector origin = controlledEnt->origin;
+    int    count    = 0;
+    float  radiusSq = radius * radius;
+    Vector origin   = controlledEnt->origin;
 
     for (int i = 0; i < game.maxclients; i++) {
         gentity_t *ent = &g_entities[i];
@@ -120,8 +123,12 @@ int BotController::CountAlliesInRadius(float radius)
         }
 
         Sentient *sent = (Sentient *)ent->entity;
-        if (sent == controlledEnt) continue;
-        if (sent->deadflag) continue;
+        if (sent == controlledEnt) {
+            continue;
+        }
+        if (sent->deadflag) {
+            continue;
+        }
 
         // Check if ally (on same team)
         bool isAlly = false;
@@ -159,8 +166,8 @@ BotController::CombatProfile BotController::DetermineCombatProfile(void)
         return RETREATING;
     }
 
-    float health = controlledEnt->health;
-    float maxHealth = controlledEnt->max_health;
+    float health      = controlledEnt->health;
+    float maxHealth   = controlledEnt->max_health;
     float healthRatio = health / maxHealth;
     // Changed in OPM
     //  Refactored to use CoverStateData struct
@@ -187,8 +194,8 @@ Determines if the bot should retreat from combat
 bool BotController::ShouldRetreat(void)
 {
     // Health check
-    float health = controlledEnt->health;
-    float maxHealth = controlledEnt->max_health;
+    float health      = controlledEnt->health;
+    float maxHealth   = controlledEnt->max_health;
     float healthRatio = (health / maxHealth) * 100.0f;
 
     if (healthRatio < g_bot_retreat_health_threshold->value) {
@@ -197,14 +204,13 @@ bool BotController::ShouldRetreat(void)
 
     // Outnumbered check
     int nearbyEnemies = CountEnemiesInRadius(BotConstants::AWARENESS_RADIUS);
-    int nearbyAllies = CountAlliesInRadius(BotConstants::AWARENESS_RADIUS);
+    int nearbyAllies  = CountAlliesInRadius(BotConstants::AWARENESS_RADIUS);
     if (nearbyEnemies >= 2 && nearbyAllies <= 1) {
         return true;
     }
 
     // Out of ammo check
-    if (controlledEnt->client->ps.stats[STAT_AMMO] <= 0
-        && controlledEnt->client->ps.stats[STAT_CLIPAMMO] <= 0) {
+    if (controlledEnt->client->ps.stats[STAT_AMMO] <= 0 && controlledEnt->client->ps.stats[STAT_CLIPAMMO] <= 0) {
         return true;
     }
 
@@ -228,7 +234,9 @@ Executes tactical retreat behavior
 */
 void BotController::ExecuteRetreat(void)
 {
-    if (!m_pEnemy) return;
+    if (!m_pEnemy) {
+        return;
+    }
 
     // Find path away from enemy
     Vector retreatDir = controlledEnt->origin - m_pEnemy->origin;
@@ -240,11 +248,13 @@ void BotController::ExecuteRetreat(void)
     SetFireMode(FIRE_SUPPRESSION);
 
     if (g_bot_debug->integer >= 1) {
-        gi.Printf("[BOT] %s: Executing tactical retreat (health: %.0f%%, enemies: %d, allies: %d)\n",
+        gi.Printf(
+            "[BOT] %s: Executing tactical retreat (health: %.0f%%, enemies: %d, allies: %d)\n",
             controlledEnt->client->pers.netname,
             (controlledEnt->health / controlledEnt->max_health) * 100.0f,
             CountEnemiesInRadius(BotConstants::AWARENESS_RADIUS),
-            CountAlliesInRadius(BotConstants::AWARENESS_RADIUS));
+            CountAlliesInRadius(BotConstants::AWARENESS_RADIUS)
+        );
     }
 }
 
@@ -259,7 +269,9 @@ void BotController::UpdateSuppressionFire(void)
 {
     // Changed in OPM
     //  Refactored to use MemoryState struct
-    if (!memoryState.enemyMemory.enemy) return;
+    if (!memoryState.enemyMemory.enemy) {
+        return;
+    }
 
     // Changed in OPM
     //  Refactored to use MemoryState struct
@@ -278,9 +290,13 @@ void BotController::UpdateSuppressionFire(void)
         m_botCmd.buttons |= BUTTON_ATTACKLEFT;
 
         if (g_bot_debug->integer >= 2) {
-            gi.Printf("[BOT] %s: Suppressing area at (%.0f, %.0f, %.0f)\n",
+            gi.Printf(
+                "[BOT] %s: Suppressing area at (%.0f, %.0f, %.0f)\n",
                 controlledEnt->client->pers.netname,
-                targetPos.x, targetPos.y, targetPos.z);
+                targetPos.x,
+                targetPos.y,
+                targetPos.z
+            );
         }
     }
 }
@@ -294,7 +310,9 @@ Calculates burst duration and delay based on distance to enemy
 */
 void BotController::CalculateBurstTiming(void)
 {
-    if (!m_pEnemy) return;
+    if (!m_pEnemy) {
+        return;
+    }
 
     float distToEnemy = (m_pEnemy->origin - controlledEnt->origin).length();
 
@@ -302,33 +320,30 @@ void BotController::CalculateBurstTiming(void)
     //  Refactored to use CombatState struct
     if (distToEnemy > g_bot_burst_range_long->value) {
         // Long range: short, accurate bursts
-        combatState.burstDuration = G_Random(0.3f) + 0.3f;  // 0.3-0.6s
-        combatState.burstDelay = G_Random(0.4f) + 0.4f;     // 0.4-0.8s
+        combatState.burstDuration    = G_Random(0.3f) + 0.3f; // 0.3-0.6s
+        combatState.burstDelay       = G_Random(0.4f) + 0.4f; // 0.4-0.8s
         combatState.requireLowSpread = true;
 
         if (g_bot_debug->integer >= 2) {
-            gi.Printf("[BOT] %s: Long range burst (%.1f units)\n",
-                controlledEnt->client->pers.netname, distToEnemy);
+            gi.Printf("[BOT] %s: Long range burst (%.1f units)\n", controlledEnt->client->pers.netname, distToEnemy);
         }
     } else if (distToEnemy > g_bot_burst_range_medium->value) {
         // Medium range: moderate bursts
-        combatState.burstDuration = G_Random(0.5f) + 0.5f;  // 0.5-1.0s
-        combatState.burstDelay = G_Random(0.3f) + 0.2f;     // 0.2-0.5s
+        combatState.burstDuration    = G_Random(0.5f) + 0.5f; // 0.5-1.0s
+        combatState.burstDelay       = G_Random(0.3f) + 0.2f; // 0.2-0.5s
         combatState.requireLowSpread = false;
 
         if (g_bot_debug->integer >= 2) {
-            gi.Printf("[BOT] %s: Medium range burst (%.1f units)\n",
-                controlledEnt->client->pers.netname, distToEnemy);
+            gi.Printf("[BOT] %s: Medium range burst (%.1f units)\n", controlledEnt->client->pers.netname, distToEnemy);
         }
     } else {
         // Close range: sustained fire
-        combatState.burstDuration = G_Random(1.0f) + 1.0f;  // 1.0-2.0s
-        combatState.burstDelay = G_Random(0.2f) + 0.1f;     // 0.1-0.3s
+        combatState.burstDuration    = G_Random(1.0f) + 1.0f; // 1.0-2.0s
+        combatState.burstDelay       = G_Random(0.2f) + 0.1f; // 0.1-0.3s
         combatState.requireLowSpread = false;
 
         if (g_bot_debug->integer >= 2) {
-            gi.Printf("[BOT] %s: Close range burst (%.1f units)\n",
-                controlledEnt->client->pers.netname, distToEnemy);
+            gi.Printf("[BOT] %s: Close range burst (%.1f units)\n", controlledEnt->client->pers.netname, distToEnemy);
         }
     }
 }
@@ -351,8 +366,8 @@ void BotController::CheckAmmoConservation(void)
     }
 
     // Get current ammo from player stats (reserve + clip)
-    int ammo = controlledEnt->client->ps.stats[STAT_AMMO];
-    int clipAmmo = controlledEnt->client->ps.stats[STAT_CLIPAMMO];
+    int ammo      = controlledEnt->client->ps.stats[STAT_AMMO];
+    int clipAmmo  = controlledEnt->client->ps.stats[STAT_CLIPAMMO];
     int totalAmmo = ammo + clipAmmo;
 
     // Simple check: if total ammo is low (<=10 rounds), enable conservation
@@ -360,12 +375,15 @@ void BotController::CheckAmmoConservation(void)
         // Low ammo: single shots only
         combatState.ammoLow = true;
         SetFireMode(FIRE_ACCURATE);
-        combatState.burstDuration = 0.1f;
+        combatState.burstDuration    = 0.1f;
         combatState.requireLowSpread = true;
 
         if (g_bot_debug->integer >= 1) {
-            gi.Printf("[BOT] %s: Low ammo conservation mode (%d rounds remaining)\n",
-                controlledEnt->client->pers.netname, totalAmmo);
+            gi.Printf(
+                "[BOT] %s: Low ammo conservation mode (%d rounds remaining)\n",
+                controlledEnt->client->pers.netname,
+                totalAmmo
+            );
         }
     } else if (totalAmmo <= 30 && totalAmmo > 10) {
         // Medium ammo: controlled bursts
@@ -391,12 +409,15 @@ void BotController::UpdateTacticalCombat(void)
 
     // Determine combat profile
     CombatProfile oldProfile = m_combatProfile;
-    m_combatProfile = DetermineCombatProfile();
+    m_combatProfile          = DetermineCombatProfile();
 
     if (oldProfile != m_combatProfile && g_bot_debug->integer >= 1) {
-        const char* profileNames[] = {"AGGRESSIVE", "CAUTIOUS", "DEFENSIVE", "RETREATING"};
-        gi.Printf("[BOT] %s: Combat profile changed to %s\n",
-            controlledEnt->client->pers.netname, profileNames[m_combatProfile]);
+        const char *profileNames[] = {"AGGRESSIVE", "CAUTIOUS", "DEFENSIVE", "RETREATING"};
+        gi.Printf(
+            "[BOT] %s: Combat profile changed to %s\n",
+            controlledEnt->client->pers.netname,
+            profileNames[m_combatProfile]
+        );
     }
 
     // Handle retreat
@@ -414,28 +435,28 @@ void BotController::UpdateTacticalCombat(void)
     //  Refactored to use CombatState and MemoryState structs
     // Apply fire mode based on profile
     switch (m_combatProfile) {
-        case AGGRESSIVE:
-            if (!combatState.ammoLow) {
-                SetFireMode(FIRE_BURST);
-            }
-            break;
-        case CAUTIOUS:
+    case AGGRESSIVE:
+        if (!combatState.ammoLow) {
             SetFireMode(FIRE_BURST);
-            break;
-        case DEFENSIVE:
-            // Use suppression if we have enemy memory but no current LOS
-            if (!m_pEnemy && memoryState.enemyMemory.enemy) {
-                SetFireMode(FIRE_SUPPRESSION);
-                if (level.inttime > m_iSuppressionEndTime) {
-                    m_iSuppressionEndTime = level.inttime + (int)(g_bot_suppression_duration->value * 1000);
-                }
-                UpdateSuppressionFire();
-            } else {
-                SetFireMode(FIRE_ACCURATE);
+        }
+        break;
+    case CAUTIOUS:
+        SetFireMode(FIRE_BURST);
+        break;
+    case DEFENSIVE:
+        // Use suppression if we have enemy memory but no current LOS
+        if (!m_pEnemy && memoryState.enemyMemory.enemy) {
+            SetFireMode(FIRE_SUPPRESSION);
+            if (level.inttime > m_iSuppressionEndTime) {
+                m_iSuppressionEndTime = level.inttime + (int)(g_bot_suppression_duration->value * 1000);
             }
-            break;
-        case RETREATING:
-            // Already handled above
-            break;
+            UpdateSuppressionFire();
+        } else {
+            SetFireMode(FIRE_ACCURATE);
+        }
+        break;
+    case RETREATING:
+        // Already handled above
+        break;
     }
 }

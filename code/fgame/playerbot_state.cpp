@@ -36,7 +36,7 @@ void BotController::CheckStates(void)
 
         if (func->CheckCondition) {
             bool conditionMet = (this->*func->CheckCondition)();
-            bool stateActive = (m_StateFlags & (1 << i)) != 0;
+            bool stateActive  = (m_StateFlags & (1 << i)) != 0;
 
             if (conditionMet) {
                 if (!stateActive) {
@@ -94,15 +94,15 @@ bool BotController::CanExitState(int stateIndex)
     float minDuration = 0.0f;
 
     switch (stateIndex) {
-        case 0: // Attack state
-            minDuration = g_bot_state_minduration_attack->value;
-            break;
-        case 1: // Investigate state
-            minDuration = g_bot_state_minduration_investigate->value;
-            break;
-        default:
-            // Other states (Curious, Grenade, Idle, Weapon) have no minimum duration
-            return true;
+    case 0: // Attack state
+        minDuration = g_bot_state_minduration_attack->value;
+        break;
+    case 1: // Investigate state
+        minDuration = g_bot_state_minduration_investigate->value;
+        break;
+    default:
+        // Other states (Curious, Grenade, Idle, Weapon) have no minimum duration
+        return true;
     }
 
     // If no minimum duration, always allow exit
@@ -146,17 +146,17 @@ void BotController::State_Reset(void)
     m_iEnemyEyesTag   = -1;
 
     // Clear enemy memory
-    memoryState.enemyMemory.enemy = NULL;
-    memoryState.enemyMemory.lastKnownPosition = vec_zero;
-    memoryState.enemyMemory.lastKnownVelocity = vec_zero;
-    memoryState.enemyMemory.lastSeenTime = 0.0f;
-    memoryState.enemyMemory.confidenceLevel = 0.0f;
+    memoryState.enemyMemory.enemy                = NULL;
+    memoryState.enemyMemory.lastKnownPosition    = vec_zero;
+    memoryState.enemyMemory.lastKnownVelocity    = vec_zero;
+    memoryState.enemyMemory.lastSeenTime         = 0.0f;
+    memoryState.enemyMemory.confidenceLevel      = 0.0f;
     memoryState.enemyMemory.investigationStarted = false;
-    memoryState.enemyMemory.searchAttempts = 0;
-    memoryState.investigateStartTime = 0;
+    memoryState.enemyMemory.searchAttempts       = 0;
+    memoryState.investigateStartTime             = 0;
 
     // Clear cover state
     coverState.current.quality = 0.0f;
-    coverState.state = COVER_NONE;
-    m_iLastCoverSearchTime = 0;
+    coverState.state           = COVER_NONE;
+    m_iLastCoverSearchTime     = 0;
 }

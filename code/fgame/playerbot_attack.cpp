@@ -133,7 +133,7 @@ bool BotController::CheckCondition_Attack(void)
             } else {
                 // Check if enough time has passed since target lock
                 float timeSinceLock = (level.svsTime - m_iTargetLockTime);
-                float minLockTime = g_bot_target_lock_time->value;
+                float minLockTime   = g_bot_target_lock_time->value;
 
                 if (timeSinceLock >= minLockTime) {
                     shouldSwitch = true;
@@ -144,8 +144,9 @@ bool BotController::CheckCondition_Attack(void)
                     // Keep current target if it's still in the visible list
                     for (int i = 1; i <= SentientList.NumObjects(); i++) {
                         Sentient *sent = SentientList.ObjectAt(i);
-                        if (sent == m_pEnemy && controlledEnt->CanSee(sent, BotConstants::DEFAULT_FOV_DEGREES, maxDistance, false)) {
-                            bestEnemy = m_pEnemy;
+                        if (sent == m_pEnemy
+                            && controlledEnt->CanSee(sent, BotConstants::DEFAULT_FOV_DEGREES, maxDistance, false)) {
+                            bestEnemy      = m_pEnemy;
                             bestDistanceSq = (m_pEnemy->origin - controlledEnt->origin).lengthSquared();
                             break;
                         }
@@ -158,20 +159,24 @@ bool BotController::CheckCondition_Attack(void)
 
                 // Debug output for target switching
                 if (m_pEnemy && g_bot_debug->integer >= 1) {
-                    const char* oldName = "AI";
-                    const char* newName = "AI";
+                    const char *oldName = "AI";
+                    const char *newName = "AI";
 
-                    Sentient* oldEnemy = static_cast<Sentient*>(m_pEnemy.Pointer());
+                    Sentient *oldEnemy = static_cast<Sentient *>(m_pEnemy.Pointer());
                     if (oldEnemy && oldEnemy->IsSubclassOfPlayer()) {
-                        oldName = static_cast<Player*>(oldEnemy)->client->pers.netname;
+                        oldName = static_cast<Player *>(oldEnemy)->client->pers.netname;
                     }
                     if (bestEnemy->IsSubclassOfPlayer()) {
-                        newName = static_cast<Player*>(bestEnemy)->client->pers.netname;
+                        newName = static_cast<Player *>(bestEnemy)->client->pers.netname;
                     }
 
-                    gi.Printf("[BOT] %s: Switching target from %s to %s (lock time: %.1fs)\n",
-                        controlledEnt->client->pers.netname, oldName, newName,
-                        (level.svsTime - m_iTargetLockTime));
+                    gi.Printf(
+                        "[BOT] %s: Switching target from %s to %s (lock time: %.1fs)\n",
+                        controlledEnt->client->pers.netname,
+                        oldName,
+                        newName,
+                        (level.svsTime - m_iTargetLockTime)
+                    );
                 }
             }
         } else {
@@ -186,16 +191,20 @@ bool BotController::CheckCondition_Attack(void)
 
                 // Debug output for initial target acquisition
                 if (g_bot_debug->integer >= 1) {
-                    const char* enemyName = "AI";
+                    const char *enemyName = "AI";
                     if (bestEnemy->IsSubclassOfPlayer()) {
-                        enemyName = static_cast<Player*>(bestEnemy)->client->pers.netname;
+                        enemyName = static_cast<Player *>(bestEnemy)->client->pers.netname;
                     }
-                    gi.Printf("[BOT] %s: Acquired new target: %s at distance %.0f\n",
-                        controlledEnt->client->pers.netname, enemyName, sqrt(bestDistanceSq));
+                    gi.Printf(
+                        "[BOT] %s: Acquired new target: %s at distance %.0f\n",
+                        controlledEnt->client->pers.netname,
+                        enemyName,
+                        sqrt(bestDistanceSq)
+                    );
                 }
             }
 
-            m_pEnemy = bestEnemy;
+            m_pEnemy          = bestEnemy;
             m_iTargetLockTime = level.svsTime;
         }
 
@@ -204,11 +213,11 @@ bool BotController::CheckCondition_Attack(void)
         // Changed in OPM
         //  Refactored to use MemoryState struct
         // Update enemy memory
-        memoryState.enemyMemory.enemy = bestEnemy;
+        memoryState.enemyMemory.enemy             = bestEnemy;
         memoryState.enemyMemory.lastKnownPosition = bestEnemy->origin;
         memoryState.enemyMemory.lastKnownVelocity = bestEnemy->velocity;
-        memoryState.enemyMemory.lastSeenTime = level.svsTime;
-        memoryState.enemyMemory.confidenceLevel = 1.0f;
+        memoryState.enemyMemory.lastSeenTime      = level.svsTime;
+        memoryState.enemyMemory.confidenceLevel   = 1.0f;
 
         m_iAttackTime = level.inttime + BotConstants::ATTACK_REACQUIRE_DELAY;
         return true;
@@ -249,7 +258,7 @@ bool BotController::ValidateAttackPreconditions(void)
 //  Scan visible enemies and select the best target based on distance and target stickiness
 Sentient *BotController::SelectBestTarget(float maxDistance, float& outDistanceSq)
 {
-    Sentient *bestEnemy     = NULL;
+    Sentient *bestEnemy      = NULL;
     float     bestDistanceSq = 999999.0f;
 
     for (int i = 1; i <= SentientList.NumObjects(); i++) {
@@ -337,7 +346,9 @@ void BotController::AimAtTarget(bool canSee)
 //  Handle melee attack logic
 // Changed in OPM
 //  Now accepts weapon pointer to avoid redundant GetActiveWeapon() call
-void BotController::HandleMeleeAttack(bool canSee, float distanceSq, float secondaryRangeSq, Weapon *weapon, bool& outMelee)
+void BotController::HandleMeleeAttack(
+    bool canSee, float distanceSq, float secondaryRangeSq, Weapon *weapon, bool& outMelee
+)
 {
     if (!weapon) {
         return;
@@ -473,17 +484,11 @@ void BotController::HandleWeaponFiring(
 //  Execute all firing logic including weapon firing, burst control, and melee
 // Changed in OPM
 //  Now returns fMinDistance based on weapon range instead of accepting it as parameter
-float BotController::ExecuteFiring(
-    bool  canSee,
-    float distanceSq,
-    bool& outNoMove,
-    bool& outFiring,
-    bool& outMelee
-)
+float BotController::ExecuteFiring(bool canSee, float distanceSq, bool& outNoMove, bool& outFiring, bool& outMelee)
 {
     static constexpr float DEFAULT_MIN_ATTACK_DISTANCE = BotConstants::OBSTACLE_AVOIDANCE_DISTANCE;
     static constexpr float MAX_MIN_ATTACK_DISTANCE     = BotConstants::SEARCH_PATTERN_STEP;
-    static constexpr float ATTACK_RANGE_DIVISOR        = 1.25f;  // Safety factor for primary weapon range
+    static constexpr float ATTACK_RANGE_DIVISOR        = 1.25f; // Safety factor for primary weapon range
 
     if (!canSee) {
         m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
@@ -508,9 +513,9 @@ float BotController::ExecuteFiring(
 
     bool bCanAttack = true;
     if (m_iLastUnseenTime) {
-        const float        reactionTime  = Q_min(1000 * Q_min(1, distanceSq / Square(2048)), 1000);
-        const unsigned int minDelay      = g_bot_attack_react_min_delay->value * 1000;
-        const unsigned int randomDelay   = g_bot_attack_react_random_delay->value * 1000;
+        const float        reactionTime = Q_min(1000 * Q_min(1, distanceSq / Square(2048)), 1000);
+        const unsigned int minDelay     = g_bot_attack_react_min_delay->value * 1000;
+        const unsigned int randomDelay  = g_bot_attack_react_random_delay->value * 1000;
         if (level.inttime <= m_iLastUnseenTime + minDelay + G_Random(randomDelay)) {
             bCanAttack = false;
         } else {
@@ -534,7 +539,16 @@ float BotController::ExecuteFiring(
     const int maxcontinuousFireTime = fireDelay + (int)(combatState.burstDuration * 1000);
     const int maxBurstTime          = fireDelay + (int)(combatState.burstDelay * 1000);
 
-    HandleWeaponFiring(canSee, distanceSq, fPrimaryBulletRangeSquared, fSecondaryBulletRangeSquared, weapon, outNoMove, outFiring, outMelee);
+    HandleWeaponFiring(
+        canSee,
+        distanceSq,
+        fPrimaryBulletRangeSquared,
+        fSecondaryBulletRangeSquared,
+        weapon,
+        outNoMove,
+        outFiring,
+        outMelee
+    );
 
     //
     // Burst
@@ -553,11 +567,11 @@ float BotController::ExecuteFiring(
     // Changed in OPM
     //  Refactored to use MemoryState struct
     // Update enemy memory continuously while visible
-    memoryState.enemyMemory.enemy                = m_pEnemy;
-    memoryState.enemyMemory.lastKnownPosition    = m_pEnemy->origin;
-    memoryState.enemyMemory.lastKnownVelocity    = m_pEnemy->velocity;
-    memoryState.enemyMemory.lastSeenTime         = level.svsTime;
-    memoryState.enemyMemory.confidenceLevel      = 1.0f;
+    memoryState.enemyMemory.enemy             = m_pEnemy;
+    memoryState.enemyMemory.lastKnownPosition = m_pEnemy->origin;
+    memoryState.enemyMemory.lastKnownVelocity = m_pEnemy->velocity;
+    memoryState.enemyMemory.lastSeenTime      = level.svsTime;
+    memoryState.enemyMemory.confidenceLevel   = 1.0f;
 
     // Calculate minimum attack distance based on weapon range (matching original behavior)
     float fMinDistance = fPrimaryBulletRange;
@@ -612,15 +626,19 @@ void BotController::State_Attack(void)
         return;
     }
 
-    bool  bMelee   = false;
-    bool  bCanSee  = false;
-    bool  bNoMove  = false;
-    bool  bFiring  = false;
+    bool  bMelee           = false;
+    bool  bCanSee          = false;
+    bool  bNoMove          = false;
+    bool  bFiring          = false;
     float fDistanceSquared = (m_pEnemy->origin - controlledEnt->origin).lengthSquared();
     m_vOldEnemyPos         = m_vLastEnemyPos;
 
-    bCanSee =
-        controlledEnt->CanSee(m_pEnemy, 20, Q_min(world->m_fAIVisionDistance, world->farplane_distance * BotConstants::FARPLANE_VISION_FACTOR), false);
+    bCanSee = controlledEnt->CanSee(
+        m_pEnemy,
+        20,
+        Q_min(world->m_fAIVisionDistance, world->farplane_distance * BotConstants::FARPLANE_VISION_FACTOR),
+        false
+    );
 
     // Execute firing logic and get calculated minimum distance based on weapon range
     float fMinDistance        = ExecuteFiring(bCanSee, fDistanceSquared, bNoMove, bFiring, bMelee);
@@ -639,9 +657,9 @@ void BotController::State_Attack(void)
     CoordinateAttack();
 
     // Disable cover behavior at close range - prioritize direct combat
-    const float closeRangeThreshold = 384.0f;
+    const float closeRangeThreshold        = 384.0f;
     const float closeRangeThresholdSquared = closeRangeThreshold * closeRangeThreshold;
-    const bool isCloseRange = fDistanceSquared < closeRangeThresholdSquared;
+    const bool  isCloseRange               = fDistanceSquared < closeRangeThresholdSquared;
 
     // Changed in OPM
     //  Refactored to use CoverStateData struct
