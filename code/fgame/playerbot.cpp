@@ -100,4 +100,10 @@ void BotController::Think()
     GetEyeInfo(&eyeinfo);
 
     G_ClientThink(controlledEnt->edict, &ucmd, &eyeinfo);
+
+    // Added in OPM
+    //  Draw debug visualization if enabled
+    if (m_bShowPerception || m_bShowPath || m_bShowEnemy || m_bShowState) {
+        DrawDebugVisualization();
+    }
 }

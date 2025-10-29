@@ -64,6 +64,7 @@ typedef enum
    } facet_t;
 
 void G_DebugHighlightFacet( Vector org, Vector mins, Vector maxs, facet_t facet, float r, float g, float b, float alpha );
+void G_DebugString( Vector pos, float scale, float r, float g, float b, const char *pszText, ... );
 
 extern debugline_t *DebugLines;
 extern debugstring_t *DebugStrings;

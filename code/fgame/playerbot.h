@@ -451,6 +451,19 @@ public:
 
     BotMovement& GetMovement();
 
+    // Added in OPM
+    //  Debug visualization and introspection methods
+    void PrintDebugInfo(void);
+    void ForceState(int stateIndex);
+    void TogglePerceptionVisualization(void);
+    void DrawDebugVisualization(void);
+
+    // Debug visualization flags
+    bool m_bShowPerception;
+    bool m_bShowPath;
+    bool m_bShowEnemy;
+    bool m_bShowState;
+
 public:
     void    setControlledEntity(Player *player);
     Player *getControlledEntity() const;

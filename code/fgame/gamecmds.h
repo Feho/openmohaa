@@ -62,3 +62,9 @@ qboolean G_RemoveBotCommand(gentity_t *ent);
 #ifdef _DEBUG
 qboolean G_BotCommand(gentity_t *ent);
 #endif
+
+// Added in OPM
+//  Bot debug visualization commands
+qboolean G_BotDebugInfoCmd(gentity_t *ent);
+qboolean G_BotForceStateCmd(gentity_t *ent);
+qboolean G_BotShowPerceptionCmd(gentity_t *ent);

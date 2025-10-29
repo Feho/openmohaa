@@ -81,6 +81,13 @@ BotController::BotController()
     m_iSuppressionEndTime = 0;
 
     m_StateFlags = 0;
+
+    // Added in OPM
+    //  Initialize debug visualization flags
+    m_bShowPerception = false;
+    m_bShowPath       = false;
+    m_bShowEnemy      = false;
+    m_bShowState      = false;
 }
 
 BotController::~BotController()

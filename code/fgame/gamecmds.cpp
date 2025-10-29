@@ -69,15 +69,18 @@ consolecmd_t G_ConsoleCmds[] = {
     {"reloadmap",       G_ReloadMap,          qfalse},
     // Added in OPM
     //====
-    {"compilescript",   G_CompileScript,      qfalse},
-    {"addbot",          G_AddBotCommand,      qfalse},
-    {"addbotnamed",     G_AddBotNamedCommand, qfalse},
-    {"removebot",       G_RemoveBotCommand,   qfalse},
+    {"compilescript",       G_CompileScript,         qfalse},
+    {"addbot",              G_AddBotCommand,         qfalse},
+    {"addbotnamed",         G_AddBotNamedCommand,    qfalse},
+    {"removebot",           G_RemoveBotCommand,      qfalse},
+    {"bot_debug_info",      G_BotDebugInfoCmd,       qfalse},
+    {"bot_force_state",     G_BotForceStateCmd,      qfalse},
+    {"bot_show_perception", G_BotShowPerceptionCmd,  qfalse},
 #ifdef _DEBUG
-    {"bot",             G_BotCommand,         qfalse},
+    {"bot",                 G_BotCommand,            qfalse},
 #endif
     //====
-    {NULL,              NULL,                 qfalse}
+    {NULL,                  NULL,                    qfalse}
 };
 
 Container<commandmaster_t> commandMasters;
@@ -751,3 +754,144 @@ qboolean G_BotCommand(gentity_t *ent)
 }
 
 #endif
+
+// Added in OPM
+//  Bot debug visualization commands
+
+/*
+====================
+G_BotDebugInfoCmd
+
+Print detailed debug information about a specific bot
+Usage: bot_debug_info [botIndex]
+====================
+*/
+qboolean G_BotDebugInfoCmd(gentity_t *ent)
+{
+    // Changed in OPM
+    //  Use bot index instead of client number
+    const Container<BotController *>& controllers = botManager.getControllerManager().getControllers();
+
+    if (controllers.NumObjects() < 1) {
+        gi.Printf("No bots spawned\n");
+        return qfalse;
+    }
+
+    // Get bot index from argument (default to 1 for first bot)
+    int botIndex = 1;
+    if (gi.Argc() >= 2) {
+        botIndex = atoi(gi.Argv(1));
+    }
+
+    // Validate bot index (Container uses 1-based indexing)
+    if (botIndex < 1 || botIndex > controllers.NumObjects()) {
+        gi.Printf("Invalid bot index %d (valid range: 1-%d)\n", botIndex, controllers.NumObjects());
+        gi.Printf("Usage: bot_debug_info [botIndex]\n");
+        return qfalse;
+    }
+
+    // Get the controller
+    BotController *bot = controllers.ObjectAt(botIndex);
+    if (!bot) {
+        gi.Printf("Failed to get bot %d controller\n", botIndex);
+        return qfalse;
+    }
+
+    // Call debug method
+    bot->PrintDebugInfo();
+    gi.Printf("Debug info for bot %d printed\n", botIndex);
+    return qtrue;
+}
+
+/*
+====================
+G_BotForceStateCmd
+
+Force a bot into a specific state for testing
+Usage: bot_force_state <botIndex> <stateIndex>
+State indices: 0=Attack, 1=Investigate, 2=Curious, 3=Grenade, 4=Idle
+====================
+*/
+qboolean G_BotForceStateCmd(gentity_t *ent)
+{
+    // Changed in OPM
+    //  Use bot index instead of client number
+    const Container<BotController *>& controllers = botManager.getControllerManager().getControllers();
+
+    if (controllers.NumObjects() < 1) {
+        gi.Printf("No bots spawned\n");
+        return qfalse;
+    }
+
+    if (gi.Argc() < 3) {
+        gi.Printf("Usage: bot_force_state <botIndex> <stateIndex>\n");
+        gi.Printf("State indices: 0=Attack, 1=Investigate, 2=Curious, 3=Grenade, 4=Idle\n");
+        return qfalse;
+    }
+
+    int botIndex   = atoi(gi.Argv(1));
+    int stateIndex = atoi(gi.Argv(2));
+
+    // Validate bot index (Container uses 1-based indexing)
+    if (botIndex < 1 || botIndex > controllers.NumObjects()) {
+        gi.Printf("Invalid bot index %d (valid range: 1-%d)\n", botIndex, controllers.NumObjects());
+        return qfalse;
+    }
+
+    // Get the controller
+    BotController *bot = controllers.ObjectAt(botIndex);
+    if (!bot) {
+        gi.Printf("Failed to get bot %d controller\n", botIndex);
+        return qfalse;
+    }
+
+    // Force the state
+    bot->ForceState(stateIndex);
+    gi.Printf("Bot %d forced to state %d\n", botIndex, stateIndex);
+    return qtrue;
+}
+
+/*
+====================
+G_BotShowPerceptionCmd
+
+Toggle perception visualization for a specific bot
+Usage: bot_show_perception [botIndex]
+====================
+*/
+qboolean G_BotShowPerceptionCmd(gentity_t *ent)
+{
+    // Changed in OPM
+    //  Use bot index instead of client number
+    const Container<BotController *>& controllers = botManager.getControllerManager().getControllers();
+
+    if (controllers.NumObjects() < 1) {
+        gi.Printf("No bots spawned\n");
+        return qfalse;
+    }
+
+    // Get bot index from argument (default to 1 for first bot)
+    int botIndex = 1;
+    if (gi.Argc() >= 2) {
+        botIndex = atoi(gi.Argv(1));
+    }
+
+    // Validate bot index (Container uses 1-based indexing)
+    if (botIndex < 1 || botIndex > controllers.NumObjects()) {
+        gi.Printf("Invalid bot index %d (valid range: 1-%d)\n", botIndex, controllers.NumObjects());
+        gi.Printf("Usage: bot_show_perception [botIndex]\n");
+        return qfalse;
+    }
+
+    // Get the controller
+    BotController *bot = controllers.ObjectAt(botIndex);
+    if (!bot) {
+        gi.Printf("Failed to get bot %d controller\n", botIndex);
+        return qfalse;
+    }
+
+    // Toggle perception visualization
+    bot->TogglePerceptionVisualization();
+    gi.Printf("Bot %d perception visualization toggled\n", botIndex);
+    return qtrue;
+}
