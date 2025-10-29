@@ -23,6 +23,14 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "playerbot.h"
 
+// TODO: Integrate with Recast/Detour navigation system
+//  Current implementation uses IPather (simple waypoint-based navigation)
+//  For complex geometry and multi-level maps, should use proper navmesh pathfinding
+//  Recast/Detour provides:
+//  - Dynamic navmesh generation
+//  - Off-mesh connections (jumps, teleports)
+//  - Crowd avoidance
+//  - Dynamic obstacle handling
 static int maxFallHeight = 400;
 
 /*

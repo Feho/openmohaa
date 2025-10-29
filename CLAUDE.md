@@ -221,16 +221,76 @@ CLASS_DECLARATION(SimpleEntity, ExampleObject, "info_exampleobject")
 };
 ```
 
+## Bot AI System
+
+### Overview
+
+OpenMoHAA includes an advanced bot AI system for single-player and multiplayer matches. The bot system is built on an event-driven architecture and includes:
+
+- **State-based behavior**: Attack, Investigate, Curious, Grenade, Idle states
+- **Squad coordination**: Bots can work in squads with shared targets
+- **Cover system**: Dynamic cover evaluation and usage
+- **Pathfinding**: Integration with Recast/Detour navigation
+- **Debug tools**: Console commands and visualization for development
+
+### Architecture
+
+The bot system consists of:
+- `BotController` - Main bot AI controller (in `code/fgame/playerbot.h`)
+- `BotMovement` - Movement and pathfinding logic
+- `BotRotation` - Aiming and rotation control
+- State implementations in `playerbot_*.cpp` files
+
+### Debug Commands
+
+- `bot_debug_info <botIndex>` - Print detailed bot state information
+- `bot_force_state <botIndex> <stateIndex>` - Force bot into specific state for testing
+- `bot_show_perception <botIndex>` - Toggle debug visualization (paths, enemies, perception)
+
+Bot indices are 1-based (first bot = 1, second bot = 2, etc.)
+
+State indices for `bot_force_state`:
+- 0 = Attack state
+- 1 = Investigate state
+- 2 = Curious state
+- 3 = Grenade state (placeholder)
+- 4 = Idle state
+
+### Code Quality
+
+Bot code follows strict quality standards:
+- Zero compiler warnings (strict checking enabled)
+- Const-correctness enforced
+- Named constants (no magic numbers)
+- Formatted with clang-format
+
+See `code/fgame/playerbot.h` for `BotConstants` namespace with all configuration values.
+
 ## Testing
 
 ### Running Tests
 
-The project uses CTest (enabled in CMakeLists.txt line 56).
+The project uses CTest with GoogleTest for unit testing (enabled in CMakeLists.txt line 56).
 
 ```bash
 cd .cmake
 ctest
+# For verbose output:
+ctest --output-on-failure
 ```
+
+### Bot AI Test Suite
+
+The bot system includes comprehensive unit tests (76 tests):
+- Movement direction calculations (14 tests)
+- Rotation and angle math (43 tests)
+- Enemy validation and targeting (19 tests)
+
+Test files are located in `tests/` directory:
+- `tests/test_bot_movement.cpp` - Bot movement tests
+- `tests/test_bot_rotation.cpp` - Rotation and angle tests
+- `tests/test_bot_controller.cpp` - Controller logic tests
+- `tests/test_utilities.h` - Test helpers and mocks
 
 ### Script Testing
 
@@ -287,6 +347,8 @@ The scripting system supports:
 
 Key directories:
 - `code/fgame/` - Server game logic (most gameplay code)
+  - `playerbot*.cpp` - Bot AI system implementation
+  - `playerbot.h` - Bot controller and data structures
 - `code/cgame/` - Client game (visual effects, HUD)
 - `code/client/` - Client networking and snapshots
 - `code/server/` - Server networking and client handling
@@ -300,6 +362,7 @@ Key directories:
 - `code/sys/` - Platform-specific system code
 - `code/gamespy/` - GameSpy SDK integration
 - `code/thirdparty/` - Embedded third-party libraries
+- `tests/` - Unit tests (GoogleTest)
 - `docs/markdown/` - Documentation
 - `cmake/` - CMake modules
 

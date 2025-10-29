@@ -43,6 +43,13 @@ bool BotController::CheckCondition_Weapon(void)
 
 void BotController::State_BeginWeapon(void)
 {
+    // TODO: Implement weapon preference system based on combat situation
+    //  Current weapon selection uses Player::BestWeapon which is basic ranking
+    //  Should evaluate weapons based on:
+    //  - Distance to target (prefer SMG close, rifle medium, sniper long)
+    //  - Ammo availability (switch when low)
+    //  - Enemy type (armor, health)
+    //  - Environment (indoor vs outdoor, confined vs open)
     Weapon *weap = controlledEnt->BestWeapon(NULL, false, WEAPON_CLASS_THROWABLE);
 
     if (weap == NULL) {

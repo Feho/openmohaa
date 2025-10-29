@@ -38,6 +38,14 @@ When a bot loses sight of an enemy, it remembers the last known position
 and investigates that location, searching nearby areas in a pattern.
 ====================
 */
+// TODO: Add unit tests for state machine transitions (Phase 2)
+//  Current test coverage is incomplete for investigation state switching logic
+//  Need tests for:
+//  - Transition from Attack to Investigate when enemy is lost
+//  - Memory expiration and state exit
+//  - Investigation timeout behavior
+//  - Priority handling between Investigate and Curious states
+//  - Search pattern calculation for different enemy positions
 void BotController::InitState_Investigate(botfunc_t *func)
 {
     func->CheckCondition = &BotController::CheckCondition_Investigate;

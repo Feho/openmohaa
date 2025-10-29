@@ -37,11 +37,24 @@ void BotController::InitState_Grenade(botfunc_t *func)
 
 bool BotController::CheckCondition_Grenade(void)
 {
-    // FIXME: TODO
+    // TODO: Implement grenade detection and avoidance trigger
+    //  Current grenade state is a placeholder
+    //  Needs:
+    //  - Detect nearby grenades (search for Projectile entities with grenade class)
+    //  - Calculate danger radius and blast time
+    //  - Trigger state when grenade is within threat range
+    //  - Priority should override other states except Attack
     return false;
 }
 
 void BotController::State_Grenade(void)
 {
-    // FIXME: TODO
+    // TODO: Implement grenade avoidance behavior
+    //  Current grenade state is a placeholder
+    //  Needs:
+    //  - Calculate safe escape vector away from grenade
+    //  - Use BotMovement to move to safety
+    //  - Consider jumping or taking cover
+    //  - Handle multiple grenades (prioritize closest/most dangerous)
+    //  - Return to previous state once safe
 }

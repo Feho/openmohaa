@@ -256,6 +256,10 @@ bool BotController::ValidateAttackPreconditions(void)
 
 // Added in OPM
 //  Scan visible enemies and select the best target based on distance and target stickiness
+// TODO: Extract SelectBestTarget to use dependency injection (Phase 2)
+//  Make testable by accepting Container parameter instead of global SentientList
+//  Current implementation directly uses global SentientList, which makes unit testing difficult
+//  Proposed signature: SelectBestTarget(const Container<Sentient*>& sentients, float maxDistance, float& outDistanceSq)
 Sentient *BotController::SelectBestTarget(float maxDistance, float& outDistanceSq)
 {
     Sentient *bestEnemy      = NULL;

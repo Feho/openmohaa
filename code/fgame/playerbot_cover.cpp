@@ -40,6 +40,13 @@ Searches for the best cover position near the bot's current location.
 Evaluates multiple positions in a grid pattern and returns the highest quality cover.
 ====================
 */
+// TODO: Optimize cover search with spatial partitioning
+//  Current implementation uses grid sampling which can be expensive
+//  Improvements:
+//  - Cache cover points per map area (static analysis or runtime learning)
+//  - Use spatial hash for nearby cover lookups
+//  - Consider level geometry cover hints (designer-placed cover markers)
+//  - Add height-based cover (crouching vs standing)
 BotController::CoverPoint BotController::FindBestCover(Vector enemyPos)
 {
     CoverPoint bestCover;

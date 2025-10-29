@@ -19,6 +19,21 @@ along with OpenMoHAA source code; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 ===========================================================================
 */
+
+/**
+ * @file playerbot.h
+ * @brief Bot AI controller and core bot system definitions
+ *
+ * This file contains the main BotController class and related bot AI structures.
+ * The bot system uses a state-based architecture with event-driven behavior,
+ * including Attack, Investigate, Curious, Grenade, and Idle states.
+ *
+ * The system supports:
+ * - State-based AI with prioritized state transitions
+ * - Squad coordination with role assignment
+ * - Dynamic cover evaluation and usage
+ * - Debug visualization and introspection
+ */
 // playerbot.h: Multiplayer bot system.
 
 #pragma once
@@ -431,7 +446,21 @@ private:
     bool        CheckCondition_Attack(void);
     void        State_EndAttack(void);
     void        State_Attack(void);
-    bool        IsValidEnemy(Sentient *sent) const;
+
+    /**
+     * @brief Check if a sentient entity is a valid enemy target
+     *
+     * Validates target based on:
+     * - Not self
+     * - Not hidden or flagged NOTARGET
+     * - Not dead
+     * - Solid entity
+     * - Different team (in team modes)
+     *
+     * @param sent The sentient entity to validate
+     * @return true if valid enemy, false otherwise
+     */
+    bool IsValidEnemy(Sentient *sent) const;
 
     // Added in OPM
     //  Extracted functions from State_Attack for improved readability
@@ -510,20 +539,71 @@ public:
 
     static void Init(void);
 
+    /**
+     * @brief Get bot's eye information for view rendering
+     *
+     * @param eyeinfo Pointer to usereyes_t structure to fill
+     */
     void GetEyeInfo(usereyes_t *eyeinfo);
+
+    /**
+     * @brief Get bot's user command for this frame
+     *
+     * @param ucmd Pointer to usercmd_t structure to fill
+     */
     void GetUsercmd(usercmd_t *ucmd);
 
+    /**
+     * @brief Update all bot state machines and check state transitions
+     *
+     * Called each frame to update bot behavior states.
+     */
     void UpdateBotStates(void);
+
+    /**
+     * @brief Check if bot needs to reload and trigger reload if safe
+     */
     void CheckReload(void);
 
+    /**
+     * @brief Make the bot face toward the current path direction
+     */
     void AimAtAimNode(void);
 
+    /**
+     * @brief Notify bot of a game event (sound, visual, etc.)
+     *
+     * @param vPos Position of the event
+     * @param iType Event type (AI_EVENT_*)
+     * @param pEnt Entity that caused the event
+     * @param fDistanceSquared Squared distance from bot to event
+     * @param fRadiusSquared Squared radius of event influence
+     */
     void NoticeEvent(const Vector& vPos, int iType, Entity *pEnt, float fDistanceSquared, float fRadiusSquared);
-    int  GetEventPriority(int eventType) const;
+
+    /**
+     * @brief Get priority level for event type
+     *
+     * @param eventType Event type (AI_EVENT_*)
+     * @return 0=none, 1=low priority (Curious state), 2=high priority (Investigation state)
+     */
+    int GetEventPriority(int eventType) const;
+
+    /**
+     * @brief Clear the bot's current enemy target
+     */
     void ClearEnemy(void);
 
+    /**
+     * @brief Send a console command for the bot to execute
+     *
+     * @param text Command string to execute
+     */
     void SendCommand(const char *text);
 
+    /**
+     * @brief Main bot think function, called each frame
+     */
     void Think();
 
     void Spawned(void);
@@ -536,9 +616,43 @@ public:
 
     // Added in OPM
     //  Debug visualization and introspection methods
+
+    /**
+     * @brief Print detailed debug information about this bot
+     *
+     * Outputs to console:
+     * - Current state and timers
+     * - Enemy/target information
+     * - Weapon and ammo status
+     * - Movement goals
+     * - Squad information
+     */
     void PrintDebugInfo(void);
+
+    /**
+     * @brief Force bot into a specific state for testing
+     *
+     * @param stateIndex State to force: 0=Attack, 1=Investigate, 2=Curious, 3=Grenade, 4=Idle
+     */
     void ForceState(int stateIndex);
+
+    /**
+     * @brief Toggle debug perception visualization for this bot
+     *
+     * Enables/disables visual debug overlays including:
+     * - Path visualization (goal, direction)
+     * - Enemy tracking (visible/remembered)
+     * - State information
+     * - Perception indicators (FOV, audio radius)
+     */
     void TogglePerceptionVisualization(void);
+
+    /**
+     * @brief Draw debug visualization for the bot (called each frame)
+     *
+     * Renders debug overlays when visualization is enabled.
+     * Called automatically by the bot system.
+     */
     void DrawDebugVisualization(void);
 
     // Debug visualization flags
@@ -548,7 +662,18 @@ public:
     bool m_bShowState;
 
 public:
-    void    setControlledEntity(Player *player);
+    /**
+     * @brief Set the player entity controlled by this bot
+     *
+     * @param player The player entity to control
+     */
+    void setControlledEntity(Player *player);
+
+    /**
+     * @brief Get the player entity controlled by this bot
+     *
+     * @return Pointer to the controlled Player entity
+     */
     Player *getControlledEntity() const;
 
 private:
