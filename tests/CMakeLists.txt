@@ -72,6 +72,10 @@ add_bot_test(test_bot_movement)
 add_bot_test(test_bot_rotation)
 add_bot_test(test_bot_controller)
 
+# Added in OPM - Phase 2 Task 2A.1.1
+# Perception system structure tests
+add_bot_test(test_perception)
+
 # Added in OPM - Phase 2 Task 2.0
 # yaml-cpp integration test
 add_executable(test_yaml_cpp test_yaml_cpp.cpp)
