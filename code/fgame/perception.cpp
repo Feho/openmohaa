@@ -7,23 +7,8 @@
 // PerceptionSystem - Main perception coordinator
 // ========================================================================
 
-// Added in OPM - Phase 2 Task 2A.1.1
-//  Constructor - initializes all sensor subsystems
-PerceptionSystem::PerceptionSystem()
-{
-    visionSensor = new VisionSensor();
-    audioSensor  = new AudioSensor();
-    memory       = new MemorySystem();
-}
-
-// Added in OPM - Phase 2 Task 2A.1.1
-//  Destructor - cleans up sensor subsystems
-PerceptionSystem::~PerceptionSystem()
-{
-    delete visionSensor;
-    delete audioSensor;
-    delete memory;
-}
+// Changed in OPM - Phase 2 Task 2A.1.1 Code Review
+//  Fixed: Removed manual constructor/destructor (now using std::unique_ptr with = default)
 
 // Added in OPM - Phase 2 Task 2A.1.1
 //  Main update method - integrates data from all sensors

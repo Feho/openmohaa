@@ -6,7 +6,9 @@
 #include "glb_local.h"
 #include "sentient.h"
 #include "player.h"
+#include "playerbot.h"
 #include <vector>
+#include <memory>
 
 // Added in OPM - Phase 2 Task 2A.1.1
 //  Threat level classification for tactical decision making
@@ -19,14 +21,16 @@ enum ThreatLevel {
 
 // Added in OPM - Phase 2 Task 2A.1.1
 //  Information about a detected enemy
+// Changed in OPM - Phase 2 Task 2A.1.1 Code Review
+//  Fixed: Replaced raw pointer with SafePtr for entity safety
 struct EnemyInfo {
-    Sentient *entity;        // Pointer to enemy entity
-    Vector    position;      // Current position
-    Vector    velocity;      // Current velocity
-    float     distance;      // Distance to bot
-    float     visibilityFactor; // 0.0 (barely visible) - 1.0 (clear view)
-    float     angleFromForward; // Degrees off center of view
-    bool      isInPeripheral; // True if in peripheral vision
+    SafePtr<Sentient> entity;        // Pointer to enemy entity (auto-nullifies on destruction)
+    Vector            position;      // Current position
+    Vector            velocity;      // Current velocity
+    float             distance;      // Distance to bot
+    float             visibilityFactor; // 0.0 (barely visible) - 1.0 (clear view)
+    float             angleFromForward; // Degrees off center of view
+    bool              isInPeripheral; // True if in peripheral vision
 
     EnemyInfo()
         : entity(nullptr)
@@ -40,17 +44,19 @@ struct EnemyInfo {
     }
 
     // Helper methods
-    bool IsVisible() const { return visibilityFactor > 0.1f; }
+    bool IsVisible() const { return visibilityFactor > BotConstants::VISIBILITY_THRESHOLD; }
     bool IsInPeripheral() const { return isInPeripheral; }
 };
 
 // Added in OPM - Phase 2 Task 2A.1.1
 //  Information about a nearby ally
+// Changed in OPM - Phase 2 Task 2A.1.1 Code Review
+//  Fixed: Replaced raw pointer with SafePtr for entity safety
 struct AllyInfo {
-    Player *entity;   // Pointer to ally player
-    Vector  position; // Current position
-    float   distance; // Distance to bot
-    bool    canSeeMe; // True if ally can see this bot
+    SafePtr<Player> entity;   // Pointer to ally player (auto-nullifies on destruction)
+    Vector          position; // Current position
+    float           distance; // Distance to bot
+    bool            canSeeMe; // True if ally can see this bot
 
     AllyInfo()
         : entity(nullptr)
@@ -86,15 +92,17 @@ struct AudioEvent {
 
 // Added in OPM - Phase 2 Task 2A.1.1
 //  Memory of an enemy that is no longer visible
+// Changed in OPM - Phase 2 Task 2A.1.1 Code Review
+//  Fixed: Replaced raw pointer with SafePtr for entity safety
 struct EnemyMemory {
-    Sentient *enemy;                // Pointer to enemy entity
-    Vector    lastKnownPosition;    // Last position where enemy was seen
-    Vector    lastKnownVelocity;    // Last known velocity
-    Vector    predictedPosition;    // Predicted current position
-    float     lastSeenTime;         // Timestamp of last sighting
-    float     confidenceLevel;      // 1.0 (just seen) -> 0.0 (very old)
-    int       timesSpotted;         // Number of times spotted
-    bool      investigationStarted; // True if bot started investigating
+    SafePtr<Sentient> enemy;                // Pointer to enemy entity (auto-nullifies on destruction)
+    Vector            lastKnownPosition;    // Last position where enemy was seen
+    Vector            lastKnownVelocity;    // Last known velocity
+    Vector            predictedPosition;    // Predicted current position
+    float             lastSeenTime;         // Timestamp of last sighting
+    float             confidenceLevel;      // 1.0 (just seen) -> 0.0 (very old)
+    int               timesSpotted;         // Number of times spotted
+    bool              investigationStarted; // True if bot started investigating
 
     EnemyMemory()
         : enemy(nullptr)
@@ -111,36 +119,69 @@ struct EnemyMemory {
 
 // Added in OPM - Phase 2 Task 2A.1.1
 //  Complete snapshot of what the bot perceives at a given moment
+// Changed in OPM - Phase 2 Task 2A.1.1 Code Review
+//  Fixed: Replaced optional pointers with indices to prevent dangling pointer bugs
 struct PerceptionSnapshot {
     // Enemies
-    std::vector<EnemyInfo>   visibleEnemies; // Currently visible enemies
-    std::vector<EnemyMemory> knownEnemies;   // Enemies from memory
-    EnemyInfo               *closestEnemy;   // Pointer to closest visible enemy
-    EnemyInfo               *mostDangerousEnemy; // Most threatening enemy
+    std::vector<EnemyInfo>   visibleEnemies;         // Currently visible enemies
+    std::vector<EnemyMemory> knownEnemies;           // Enemies from memory
+    size_t                   closestEnemyIndex;      // Index to closest visible enemy (SIZE_MAX = none)
+    size_t                   mostDangerousEnemyIndex; // Index to most threatening enemy (SIZE_MAX = none)
 
     // Allies
     std::vector<AllyInfo> nearbyAllies; // Nearby friendly players
 
     // Audio
-    std::vector<AudioEvent> recentSounds; // Recent audio events
-    AudioEvent             *loudestSound; // Loudest recent sound
+    std::vector<AudioEvent> recentSounds;      // Recent audio events
+    size_t                  loudestSoundIndex; // Index to loudest recent sound (SIZE_MAX = none)
 
     // Threat assessment
     ThreatLevel threatLevel; // Overall threat level
 
     PerceptionSnapshot()
-        : closestEnemy(nullptr)
-        , mostDangerousEnemy(nullptr)
-        , loudestSound(nullptr)
+        : closestEnemyIndex(SIZE_MAX)
+        , mostDangerousEnemyIndex(SIZE_MAX)
+        , loudestSoundIndex(SIZE_MAX)
         , threatLevel(THREAT_NONE)
     {
     }
 
-    // Helper methods
+    // Helper methods for vector membership
     bool HasVisibleEnemy() const { return !visibleEnemies.empty(); }
     bool HasKnownEnemy() const { return !knownEnemies.empty(); }
     int  GetEnemyCount() const { return visibleEnemies.size(); }
     int  GetTotalKnownEnemies() const { return visibleEnemies.size() + knownEnemies.size(); }
+
+    // Safe accessors for optional indices
+    EnemyInfo *GetClosestEnemy()
+    {
+        return closestEnemyIndex < visibleEnemies.size() ? &visibleEnemies[closestEnemyIndex] : nullptr;
+    }
+
+    const EnemyInfo *GetClosestEnemy() const
+    {
+        return closestEnemyIndex < visibleEnemies.size() ? &visibleEnemies[closestEnemyIndex] : nullptr;
+    }
+
+    EnemyInfo *GetMostDangerousEnemy()
+    {
+        return mostDangerousEnemyIndex < visibleEnemies.size() ? &visibleEnemies[mostDangerousEnemyIndex] : nullptr;
+    }
+
+    const EnemyInfo *GetMostDangerousEnemy() const
+    {
+        return mostDangerousEnemyIndex < visibleEnemies.size() ? &visibleEnemies[mostDangerousEnemyIndex] : nullptr;
+    }
+
+    AudioEvent *GetLoudestSound()
+    {
+        return loudestSoundIndex < recentSounds.size() ? &recentSounds[loudestSoundIndex] : nullptr;
+    }
+
+    const AudioEvent *GetLoudestSound() const
+    {
+        return loudestSoundIndex < recentSounds.size() ? &recentSounds[loudestSoundIndex] : nullptr;
+    }
 };
 
 // Added in OPM - Phase 2 Task 2A.1.1
@@ -151,24 +192,39 @@ class MemorySystem;
 
 // Added in OPM - Phase 2 Task 2A.1.1
 //  Main perception system that integrates vision, hearing, and memory
+// Changed in OPM - Phase 2 Task 2A.1.1 Code Review
+//  Fixed: Replaced manual memory management with std::unique_ptr
 class PerceptionSystem
 {
 public:
-    PerceptionSystem();
-    ~PerceptionSystem();
+    PerceptionSystem() = default;
+    ~PerceptionSystem() = default;
+
+    // Delete copy operations (resource-owning class)
+    PerceptionSystem(const PerceptionSystem &)            = delete;
+    PerceptionSystem &operator=(const PerceptionSystem &) = delete;
+
+    // Default move operations
+    PerceptionSystem(PerceptionSystem &&)            = default;
+    PerceptionSystem &operator=(PerceptionSystem &&) = default;
 
     // Main update method - returns snapshot of current perception state
     PerceptionSnapshot Update(Player *bot, float deltaTime);
 
     // Accessor methods for individual sensors
-    VisionSensor  &GetVision() { return *visionSensor; }
-    AudioSensor   &GetHearing() { return *audioSensor; }
-    MemorySystem  &GetMemory() { return *memory; }
+    VisionSensor &GetVision() { return *visionSensor; }
+    AudioSensor  &GetHearing() { return *audioSensor; }
+    MemorySystem &GetMemory() { return *memory; }
+
+    // Const overloads for accessors
+    const VisionSensor &GetVision() const { return *visionSensor; }
+    const AudioSensor  &GetHearing() const { return *audioSensor; }
+    const MemorySystem &GetMemory() const { return *memory; }
 
 private:
-    VisionSensor *visionSensor;
-    AudioSensor  *audioSensor;
-    MemorySystem *memory;
+    std::unique_ptr<VisionSensor> visionSensor = std::make_unique<VisionSensor>();
+    std::unique_ptr<AudioSensor>  audioSensor  = std::make_unique<AudioSensor>();
+    std::unique_ptr<MemorySystem> memory       = std::make_unique<MemorySystem>();
 };
 
 // Added in OPM - Phase 2 Task 2A.1.2

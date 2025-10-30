@@ -52,6 +52,7 @@ namespace BotConstants
     constexpr float DEFAULT_FOV_DEGREES    = 100.0f; // Field of view in degrees
     constexpr float NARROW_FOV_DEGREES     = 20.0f;  // Narrow FOV for precise checks
     constexpr float FARPLANE_VISION_FACTOR = 0.828f; // Factor of farplane distance for vision
+    constexpr float VISIBILITY_THRESHOLD   = 0.1f;   // Minimum visibility factor to consider enemy visible
 
     // Combat Distances (units)
     constexpr float MELEE_RANGE                 = 64.0f;  // Maximum melee attack range
