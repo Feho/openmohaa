@@ -71,3 +71,21 @@ endfunction()
 add_bot_test(test_bot_movement)
 add_bot_test(test_bot_rotation)
 add_bot_test(test_bot_controller)
+
+# Added in OPM - Phase 2 Task 2.0
+# yaml-cpp integration test
+add_executable(test_yaml_cpp test_yaml_cpp.cpp)
+
+target_include_directories(test_yaml_cpp PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(test_yaml_cpp
+    gtest
+    gtest_main
+    yaml-cpp
+)
+
+set_property(TARGET test_yaml_cpp PROPERTY CXX_STANDARD 17)
+
+gtest_discover_tests(test_yaml_cpp)

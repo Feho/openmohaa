@@ -43,6 +43,22 @@ sudo apt-get install -y cmake ninja-build clang lld flex bison libsdl2-dev libop
 - Flex/Bison from https://github.com/lexxmark/winflexbison/releases/latest
 - Append `-DFLEX_EXECUTABLE=path/to/win_flex.exe -DBISON_EXECUTABLE=path/to/win_bison.exe -DOPENAL_INCLUDE_DIR="path/to/oal/include" -DOPENAL_LIBRARY="path/to/oal"` to CMake command
 
+### Dependencies
+
+The project requires the following external libraries:
+
+- **CMake** 3.25+ - Build system
+- **SDL2** - Graphics and input
+- **OpenAL** - Audio
+- **Flex/Bison** - Script parser generation
+- **GoogleTest** 1.15.2+ - Unit testing (automatically fetched via CMake)
+- **yaml-cpp** 0.7.0+ - YAML configuration parsing for bot profiles and behavior trees (Phase 2+, automatically fetched via CMake)
+
+yaml-cpp is automatically fetched via CMake FetchContent. To use system yaml-cpp instead:
+```bash
+cmake -DUSE_SYSTEM_YAML_CPP=ON ..
+```
+
 ## Architecture
 
 ### High-Level Structure
