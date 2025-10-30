@@ -32,40 +32,211 @@ PerceptionSnapshot PerceptionSystem::Update(Player *bot, float deltaTime)
 
 // Added in OPM - Phase 2 Task 2A.1.2
 //  Constructor
-VisionSensor::VisionSensor()
-{
-}
+VisionSensor::VisionSensor() {}
 
 // Added in OPM - Phase 2 Task 2A.1.2
 //  Destructor
-VisionSensor::~VisionSensor()
-{
-}
+VisionSensor::~VisionSensor() {}
 
 // Added in OPM - Phase 2 Task 2A.1.2
-//  Update vision perception - stub implementation
+//  Update vision perception - scans for visible enemies
 std::vector<EnemyInfo> VisionSensor::UpdateVision(Player *bot, float deltaTime)
 {
     std::vector<EnemyInfo> visibleEnemies;
 
-    // Stub implementation
-    // Will be implemented in Task 2A.1.2:
-    // - Extract CanSee logic from BotController
-    // - Implement FOV calculation
-    // - Add occlusion testing
-    // - Add distance attenuation
-    // - Add peripheral vision detection
+    if (!bot) {
+        return visibleEnemies;
+    }
+
+    // Calculate max vision distance based on farplane
+    const float maxVisionDistance = world->farplane_distance * BotConstants::FARPLANE_VISION_FACTOR;
+
+    // Define FOV thresholds for central and peripheral vision
+    const float centralFOV    = 80.0f;  // Central vision FOV
+    const float peripheralFOV = 180.0f; // Peripheral vision FOV
+
+    // Get bot's position and view angles
+    const Vector botPos    = bot->origin;
+    const Vector botAngles = bot->GetViewAngles();
+
+    // Scan all sentients in the level
+    for (int i = 1; i <= SentientList.NumObjects(); i++) {
+        Sentient *sentient = SentientList.ObjectAt(i);
+
+        if (!sentient) {
+            continue;
+        }
+
+        // Skip self
+        if (sentient == bot) {
+            continue;
+        }
+
+        // Skip dead sentients
+        if (sentient->health <= 0) {
+            continue;
+        }
+
+        // Skip allies (check team affiliation)
+        if (sentient->IsSubclassOfPlayer()) {
+            Player *otherPlayer = static_cast<Player *>(sentient);
+            if (otherPlayer->GetTeam() == bot->GetTeam()) {
+                continue; // Same team, skip
+            }
+        }
+
+        // Check if we can see this sentient
+        float       angleFromForward = 0.0f;
+        bool        inCentralFOV     = CheckFOV(botPos, botAngles, sentient->origin, centralFOV, angleFromForward);
+        bool        inPeripheralFOV  = false;
+        const float distance         = (sentient->origin - botPos).length();
+
+        // If not in central FOV, check peripheral
+        if (!inCentralFOV) {
+            inPeripheralFOV = CheckFOV(botPos, botAngles, sentient->origin, peripheralFOV, angleFromForward);
+        }
+
+        // Skip if not in any FOV
+        if (!inCentralFOV && !inPeripheralFOV) {
+            continue;
+        }
+
+        // Check distance
+        if (distance > maxVisionDistance) {
+            continue;
+        }
+
+        // Check nav connectivity
+        if (!bot->AreasConnected(sentient)) {
+            continue;
+        }
+
+        // Perform line of sight trace
+        if (!PerformLineOfSightTrace(bot, sentient)) {
+            continue;
+        }
+
+        // Enemy is visible - create EnemyInfo
+        EnemyInfo enemyInfo;
+        enemyInfo.entity           = sentient;
+        enemyInfo.position         = sentient->origin;
+        enemyInfo.velocity         = sentient->velocity;
+        enemyInfo.distance         = distance;
+        enemyInfo.angleFromForward = angleFromForward;
+        enemyInfo.isInPeripheral   = inPeripheralFOV;
+        enemyInfo.visibilityFactor = CalculateVisibilityFactor(distance, maxVisionDistance, inPeripheralFOV);
+
+        visibleEnemies.push_back(enemyInfo);
+    }
 
     return visibleEnemies;
 }
 
 // Added in OPM - Phase 2 Task 2A.1.2
-//  Check if bot can see target - stub implementation
+//  Check if bot can see target with specified FOV and distance
 bool VisionSensor::CanSee(Player *bot, Sentient *target, float fov, float maxDistance)
 {
-    // Stub implementation
-    // Will be implemented in Task 2A.1.2
-    return false;
+    if (!bot || !target) {
+        return false;
+    }
+
+    // Get positions
+    const Vector botPos    = bot->origin;
+    const Vector targetPos = target->origin;
+    const Vector botAngles = bot->GetViewAngles();
+
+    // 1. Distance check
+    const float distance = (targetPos - botPos).length();
+    if (maxDistance > 0.0f && distance > maxDistance) {
+        return false;
+    }
+
+    // 2. Nav connectivity check
+    if (!bot->AreasConnected(target)) {
+        return false;
+    }
+
+    // 3. FOV check
+    if (fov > 0.0f && fov < 360.0f) {
+        float angleFromForward = 0.0f;
+        if (!CheckFOV(botPos, botAngles, targetPos, fov, angleFromForward)) {
+            return false;
+        }
+    }
+
+    // 4. Line of sight trace
+    return PerformLineOfSightTrace(bot, target);
+}
+
+// Added in OPM - Phase 2 Task 2A.1.2
+//  Helper method to check if target is within field of view
+bool VisionSensor::CheckFOV(
+    const Vector& botPos, const Vector& botAngles, const Vector& targetPos, float fovDegrees, float& angleFromForward
+)
+{
+    // Calculate direction to target
+    Vector toTarget = targetPos - botPos;
+    toTarget.normalize();
+
+    // Get bot's forward vector from view angles
+    Vector forward, right, up;
+    AngleVectors(botAngles, forward, right, up);
+
+    // Calculate dot product to get angle
+    const float dotProduct = DotProduct(toTarget, forward);
+
+    // Calculate angle in degrees
+    angleFromForward = RAD2DEG(acos(dotProduct));
+
+    // Check if within FOV cone (half-angle)
+    const float halfFOV = fovDegrees * 0.5f;
+    return angleFromForward <= halfFOV;
+}
+
+// Added in OPM - Phase 2 Task 2A.1.2
+//  Helper method to perform line of sight trace
+bool VisionSensor::PerformLineOfSightTrace(Player *bot, Sentient *target)
+{
+    if (!bot || !target) {
+        return false;
+    }
+
+    // Use MASK_CANSEE for standard visibility check (includes entities)
+    const int mask = MASK_CANSEE;
+
+    // Trace from bot's eye position to target's eye position (for sentients)
+    return G_SightTrace(
+        bot->EyePosition(),
+        vec_zero,
+        vec_zero,
+        target->EyePosition(),
+        bot,
+        target,
+        mask,
+        qfalse,
+        "VisionSensor::PerformLineOfSightTrace"
+    );
+}
+
+// Added in OPM - Phase 2 Task 2A.1.2
+//  Helper method to calculate visibility factor based on distance and peripheral vision
+float VisionSensor::CalculateVisibilityFactor(float distance, float maxDistance, bool isPeripheral)
+{
+    // Start with distance-based attenuation
+    float factor = 1.0f;
+
+    if (maxDistance > BotConstants::EPSILON) {
+        // Linear attenuation: 1.0 at close range, 0.0 at max distance
+        factor = 1.0f - (distance / maxDistance);
+        factor = Q_max(0.0f, factor); // Clamp to [0, 1]
+    }
+
+    // Reduce visibility for peripheral vision
+    if (isPeripheral) {
+        factor *= 0.4f; // Peripheral vision has 40% of central vision clarity
+    }
+
+    return factor;
 }
 
 // ========================================================================
@@ -74,19 +245,15 @@ bool VisionSensor::CanSee(Player *bot, Sentient *target, float fov, float maxDis
 
 // Added in OPM - Phase 2 Task 2A.1.4
 //  Constructor
-AudioSensor::AudioSensor()
-{
-}
+AudioSensor::AudioSensor() {}
 
 // Added in OPM - Phase 2 Task 2A.1.4
 //  Destructor
-AudioSensor::~AudioSensor()
-{
-}
+AudioSensor::~AudioSensor() {}
 
 // Added in OPM - Phase 2 Task 2A.1.4
 //  Process audio event - stub implementation
-void AudioSensor::ProcessEvent(int eventType, const Vector &position, float loudness)
+void AudioSensor::ProcessEvent(int eventType, const Vector& position, float loudness)
 {
     // Stub implementation
     // Will be implemented in Task 2A.1.4:
@@ -116,19 +283,15 @@ std::vector<AudioEvent> AudioSensor::GetRecentSounds(float currentTime, float ti
 
 // Added in OPM - Phase 2 Task 2A.1.5
 //  Constructor
-MemorySystem::MemorySystem()
-{
-}
+MemorySystem::MemorySystem() {}
 
 // Added in OPM - Phase 2 Task 2A.1.5
 //  Destructor
-MemorySystem::~MemorySystem()
-{
-}
+MemorySystem::~MemorySystem() {}
 
 // Added in OPM - Phase 2 Task 2A.1.5
 //  Update memory with seen enemy - stub implementation
-void MemorySystem::UpdateMemory(const EnemyInfo &enemyInfo, float currentTime)
+void MemorySystem::UpdateMemory(const EnemyInfo& enemyInfo, float currentTime)
 {
     // Stub implementation
     // Will be implemented in Task 2A.1.5:

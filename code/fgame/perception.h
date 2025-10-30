@@ -242,7 +242,23 @@ public:
     bool CanSee(Player *bot, Sentient *target, float fov, float maxDistance);
 
 private:
-    // Vision implementation details (to be implemented in Task 2A.1.2)
+    // Added in OPM - Phase 2 Task 2A.1.2
+    //  Helper method to check if target is within field of view
+    bool CheckFOV(
+        const Vector &botPos,
+        const Vector &botAngles,
+        const Vector &targetPos,
+        float         fovDegrees,
+        float        &angleFromForward
+    );
+
+    // Added in OPM - Phase 2 Task 2A.1.2
+    //  Helper method to perform line of sight trace
+    bool PerformLineOfSightTrace(Player *bot, Sentient *target);
+
+    // Added in OPM - Phase 2 Task 2A.1.2
+    //  Helper method to calculate visibility factor based on distance and peripheral vision
+    float CalculateVisibilityFactor(float distance, float maxDistance, bool isPeripheral);
 };
 
 // Added in OPM - Phase 2 Task 2A.1.4

@@ -76,6 +76,10 @@ add_bot_test(test_bot_controller)
 # Perception system structure tests
 add_bot_test(test_perception)
 
+# Added in OPM - Phase 2 Task 2A.1.2
+# Vision sensor tests
+add_bot_test(test_vision_sensor)
+
 # Added in OPM - Phase 2 Task 2.0
 # yaml-cpp integration test
 add_executable(test_yaml_cpp test_yaml_cpp.cpp)
