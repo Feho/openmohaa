@@ -190,6 +190,9 @@ class VisionSensor;
 class AudioSensor;
 class MemorySystem;
 
+// Required for AudioSensor's deque container
+#include <deque>
+
 // Added in OPM - Phase 2 Task 2A.1.1
 //  Main perception system that integrates vision, hearing, and memory
 // Changed in OPM - Phase 2 Task 2A.1.1 Code Review
@@ -278,12 +281,19 @@ public:
     // Process audio events
     void ProcessEvent(int eventType, const Vector &position, float loudness);
 
+    // Changed in OPM - Phase 2 Task 2A.1.4 Code Review
+    //  Added const qualifiers to method signature and bot parameter
     // Get recent audio events with 3D directional calculation
-    std::vector<AudioEvent> GetRecentSounds(Player *bot, float currentTime, float timeWindow);
+    std::vector<AudioEvent> GetRecentSounds(const Player *bot, float currentTime, float timeWindow) const;
 
+#ifdef UNIT_TESTING
+public:
+#else
 private:
-    std::vector<AudioEvent> eventQueue;
-    // Audio implementation details (to be implemented in Task 2A.1.4)
+#endif
+    // Changed in OPM - Phase 2 Task 2A.1.4 Code Review
+    //  Changed from std::vector to std::deque for O(1) removal from front
+    std::deque<AudioEvent> eventQueue;
 };
 
 // Added in OPM - Phase 2 Task 2A.1.5

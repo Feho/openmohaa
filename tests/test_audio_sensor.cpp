@@ -2,6 +2,7 @@
 
 #include "test_utilities.h"
 #include <gtest/gtest.h>
+#include <deque>
 
 // Mock AudioEvent for testing (mirrors production struct)
 struct MockAudioEvent {
@@ -29,7 +30,9 @@ struct MockAudioEvent {
 class MockAudioSensor
 {
 public:
-    std::vector<MockAudioEvent> eventQueue;
+    // Changed in OPM - Phase 2 Task 2A.1.4 Code Review
+    //  Changed from std::vector to std::deque to match production code
+    std::deque<MockAudioEvent> eventQueue;
 
     void ProcessEvent(int eventType, const TestVector &position, float loudness, float currentTime)
     {
@@ -59,41 +62,49 @@ public:
 
         eventQueue.push_back(event);
 
-        // Cleanup old events
+        // Changed in OPM - Phase 2 Task 2A.1.4 Code Review
+        //  Use pop_front() for O(1) removal (now using deque)
         if (eventQueue.size() > 100) {
-            eventQueue.erase(eventQueue.begin());
+            eventQueue.pop_front();
         }
     }
 
     std::vector<MockAudioEvent> GetRecentSounds(const TestVector &botPos, float currentTime, float timeWindow)
     {
         std::vector<MockAudioEvent> recentSounds;
+        recentSounds.reserve(eventQueue.size());
 
-        for (auto event : eventQueue) {
+        // Changed in OPM - Phase 2 Task 2A.1.4 Code Review
+        //  Use const reference to avoid copying
+        for (const auto& event : eventQueue) {
             if (currentTime - event.timestamp <= timeWindow) {
+                MockAudioEvent modifiedEvent = event;
+
                 // Calculate direction
-                TestVector toSound = event.position - botPos;
+                TestVector toSound = modifiedEvent.position - botPos;
                 float      distance = toSound.length();
 
                 if (distance > 0.001f) {
                     toSound.normalize();
-                    event.estimatedDirection = toSound;
+                    modifiedEvent.estimatedDirection = toSound;
 
                     // Calculate confidence
                     const float maxAudioDistance = 2000.0f;
-                    event.confidence = 1.0f - std::min(distance / maxAudioDistance, 1.0f);
+                    modifiedEvent.confidence = 1.0f - std::min(distance / maxAudioDistance, 1.0f);
 
-                    // Adjust loudness
+                    // Changed in OPM - Phase 2 Task 2A.1.4 Code Review
+                    //  Use true inverse square law to match production code
                     if (distance > 1.0f) {
-                        float distanceFactor = 100.0f / distance;
-                        event.loudness *= std::min(distanceFactor, 1.0f);
+                        const float refDist = 100.0f;
+                        const float attenuationFactor = (refDist * refDist) / (distance * distance);
+                        modifiedEvent.loudness *= std::min(attenuationFactor, 1.0f);
                     }
                 } else {
-                    event.estimatedDirection = TestVector(0, 0, 0);
-                    event.confidence = 1.0f;
+                    modifiedEvent.estimatedDirection = TestVector(0, 0, 0);
+                    modifiedEvent.confidence = 1.0f;
                 }
 
-                recentSounds.push_back(event);
+                recentSounds.push_back(std::move(modifiedEvent));
             }
         }
 
@@ -173,4 +184,55 @@ TEST_F(AudioSensorTest, GetRecentSounds_Calculates3DDirection)
     // Check loudness attenuation (100 units distance, reference 100 units)
     // distanceFactor = 100/100 = 1.0, so loudness should be unchanged
     EXPECT_NEAR(recent[0].loudness, 1.0f, 0.01f);
+}
+
+// Added in OPM - Phase 2 Task 2A.1.4 Code Review
+//  Edge case tests to verify queue overflow, zero distance, and inverse square attenuation
+
+// Test 4: Queue overflow behavior
+TEST_F(AudioSensorTest, ProcessEvent_HandlesQueueOverflow)
+{
+    // Fill queue to exactly max capacity
+    for (int i = 0; i < 100; i++) {
+        sensor.ProcessEvent(0, TestVector(i * 10.0f, 0, 0), 1.0f, static_cast<float>(i));
+    }
+    EXPECT_EQ(sensor.eventQueue.size(), 100);
+
+    // Add one more - should pop oldest
+    sensor.ProcessEvent(0, TestVector(1000, 0, 0), 1.0f, 100.0f);
+    EXPECT_EQ(sensor.eventQueue.size(), 100);
+
+    // Verify oldest was removed (timestamp should now be 1.0, not 0.0)
+    EXPECT_GT(sensor.eventQueue.front().timestamp, 0.5f);
+}
+
+// Test 5: Zero distance sound
+TEST_F(AudioSensorTest, GetRecentSounds_HandlesZeroDistance)
+{
+    TestVector botPos(100, 100, 100);
+
+    // Sound at exact bot position
+    sensor.ProcessEvent(0, botPos, 1.0f, 0.0f);
+
+    std::vector<MockAudioEvent> recent = sensor.GetRecentSounds(botPos, 0.0f, 10.0f);
+
+    ASSERT_EQ(recent.size(), 1);
+    EXPECT_FLOAT_EQ(recent[0].confidence, 1.0f);
+    EXPECT_NEAR(recent[0].estimatedDirection.length(), 0.0f, 0.01f);
+}
+
+// Test 6: Loudness attenuation inverse square
+TEST_F(AudioSensorTest, GetRecentSounds_InverseSquareAttenuation)
+{
+    TestVector botPos(0, 0, 0);
+
+    // Sound at 200 units distance
+    sensor.ProcessEvent(0, TestVector(200, 0, 0), 1.0f, 0.0f);
+
+    std::vector<MockAudioEvent> recent = sensor.GetRecentSounds(botPos, 0.0f, 10.0f);
+
+    ASSERT_EQ(recent.size(), 1);
+
+    // Inverse square: (100*100) / (200*200) = 10000/40000 = 0.25
+    EXPECT_NEAR(recent[0].loudness, 0.25f, 0.01f);
 }

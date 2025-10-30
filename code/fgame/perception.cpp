@@ -320,7 +320,9 @@ void AudioSensor::ProcessEvent(int eventType, const Vector& position, float loud
     event.type = eventType;
     event.position = position;
     event.loudness = loudness;
-    event.priority = priority / 2.0f; // Normalize to 0.0-1.0
+    // Changed in OPM - Phase 2 Task 2A.1.4 Code Review
+    //  Use named constant instead of magic number
+    event.priority = priority / static_cast<float>(BotConstants::AUDIO_PRIORITY_MAX); // Normalize to 0.0-1.0
     event.timestamp = level.svsTime * 0.001f; // Convert ms to seconds
 
     // For now, we don't have bot position, so we can't calculate direction
@@ -331,13 +333,17 @@ void AudioSensor::ProcessEvent(int eventType, const Vector& position, float loud
     // Add to queue
     eventQueue.push_back(event);
 
-    // Cleanup old events (keep last 100 events)
-    if (eventQueue.size() > 100) {
-        eventQueue.erase(eventQueue.begin());
+    // Changed in OPM - Phase 2 Task 2A.1.4 Code Review
+    //  Use pop_front() for O(1) removal (now using deque instead of vector)
+    //  Use named constant instead of magic number
+    if (eventQueue.size() > BotConstants::MAX_AUDIO_EVENTS) {
+        eventQueue.pop_front();
     }
 }
 
-std::vector<AudioEvent> AudioSensor::GetRecentSounds(Player *bot, float currentTime, float timeWindow)
+// Changed in OPM - Phase 2 Task 2A.1.4 Code Review
+//  Added const qualifiers to method and bot parameter
+std::vector<AudioEvent> AudioSensor::GetRecentSounds(const Player *bot, float currentTime, float timeWindow) const
 {
     std::vector<AudioEvent> recentSounds;
 
@@ -345,39 +351,57 @@ std::vector<AudioEvent> AudioSensor::GetRecentSounds(Player *bot, float currentT
         return recentSounds;
     }
 
+    // Changed in OPM - Phase 2 Task 2A.1.4 Code Review
+    //  Reserve capacity to avoid reallocations
+    recentSounds.reserve(eventQueue.size());
+
     const Vector botPos = bot->origin;
 
+    // Changed in OPM - Phase 2 Task 2A.1.4 Code Review
+    //  Use const reference to avoid copying 60-byte structs in loop
     // Filter events within time window and calculate 3D directional info
-    for (auto event : eventQueue) {
+    for (const auto& event : eventQueue) {
         if (currentTime - event.timestamp <= timeWindow) {
+            // Changed in OPM - Phase 2 Task 2A.1.4 Code Review
+            //  Create explicit copy only when needed (for modification)
+            AudioEvent modifiedEvent = event;
+
             // Calculate direction from bot to sound source
-            Vector toSound = event.position - botPos;
+            Vector toSound = modifiedEvent.position - botPos;
             const float distance = toSound.length();
 
             // Normalize direction
             if (distance > BotConstants::EPSILON) {
                 toSound.normalize();
-                event.estimatedDirection = toSound;
+                modifiedEvent.estimatedDirection = toSound;
 
                 // Calculate confidence based on distance
                 // Closer sounds have higher confidence
-                // Confidence decays linearly from 1.0 (0 units) to 0.0 (2000 units)
-                const float maxAudioDistance = 2000.0f;
-                event.confidence = 1.0f - Q_min(distance / maxAudioDistance, 1.0f);
+                // Changed in OPM - Phase 2 Task 2A.1.4 Code Review
+                //  Use named constant instead of magic number
+                // Confidence decays linearly from 1.0 (0 units) to 0.0 (MAX_AUDIO_DISTANCE units)
+                modifiedEvent.confidence = 1.0f - Q_min(distance / BotConstants::MAX_AUDIO_DISTANCE, 1.0f);
 
-                // Adjust loudness based on distance (inverse square law approximation)
-                // Sounds get quieter with distance
-                if (distance > 1.0f) {
-                    const float distanceFactor = 100.0f / distance; // Reference distance of 100 units
-                    event.loudness *= Q_min(distanceFactor, 1.0f);
+                // Changed in OPM - Phase 2 Task 2A.1.4 Code Review
+                //  Implement true inverse square law for loudness attenuation
+                //  Use named constants instead of magic numbers
+                // Adjust loudness based on distance (inverse square law)
+                // Sounds get quieter with distance squared
+                if (distance > BotConstants::AUDIO_MIN_DISTANCE) {
+                    const float refDist = BotConstants::AUDIO_REFERENCE_DISTANCE;
+                    // Inverse square: loudness ∝ 1/distance²
+                    const float attenuationFactor = (refDist * refDist) / (distance * distance);
+                    modifiedEvent.loudness *= Q_min(attenuationFactor, 1.0f); // Cap at 1.0 to prevent amplification
                 }
             } else {
                 // Sound at bot's position
-                event.estimatedDirection = vec_zero;
-                event.confidence = 1.0f;
+                modifiedEvent.estimatedDirection = vec_zero;
+                modifiedEvent.confidence = 1.0f;
             }
 
-            recentSounds.push_back(event);
+            // Changed in OPM - Phase 2 Task 2A.1.4 Code Review
+            //  Use move semantics for efficiency
+            recentSounds.push_back(std::move(modifiedEvent));
         }
     }
 

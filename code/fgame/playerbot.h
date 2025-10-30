@@ -135,6 +135,13 @@ namespace BotConstants
     constexpr float VERY_LARGE_DISTANCE_SQ = 99999999.0f; // Very large value for initialization
     constexpr int   LARGE_NEGATIVE_RANK    = -999999;     // Large negative value for rank comparisons
     constexpr float PERCENT_CONVERSION     = 100.0f;      // Convert ratio to percentage
+
+    // Audio Perception Constants (Phase 2 Task 2A.1.4)
+    constexpr int   MAX_AUDIO_EVENTS         = 100;    // Maximum events in queue
+    constexpr int   AUDIO_PRIORITY_MAX       = 2;      // Maximum priority value (high priority)
+    constexpr float MAX_AUDIO_DISTANCE       = 2000.0f; // Maximum audio detection range (units)
+    constexpr float AUDIO_REFERENCE_DISTANCE = 100.0f;  // Reference distance for attenuation
+    constexpr float AUDIO_MIN_DISTANCE       = 1.0f;    // Minimum distance for attenuation
 } // namespace BotConstants
 
 typedef struct nodeAttract_s {
