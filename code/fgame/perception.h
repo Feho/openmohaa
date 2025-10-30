@@ -278,8 +278,8 @@ public:
     // Process audio events
     void ProcessEvent(int eventType, const Vector &position, float loudness);
 
-    // Get recent audio events
-    std::vector<AudioEvent> GetRecentSounds(float currentTime, float timeWindow);
+    // Get recent audio events with 3D directional calculation
+    std::vector<AudioEvent> GetRecentSounds(Player *bot, float currentTime, float timeWindow);
 
 private:
     std::vector<AudioEvent> eventQueue;

@@ -80,6 +80,10 @@ add_bot_test(test_perception)
 # Vision sensor tests
 add_bot_test(test_vision_sensor)
 
+# Added in OPM - Phase 2 Task 2A.1.4
+# Audio sensor tests
+add_bot_test(test_audio_sensor)
+
 # Added in OPM - Phase 2 Task 2.0
 # yaml-cpp integration test
 add_executable(test_yaml_cpp test_yaml_cpp.cpp)

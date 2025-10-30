@@ -2,6 +2,7 @@
 // perception.cpp: Bot perception system implementation
 
 #include "perception.h"
+#include <algorithm>
 
 // ========================================================================
 // PerceptionSystem - Main perception coordinator
@@ -282,28 +283,112 @@ AudioSensor::AudioSensor() {}
 //  Destructor
 AudioSensor::~AudioSensor() {}
 
-// Added in OPM - Phase 2 Task 2A.1.4
-//  Process audio event - stub implementation
 void AudioSensor::ProcessEvent(int eventType, const Vector& position, float loudness)
 {
-    // Stub implementation
-    // Will be implemented in Task 2A.1.4:
-    // - Refactor NoticeEvent logic from BotController
-    // - Implement 3D positional audio calculations
-    // - Add priority filtering
-    // - Add direction estimation
+    // Calculate priority based on event type
+    int priority = 0;
+
+    // High priority events (from NoticeEvent logic in BotController)
+    switch (eventType) {
+    case AI_EVENT_WEAPON_FIRE:
+    case AI_EVENT_WEAPON_IMPACT:
+    case AI_EVENT_EXPLOSION:
+    case AI_EVENT_GRENADE:
+    case AI_EVENT_AMERICAN_URGENT:
+    case AI_EVENT_GERMAN_URGENT:
+        priority = 2;
+        break;
+
+    // Low priority events
+    case AI_EVENT_FOOTSTEP:
+    case AI_EVENT_AMERICAN_VOICE:
+    case AI_EVENT_GERMAN_VOICE:
+    case AI_EVENT_MISC:
+    case AI_EVENT_MISC_LOUD:
+        priority = 1;
+        break;
+
+    // Ignore irrelevant events
+    case AI_EVENT_NONE:
+    case AI_EVENT_BADPLACE:
+    default:
+        return;
+    }
+
+    // Create audio event
+    AudioEvent event;
+    event.type = eventType;
+    event.position = position;
+    event.loudness = loudness;
+    event.priority = priority / 2.0f; // Normalize to 0.0-1.0
+    event.timestamp = level.svsTime * 0.001f; // Convert ms to seconds
+
+    // For now, we don't have bot position, so we can't calculate direction
+    // This will be done by PerceptionSystem when it integrates bot context
+    event.estimatedDirection = vec_zero;
+    event.confidence = 0.0f;
+
+    // Add to queue
+    eventQueue.push_back(event);
+
+    // Cleanup old events (keep last 100 events)
+    if (eventQueue.size() > 100) {
+        eventQueue.erase(eventQueue.begin());
+    }
 }
 
-// Added in OPM - Phase 2 Task 2A.1.4
-//  Get recent audio events - stub implementation
-std::vector<AudioEvent> AudioSensor::GetRecentSounds(float currentTime, float timeWindow)
+std::vector<AudioEvent> AudioSensor::GetRecentSounds(Player *bot, float currentTime, float timeWindow)
 {
     std::vector<AudioEvent> recentSounds;
 
-    // Stub implementation
-    // Will be implemented in Task 2A.1.4:
-    // - Filter events by time window
-    // - Sort by priority/loudness
+    if (!bot) {
+        return recentSounds;
+    }
+
+    const Vector botPos = bot->origin;
+
+    // Filter events within time window and calculate 3D directional info
+    for (auto event : eventQueue) {
+        if (currentTime - event.timestamp <= timeWindow) {
+            // Calculate direction from bot to sound source
+            Vector toSound = event.position - botPos;
+            const float distance = toSound.length();
+
+            // Normalize direction
+            if (distance > BotConstants::EPSILON) {
+                toSound.normalize();
+                event.estimatedDirection = toSound;
+
+                // Calculate confidence based on distance
+                // Closer sounds have higher confidence
+                // Confidence decays linearly from 1.0 (0 units) to 0.0 (2000 units)
+                const float maxAudioDistance = 2000.0f;
+                event.confidence = 1.0f - Q_min(distance / maxAudioDistance, 1.0f);
+
+                // Adjust loudness based on distance (inverse square law approximation)
+                // Sounds get quieter with distance
+                if (distance > 1.0f) {
+                    const float distanceFactor = 100.0f / distance; // Reference distance of 100 units
+                    event.loudness *= Q_min(distanceFactor, 1.0f);
+                }
+            } else {
+                // Sound at bot's position
+                event.estimatedDirection = vec_zero;
+                event.confidence = 1.0f;
+            }
+
+            recentSounds.push_back(event);
+        }
+    }
+
+    // Sort by priority (high to low), then by loudness (high to low)
+    std::sort(recentSounds.begin(), recentSounds.end(),
+        [](const AudioEvent& a, const AudioEvent& b) {
+            if (a.priority != b.priority) {
+                return a.priority > b.priority; // Higher priority first
+            }
+            return a.loudness > b.loudness; // Then by loudness
+        });
 
     return recentSounds;
 }
