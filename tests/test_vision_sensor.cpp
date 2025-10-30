@@ -44,7 +44,9 @@ protected:
         return factor;
     }
 
-    // Helper to check if point is within FOV cone (mirrors production code)
+    // Changed in OPM - Phase 2 Task 2A.1.2 Code Review
+    //  Updated to match optimized production code with cosine comparison
+    //  Helper to check if point is within FOV cone (mirrors production code)
     bool CheckFOV(
         const TestVector &botPos,
         const TestVector &botForward,
@@ -63,12 +65,15 @@ protected:
         // Clamp dot product to valid range for acos
         const float clampedDot = Q_clamp_float(dotProduct, -1.0f, 1.0f);
 
-        // Calculate angle in degrees
+        // Calculate angle in degrees (still needed for angleFromForward output)
         angleFromForward = static_cast<float>(acos(clampedDot)) * 180.0f / M_PI_FLOAT;
 
-        // Check if within FOV cone (half-angle)
+        // Optimized FOV check: compare dot product directly with cosine
         const float halfFOV = fovDegrees * 0.5f;
-        return angleFromForward <= halfFOV;
+        const float cosHalfFOV = cos(halfFOV * M_PI_FLOAT / 180.0f); // Convert to radians
+
+        // Cosine decreases as angle increases, so we use >= comparison
+        return dotProduct >= cosHalfFOV;
     }
 };
 
@@ -296,4 +301,58 @@ TEST_F(VisionSensorTest, VisibilityFactor_Clamping)
     factor = CalculateVisibilityFactor(0.0f, maxDistance, true);
     EXPECT_GE(factor, 0.0f) << "Peripheral factor should not be negative";
     EXPECT_LE(factor, 0.4f) << "Peripheral factor should not exceed 0.4 (40% of 1.0)";
+}
+
+// ============================================================================
+// Test 6: FOV Boundary - Exact boundary angles
+// ============================================================================
+
+// Added in OPM - Phase 2 Task 2A.1.2 Code Review
+//  Test FOV detection at exact boundary angles
+TEST_F(VisionSensorTest, FOVCheck_ExactBoundary)
+{
+    const TestVector botPos(0.0f, 0.0f, 0.0f);
+    const TestVector botForward(0.0f, 1.0f, 0.0f); // Looking along +Y axis (forward in MOHAA)
+
+    // Test at exactly 39.9 degrees (just inside central FOV boundary for 80-degree FOV)
+    // Note: Using 39.9 instead of 40.0 to avoid floating-point precision issues at exact boundary
+    const float angle40 = 39.9f;
+    const float dist    = 100.0f;
+    const float rad40   = angle40 * M_PI_FLOAT / 180.0f; // Convert to radians
+    const float x40     = dist * sin(rad40);
+    const float y40     = dist * cos(rad40);
+
+    TestVector targetPos40(x40, y40, 0.0f);
+
+    float angleOut = 0.0f;
+    bool  result   = CheckFOV(botPos, botForward, targetPos40, 80.0f, angleOut);
+
+    // At 39.9 degrees, should be inside 80-degree FOV
+    EXPECT_TRUE(result) << "Target at 39.9 degrees should be in 80-degree FOV";
+    EXPECT_NEAR(angleOut, 39.9f, 0.2f) << "Angle calculation should be accurate";
+
+    // Test at exactly 89.9 degrees (just inside peripheral FOV boundary for 180-degree FOV)
+    // Note: Using 89.9 instead of 90.0 to avoid floating-point precision issues at exact boundary
+    const float angle90 = 89.9f;
+    const float rad90   = angle90 * M_PI_FLOAT / 180.0f; // Convert to radians
+    const float x90     = dist * sin(rad90);
+    const float y90     = dist * cos(rad90);
+
+    TestVector targetPos90(x90, y90, 0.0f);
+
+    result = CheckFOV(botPos, botForward, targetPos90, 180.0f, angleOut);
+    EXPECT_TRUE(result) << "Target at 89.9 degrees should be in 180-degree FOV";
+    EXPECT_NEAR(angleOut, 89.9f, 0.2f) << "Angle calculation should be accurate at ~90 degrees";
+
+    // Test well beyond 40 degrees (should be outside 80-degree FOV)
+    const float angle45 = 45.0f;
+    const float rad45   = angle45 * M_PI_FLOAT / 180.0f; // Convert to radians
+    const float x45     = dist * sin(rad45);
+    const float y45     = dist * cos(rad45);
+
+    TestVector targetPos45(x45, y45, 0.0f);
+
+    result = CheckFOV(botPos, botForward, targetPos45, 80.0f, angleOut);
+    EXPECT_FALSE(result) << "Target at 45 degrees should be outside 80-degree FOV";
+    EXPECT_NEAR(angleOut, 45.0f, 0.2f) << "Angle calculation should be accurate at 45 degrees";
 }

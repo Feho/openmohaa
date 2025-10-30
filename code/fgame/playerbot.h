@@ -49,10 +49,13 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 namespace BotConstants
 {
     // Vision and Perception
-    constexpr float DEFAULT_FOV_DEGREES    = 100.0f; // Field of view in degrees
-    constexpr float NARROW_FOV_DEGREES     = 20.0f;  // Narrow FOV for precise checks
-    constexpr float FARPLANE_VISION_FACTOR = 0.828f; // Factor of farplane distance for vision
-    constexpr float VISIBILITY_THRESHOLD   = 0.1f;   // Minimum visibility factor to consider enemy visible
+    constexpr float DEFAULT_FOV_DEGREES       = 100.0f; // Field of view in degrees
+    constexpr float NARROW_FOV_DEGREES        = 20.0f;  // Narrow FOV for precise checks
+    constexpr float FARPLANE_VISION_FACTOR    = 0.828f; // Factor of farplane distance for vision
+    constexpr float VISIBILITY_THRESHOLD      = 0.1f;   // Minimum visibility factor to consider enemy visible
+    constexpr float CENTRAL_FOV_DEGREES       = 80.0f;  // Central vision field of view
+    constexpr float PERIPHERAL_FOV_DEGREES    = 180.0f; // Peripheral vision field of view
+    constexpr float PERIPHERAL_CLARITY_FACTOR = 0.4f;   // Peripheral vision has 40% of central clarity
 
     // Combat Distances (units)
     constexpr float MELEE_RANGE                 = 64.0f;  // Maximum melee attack range

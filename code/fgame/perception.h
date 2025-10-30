@@ -238,7 +238,13 @@ public:
     // Update vision and return visible enemies
     std::vector<EnemyInfo> UpdateVision(Player *bot, float deltaTime);
 
-    // Check if bot can see a specific entity
+    // Added in OPM - Phase 2 Task 2A.1.2 Code Review
+    //  Check if bot can see a specific target
+    //  @param bot Bot performing the visibility check (must not be null)
+    //  @param target Target entity to check (must not be null)
+    //  @param fov Field of view in degrees (0 or 360 = omnidirectional, must be 0-360)
+    //  @param maxDistance Maximum vision distance (0 or negative = unlimited)
+    //  @return true if target is visible to bot
     bool CanSee(Player *bot, Sentient *target, float fov, float maxDistance);
 
 private:
