@@ -429,38 +429,109 @@ MemorySystem::MemorySystem() {}
 //  Destructor
 MemorySystem::~MemorySystem() {}
 
-// Added in OPM - Phase 2 Task 2A.1.5
-//  Update memory with seen enemy - stub implementation
 void MemorySystem::UpdateMemory(const EnemyInfo& enemyInfo, float currentTime)
 {
-    // Stub implementation
-    // Will be implemented in Task 2A.1.5:
-    // - Store/update enemy last-known position
-    // - Calculate predicted position based on velocity
-    // - Update confidence level
-    // - Track times spotted
+    if (!enemyInfo.entity) {
+        return;
+    }
+
+    // Check if we already have a memory for this enemy
+    bool found = false;
+    for (auto& memory : memories) {
+        if (memory.enemy == enemyInfo.entity) {
+            // Update existing memory
+            memory.lastKnownPosition = enemyInfo.position;
+            memory.lastKnownVelocity = enemyInfo.velocity;
+            memory.lastSeenTime = currentTime;
+            memory.confidenceLevel = 1.0f; // Reset confidence to maximum
+            memory.timesSpotted++;
+            memory.predictedPosition = enemyInfo.position; // Will be updated when queried
+            found = true;
+            break;
+        }
+    }
+
+    // If not found, create new memory
+    if (!found) {
+        EnemyMemory newMemory;
+        newMemory.enemy = enemyInfo.entity;
+        newMemory.lastKnownPosition = enemyInfo.position;
+        newMemory.lastKnownVelocity = enemyInfo.velocity;
+        newMemory.lastSeenTime = currentTime;
+        newMemory.confidenceLevel = 1.0f;
+        newMemory.timesSpotted = 1;
+        newMemory.predictedPosition = enemyInfo.position;
+        newMemory.investigationStarted = false;
+
+        memories.push_back(newMemory);
+    }
 }
 
-// Added in OPM - Phase 2 Task 2A.1.5
-//  Get all known enemies from memory - stub implementation
 std::vector<EnemyMemory> MemorySystem::GetKnownEnemies(float currentTime)
 {
     std::vector<EnemyMemory> knownEnemies;
 
-    // Stub implementation
-    // Will be implemented in Task 2A.1.5:
-    // - Return memories with decayed confidence
-    // - Filter out expired memories
+    for (const auto& memory : memories) {
+        // Skip if entity no longer exists (SafePtr returns null)
+        if (!memory.enemy) {
+            continue;
+        }
+
+        // Calculate time since last seen
+        const float timeSinceLastSeen = currentTime - memory.lastSeenTime;
+
+        // Skip very old memories
+        if (timeSinceLastSeen > BotConstants::MEMORY_MAX_AGE_SECONDS) {
+            continue;
+        }
+
+        // Apply confidence decay (create a copy with decayed confidence)
+        const float decayAmount = timeSinceLastSeen * BotConstants::MEMORY_CONFIDENCE_DECAY_RATE;
+        const float decayedConfidence = Q_max(0.0f, 1.0f - decayAmount);
+
+        // Skip memories below minimum confidence threshold
+        if (decayedConfidence < BotConstants::MEMORY_MIN_CONFIDENCE) {
+            continue;
+        }
+
+        // Create a copy with updated confidence and predicted position
+        EnemyMemory decayedMemory = memory;
+        decayedMemory.confidenceLevel = decayedConfidence;
+        decayedMemory.predictedPosition = memory.lastKnownPosition + (memory.lastKnownVelocity * timeSinceLastSeen);
+
+        knownEnemies.push_back(decayedMemory);
+    }
 
     return knownEnemies;
 }
 
-// Added in OPM - Phase 2 Task 2A.1.5
-//  Clean up old memories - stub implementation
 void MemorySystem::CleanupOldMemories(float currentTime, float maxAge)
 {
-    // Stub implementation
-    // Will be implemented in Task 2A.1.5:
-    // - Remove memories older than maxAge
-    // - Remove memories with zero confidence
+    // Use erase-remove idiom to efficiently remove stale memories
+    memories.erase(
+        std::remove_if(
+            memories.begin(),
+            memories.end(),
+            [currentTime, maxAge](const EnemyMemory& memory) {
+                // Remove if entity no longer exists
+                if (!memory.enemy) {
+                    return true;
+                }
+
+                // Remove if too old
+                const float age = currentTime - memory.lastSeenTime;
+                if (age > maxAge) {
+                    return true;
+                }
+
+                // Remove if confidence is too low
+                if (memory.confidenceLevel < BotConstants::MEMORY_MIN_CONFIDENCE) {
+                    return true;
+                }
+
+                return false;
+            }
+        ),
+        memories.end()
+    );
 }

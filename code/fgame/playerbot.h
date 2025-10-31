@@ -142,6 +142,11 @@ namespace BotConstants
     constexpr float MAX_AUDIO_DISTANCE       = 2000.0f; // Maximum audio detection range (units)
     constexpr float AUDIO_REFERENCE_DISTANCE = 100.0f;  // Reference distance for attenuation
     constexpr float AUDIO_MIN_DISTANCE       = 1.0f;    // Minimum distance for attenuation
+
+    // Memory System Constants (Phase 2 Task 2A.1.5)
+    constexpr float MEMORY_CONFIDENCE_DECAY_RATE = 0.1f;  // Confidence decay per second when not seen
+    constexpr float MEMORY_MIN_CONFIDENCE        = 0.1f;  // Minimum confidence before memory is discarded
+    constexpr float MEMORY_MAX_AGE_SECONDS       = 30.0f; // Maximum time to keep memories (seconds)
 } // namespace BotConstants
 
 typedef struct nodeAttract_s {

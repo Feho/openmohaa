@@ -84,6 +84,10 @@ add_bot_test(test_vision_sensor)
 # Audio sensor tests
 add_bot_test(test_audio_sensor)
 
+# Added in OPM - Phase 2 Task 2A.1.5
+# Memory system tests
+add_bot_test(test_memory_system)
+
 # Added in OPM - Phase 2 Task 2.0
 # yaml-cpp integration test
 add_executable(test_yaml_cpp test_yaml_cpp.cpp)
