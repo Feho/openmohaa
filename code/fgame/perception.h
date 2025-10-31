@@ -274,6 +274,22 @@ public:
     bool CanSee(Player *bot, Sentient *target, float fov, float maxDistance);
 
 private:
+    // Added in OPM - Phase 2 Task 2A.1.7 Code Review
+    //  Entity relationship classification for unified scanning logic
+    enum class EntityRelation {
+        SELF,    // Sentient is the bot itself
+        ENEMY,   // Sentient is an enemy (different team or FFA)
+        ALLY,    // Sentient is an ally (same team, not FFA)
+        NEUTRAL  // Sentient is neither enemy nor ally (spectator, invalid team, etc.)
+    };
+
+    // Added in OPM - Phase 2 Task 2A.1.7 Code Review
+    //  Determine relationship between bot and sentient
+    //  Consolidates team checking logic used by both UpdateVision() and UpdateAllies()
+    //  @param bot Bot performing the check (must not be null)
+    //  @param sentient Target entity to classify (must not be null)
+    //  @return EntityRelation classification
+    EntityRelation DetermineRelation(Player *bot, Sentient *sentient) const;
     // Added in OPM - Phase 2 Task 2A.1.2
     //  Helper method to check if target is within field of view
     bool CheckFOV(

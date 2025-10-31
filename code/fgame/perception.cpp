@@ -109,6 +109,56 @@ VisionSensor::VisionSensor() {}
 //  Destructor
 VisionSensor::~VisionSensor() {}
 
+// Added in OPM - Phase 2 Task 2A.1.7 Code Review
+//  Determine relationship between bot and sentient
+//  Consolidates all team checking, FFA handling, spectator filtering, and validation
+//  Eliminates ~80% code duplication between UpdateVision() and UpdateAllies()
+VisionSensor::EntityRelation VisionSensor::DetermineRelation(Player *bot, Sentient *sentient) const
+{
+    // Self check
+    if (sentient == bot) {
+        return EntityRelation::SELF;
+    }
+
+    // Only process players for team-based detection
+    if (!sentient->IsSubclassOfPlayer()) {
+        // Non-player sentients (NPCs, actors, etc.) are treated as enemies
+        return EntityRelation::ENEMY;
+    }
+
+    Player *otherPlayer = static_cast<Player *>(sentient);
+
+    // Changed in OPM - Phase 2 Task 2A.1.7 Code Review
+    //  Fixed: Filter out spectators (they shouldn't be detected as allies or enemies)
+    if (otherPlayer->edict->r.svFlags & SVF_NOCLIENT) {
+        return EntityRelation::NEUTRAL; // Spectator
+    }
+
+    // Changed in OPM - Phase 2 Task 2A.1.7 Code Review
+    //  Fixed: In free-for-all mode, all players are enemies
+    //  GT_FFA = 1, all modes >= GT_FFA (except GT_SINGLE_PLAYER = 0) are multiplayer
+    if (g_gametype->integer == GT_FFA) {
+        return EntityRelation::ENEMY; // All players are enemies in FFA
+    }
+
+    // Changed in OPM - Phase 2 Task 2A.1.7 Code Review
+    //  Fixed: Validate team numbers to prevent invalid team detection
+    int botTeam   = bot->GetTeam();
+    int otherTeam = otherPlayer->GetTeam();
+
+    // Invalid team check
+    if (botTeam == TEAM_NONE || otherTeam == TEAM_NONE) {
+        return EntityRelation::NEUTRAL; // Invalid team
+    }
+
+    // Team-based modes: check team affiliation
+    if (otherTeam == botTeam) {
+        return EntityRelation::ALLY; // Same team
+    }
+
+    return EntityRelation::ENEMY; // Different team
+}
+
 // Added in OPM - Phase 2 Task 2A.1.2
 //  Update vision perception - scans for visible enemies
 std::vector<EnemyInfo> VisionSensor::UpdateVision(Player *bot, float deltaTime)
@@ -149,12 +199,12 @@ std::vector<EnemyInfo> VisionSensor::UpdateVision(Player *bot, float deltaTime)
             continue;
         }
 
-        // Skip allies (check team affiliation)
-        if (sentient->IsSubclassOfPlayer()) {
-            Player *otherPlayer = static_cast<Player *>(sentient);
-            if (otherPlayer->GetTeam() == bot->GetTeam()) {
-                continue; // Same team, skip
-            }
+        // Changed in OPM - Phase 2 Task 2A.1.7 Code Review
+        //  Refactored: Use unified DetermineRelation for team checking
+        //  This replaces the old manual team check and adds FFA/spectator/validation logic
+        EntityRelation relation = DetermineRelation(bot, sentient);
+        if (relation != EntityRelation::ENEMY) {
+            continue; // Skip non-enemies (self, allies, spectators, neutral)
         }
 
         // Check if we can see this sentient
@@ -250,17 +300,17 @@ std::vector<AllyInfo> VisionSensor::UpdateAllies(Player *bot, float deltaTime)
             continue;
         }
 
-        // Only process Players (allies must be players)
-        if (!sentient->IsSubclassOfPlayer()) {
-            continue;
+        // Changed in OPM - Phase 2 Task 2A.1.7 Code Review
+        //  Refactored: Use unified DetermineRelation for team checking
+        //  This replaces the old manual team check and adds FFA/spectator/validation logic
+        //  Eliminates ~80% code duplication between UpdateVision() and UpdateAllies()
+        EntityRelation relation = DetermineRelation(bot, sentient);
+        if (relation != EntityRelation::ALLY) {
+            continue; // Skip non-allies (self, enemies, spectators, neutral)
         }
 
+        // At this point, sentient is guaranteed to be a Player (DetermineRelation checks this)
         Player *otherPlayer = static_cast<Player *>(sentient);
-
-        // Skip enemies (check team affiliation)
-        if (otherPlayer->GetTeam() != bot->GetTeam()) {
-            continue; // Different team, skip
-        }
 
         // Check if we can see this ally
         float       angleFromForward = 0.0f;
