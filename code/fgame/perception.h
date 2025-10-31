@@ -308,7 +308,7 @@ public:
     void UpdateMemory(const EnemyInfo &enemyInfo, float currentTime);
 
     // Get all remembered enemies
-    std::vector<EnemyMemory> GetKnownEnemies(float currentTime);
+    std::vector<EnemyMemory> GetKnownEnemies(float currentTime) const;
 
     // Clear old memories
     void CleanupOldMemories(float currentTime, float maxAge);

@@ -429,6 +429,10 @@ MemorySystem::MemorySystem() {}
 //  Destructor
 MemorySystem::~MemorySystem() {}
 
+// Added in OPM - Phase 2 Task 2A.1.5
+//  Update or create memory for a single enemy
+//  If enemy already exists in memory, updates position, velocity, and resets confidence to 1.0
+//  If enemy is new, creates a new memory entry
 void MemorySystem::UpdateMemory(const EnemyInfo& enemyInfo, float currentTime)
 {
     if (!enemyInfo.entity) {
@@ -467,7 +471,7 @@ void MemorySystem::UpdateMemory(const EnemyInfo& enemyInfo, float currentTime)
     }
 }
 
-std::vector<EnemyMemory> MemorySystem::GetKnownEnemies(float currentTime)
+std::vector<EnemyMemory> MemorySystem::GetKnownEnemies(float currentTime) const
 {
     std::vector<EnemyMemory> knownEnemies;
 
@@ -477,8 +481,8 @@ std::vector<EnemyMemory> MemorySystem::GetKnownEnemies(float currentTime)
             continue;
         }
 
-        // Calculate time since last seen
-        const float timeSinceLastSeen = currentTime - memory.lastSeenTime;
+        // Calculate time since last seen (clamp to 0 to handle clock skew)
+        const float timeSinceLastSeen = Q_max(0.0f, currentTime - memory.lastSeenTime);
 
         // Skip very old memories
         if (timeSinceLastSeen > BotConstants::MEMORY_MAX_AGE_SECONDS) {
@@ -521,11 +525,6 @@ void MemorySystem::CleanupOldMemories(float currentTime, float maxAge)
                 // Remove if too old
                 const float age = currentTime - memory.lastSeenTime;
                 if (age > maxAge) {
-                    return true;
-                }
-
-                // Remove if confidence is too low
-                if (memory.confidenceLevel < BotConstants::MEMORY_MIN_CONFIDENCE) {
                     return true;
                 }
 

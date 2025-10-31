@@ -138,7 +138,7 @@ public:
         }
     }
 
-    std::vector<MockEnemyMemory> GetKnownEnemies(float currentTime)
+    std::vector<MockEnemyMemory> GetKnownEnemies(float currentTime) const
     {
         std::vector<MockEnemyMemory> knownEnemies;
 
@@ -148,8 +148,8 @@ public:
                 continue;
             }
 
-            // Calculate time since last seen
-            const float timeSinceLastSeen = currentTime - memory.lastSeenTime;
+            // Calculate time since last seen (clamp to 0 to handle clock skew)
+            const float timeSinceLastSeen = Q_max(0.0f, currentTime - memory.lastSeenTime);
 
             // Skip very old memories
             if (timeSinceLastSeen > MEMORY_MAX_AGE_SECONDS) {
@@ -192,11 +192,6 @@ public:
                     // Remove if too old
                     const float age = currentTime - memory.lastSeenTime;
                     if (age > maxAge) {
-                        return true;
-                    }
-
-                    // Remove if confidence is too low
-                    if (memory.confidenceLevel < MEMORY_MIN_CONFIDENCE) {
                         return true;
                     }
 
@@ -319,5 +314,125 @@ TEST_F(MemorySystemTest, GetKnownEnemies_PositionPrediction)
 
     // Verify confidence also decayed appropriately
     // At t=5, decay = 5 * 0.1 = 0.5, confidence = 0.5
+    EXPECT_NEAR(known[0].confidenceLevel, 0.5f, 0.01f);
+}
+
+// Test 7: CleanupOldMemories removes stale memories beyond maxAge
+TEST_F(MemorySystemTest, CleanupOldMemories_RemovesStaleData)
+{
+    // Create three enemies at different times
+    MockEnemyInfo info1, info2, info3;
+    info1.entity   = &enemy1;
+    info1.position = enemy1.position;
+    info1.velocity = enemy1.velocity;
+
+    info2.entity   = &enemy2;
+    info2.position = enemy2.position;
+    info2.velocity = enemy2.velocity;
+
+    info3.entity   = &enemy3;
+    info3.position = enemy3.position;
+    info3.velocity = enemy3.velocity;
+
+    // Spot enemies at t=0, t=10, t=20
+    system.UpdateMemory(info1, 0.0f);
+    system.UpdateMemory(info2, 10.0f);
+    system.UpdateMemory(info3, 20.0f);
+
+    // Verify all three memories exist
+    ASSERT_EQ(system.memories.size(), 3);
+
+    // Cleanup at t=35 with maxAge=30
+    // enemy1 age=35, enemy2 age=25, enemy3 age=15
+    // Only enemy1 should be removed (35 > 30)
+    system.CleanupOldMemories(35.0f, 30.0f);
+
+    // Verify only two memories remain
+    ASSERT_EQ(system.memories.size(), 2);
+    EXPECT_EQ(system.memories[0].enemy, &enemy2); // enemy2 survives (age=25)
+    EXPECT_EQ(system.memories[1].enemy, &enemy3); // enemy3 survives (age=15)
+
+    // Cleanup at t=50 with maxAge=30
+    // enemy2 age=40, enemy3 age=30
+    // enemy2 should be removed (40 > 30), enemy3 exactly at boundary (30 not > 30)
+    system.CleanupOldMemories(50.0f, 30.0f);
+
+    // Verify only one memory remains
+    ASSERT_EQ(system.memories.size(), 1);
+    EXPECT_EQ(system.memories[0].enemy, &enemy3); // enemy3 survives (age=30, not greater)
+
+    // Cleanup at t=51 with maxAge=30
+    // enemy3 age=31 (31 > 30)
+    system.CleanupOldMemories(51.0f, 30.0f);
+
+    // Verify all memories cleared
+    EXPECT_EQ(system.memories.size(), 0);
+}
+
+// Test 8: GetKnownEnemies skips null entities (simulates entity destruction)
+TEST_F(MemorySystemTest, GetKnownEnemies_SkipsNullEntities)
+{
+    // Create memory for enemy1
+    MockEnemyInfo info;
+    info.entity   = &enemy1;
+    info.position = enemy1.position;
+    info.velocity = enemy1.velocity;
+    system.UpdateMemory(info, 0.0f);
+
+    // Verify memory exists and is returned
+    std::vector<MockEnemyMemory> known = system.GetKnownEnemies(0.5f);
+    ASSERT_EQ(known.size(), 1);
+    EXPECT_EQ(known[0].enemy, &enemy1);
+
+    // Simulate entity destruction by setting enemy pointer to null
+    system.memories[0].enemy = nullptr;
+
+    // GetKnownEnemies should now return empty vector (filters out null)
+    known = system.GetKnownEnemies(1.0f);
+    EXPECT_EQ(known.size(), 0);
+
+    // Verify the memory still exists in storage (not removed yet)
+    EXPECT_EQ(system.memories.size(), 1);
+
+    // CleanupOldMemories should remove the null entity
+    system.CleanupOldMemories(2.0f, 30.0f);
+    EXPECT_EQ(system.memories.size(), 0);
+}
+
+// Test 9: UpdateMemory resets confidence to 1.0 when enemy is re-spotted
+TEST_F(MemorySystemTest, UpdateMemory_ResetConfidenceOnResight)
+{
+    // Create memory for enemy1 at t=0
+    MockEnemyInfo info;
+    info.entity   = &enemy1;
+    info.position = enemy1.position;
+    info.velocity = enemy1.velocity;
+    system.UpdateMemory(info, 0.0f);
+
+    // Query at t=5 - confidence should be decayed
+    // decay = 5 * 0.1 = 0.5, confidence = 1.0 - 0.5 = 0.5
+    std::vector<MockEnemyMemory> known = system.GetKnownEnemies(5.0f);
+    ASSERT_EQ(known.size(), 1);
+    EXPECT_NEAR(known[0].confidenceLevel, 0.5f, 0.01f);
+
+    // Re-spot enemy at t=5 (UpdateMemory should reset confidence to 1.0)
+    info.position = TestVector(110, 0, 0); // Enemy moved slightly
+    system.UpdateMemory(info, 5.0f);
+
+    // Query immediately at t=5.1 - confidence should be back to ~1.0, not decayed
+    // If confidence was properly reset at t=5, then at t=5.1:
+    // timeSinceLastSeen = 0.1, decay = 0.1 * 0.1 = 0.01, confidence = 0.99
+    known = system.GetKnownEnemies(5.1f);
+    ASSERT_EQ(known.size(), 1);
+    EXPECT_NEAR(known[0].confidenceLevel, 0.99f, 0.01f);
+
+    // Verify the stored confidence in memory is 1.0 (before decay calculation)
+    EXPECT_FLOAT_EQ(system.memories[0].confidenceLevel, 1.0f);
+    EXPECT_FLOAT_EQ(system.memories[0].lastSeenTime, 5.0f);
+
+    // Query much later at t=10 - should decay from the re-sight time (t=5)
+    // timeSinceLastSeen = 5, decay = 5 * 0.1 = 0.5, confidence = 0.5
+    known = system.GetKnownEnemies(10.0f);
+    ASSERT_EQ(known.size(), 1);
     EXPECT_NEAR(known[0].confidenceLevel, 0.5f, 0.01f);
 }
