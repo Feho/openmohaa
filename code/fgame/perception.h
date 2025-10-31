@@ -52,16 +52,22 @@ struct EnemyInfo {
 //  Information about a nearby ally
 // Changed in OPM - Phase 2 Task 2A.1.1 Code Review
 //  Fixed: Replaced raw pointer with SafePtr for entity safety
+// Changed in OPM - Phase 2 Task 2A.1.7
+//  Added velocity and angleFromForward fields for consistency with EnemyInfo
 struct AllyInfo {
-    SafePtr<Player> entity;   // Pointer to ally player (auto-nullifies on destruction)
-    Vector          position; // Current position
-    float           distance; // Distance to bot
-    bool            canSeeMe; // True if ally can see this bot
+    SafePtr<Player> entity;           // Pointer to ally player (auto-nullifies on destruction)
+    Vector          position;         // Current position
+    Vector          velocity;         // Current velocity
+    float           distance;         // Distance to bot
+    float           angleFromForward; // Angle from bot's forward direction (degrees)
+    bool            canSeeMe;         // True if ally can see this bot
 
     AllyInfo()
         : entity(nullptr)
         , position(vec_zero)
+        , velocity(vec_zero)
         , distance(0.0f)
+        , angleFromForward(0.0f)
         , canSeeMe(false)
     {
     }
@@ -129,7 +135,10 @@ struct PerceptionSnapshot {
     size_t                   mostDangerousEnemyIndex; // Index to most threatening enemy (SIZE_MAX = none)
 
     // Allies
-    std::vector<AllyInfo> nearbyAllies; // Nearby friendly players
+    // Changed in OPM - Phase 2 Task 2A.1.7
+    //  Renamed nearbyAllies to visibleAllies for consistency with visibleEnemies
+    std::vector<AllyInfo> visibleAllies;    // Currently visible allies
+    size_t                closestAllyIndex; // Index to closest visible ally (SIZE_MAX = none)
 
     // Audio
     std::vector<AudioEvent> recentSounds;      // Recent audio events
@@ -141,6 +150,7 @@ struct PerceptionSnapshot {
     PerceptionSnapshot()
         : closestEnemyIndex(SIZE_MAX)
         , mostDangerousEnemyIndex(SIZE_MAX)
+        , closestAllyIndex(SIZE_MAX)
         , loudestSoundIndex(SIZE_MAX)
         , threatLevel(THREAT_NONE)
     {
@@ -181,6 +191,15 @@ struct PerceptionSnapshot {
     const AudioEvent *GetLoudestSound() const
     {
         return loudestSoundIndex < recentSounds.size() ? &recentSounds[loudestSoundIndex] : nullptr;
+    }
+
+    // Added in OPM - Phase 2 Task 2A.1.7
+    //  Accessor for closest ally
+    AllyInfo *GetClosestAlly() { return closestAllyIndex < visibleAllies.size() ? &visibleAllies[closestAllyIndex] : nullptr; }
+
+    const AllyInfo *GetClosestAlly() const
+    {
+        return closestAllyIndex < visibleAllies.size() ? &visibleAllies[closestAllyIndex] : nullptr;
     }
 };
 
@@ -240,6 +259,10 @@ public:
 
     // Update vision and return visible enemies
     std::vector<EnemyInfo> UpdateVision(Player *bot, float deltaTime);
+
+    // Added in OPM - Phase 2 Task 2A.1.7
+    //  Update vision and return visible allies
+    std::vector<AllyInfo> UpdateAllies(Player *bot, float deltaTime);
 
     // Added in OPM - Phase 2 Task 2A.1.2 Code Review
     //  Check if bot can see a specific target

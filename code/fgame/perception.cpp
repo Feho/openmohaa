@@ -26,6 +26,10 @@ PerceptionSnapshot PerceptionSystem::Update(Player *bot, float deltaTime)
     // Step 1: Update vision - get currently visible enemies
     snapshot.visibleEnemies = visionSensor->UpdateVision(bot, deltaTime);
 
+    // Added in OPM - Phase 2 Task 2A.1.7
+    //  Step 1b: Update allies
+    snapshot.visibleAllies = visionSensor->UpdateAllies(bot, deltaTime);
+
     // Step 2: Update memory with visible enemies
     for (const auto &enemyInfo : snapshot.visibleEnemies) {
         memory->UpdateMemory(enemyInfo, currentTime);
@@ -69,6 +73,19 @@ PerceptionSnapshot PerceptionSystem::Update(Player *bot, float deltaTime)
             if (snapshot.recentSounds[i].loudness > maxLoudness) {
                 maxLoudness                = snapshot.recentSounds[i].loudness;
                 snapshot.loudestSoundIndex = i;
+            }
+        }
+    }
+
+    // Added in OPM - Phase 2 Task 2A.1.7
+    //  Step 7b: Calculate closest ally index
+    snapshot.closestAllyIndex = SIZE_MAX;
+    if (!snapshot.visibleAllies.empty()) {
+        float minDistance = FLT_MAX;
+        for (size_t i = 0; i < snapshot.visibleAllies.size(); i++) {
+            if (snapshot.visibleAllies[i].distance < minDistance) {
+                minDistance               = snapshot.visibleAllies[i].distance;
+                snapshot.closestAllyIndex = i;
             }
         }
     }
@@ -193,6 +210,97 @@ std::vector<EnemyInfo> VisionSensor::UpdateVision(Player *bot, float deltaTime)
     }
 
     return visibleEnemies;
+}
+
+// Added in OPM - Phase 2 Task 2A.1.7
+//  Update vision perception - scans for visible allies
+std::vector<AllyInfo> VisionSensor::UpdateAllies(Player *bot, float deltaTime)
+{
+    std::vector<AllyInfo> visibleAllies;
+
+    if (!bot) {
+        return visibleAllies;
+    }
+
+    // Calculate max vision distance based on farplane
+    const float maxVisionDistance = world->farplane_distance * BotConstants::FARPLANE_VISION_FACTOR;
+
+    const float centralFOV    = BotConstants::CENTRAL_FOV_DEGREES;
+    const float peripheralFOV = BotConstants::PERIPHERAL_FOV_DEGREES;
+
+    // Get bot's position and view angles
+    const Vector botPos    = bot->origin;
+    const Vector botAngles = bot->GetViewAngles();
+
+    // Scan all sentients in the level
+    for (int i = 1; i <= SentientList.NumObjects(); i++) {
+        Sentient *sentient = SentientList.ObjectAt(i);
+
+        if (!sentient) {
+            continue;
+        }
+
+        // Skip self
+        if (sentient == bot) {
+            continue;
+        }
+
+        // Skip dead sentients
+        if (sentient->health <= 0) {
+            continue;
+        }
+
+        // Only process Players (allies must be players)
+        if (!sentient->IsSubclassOfPlayer()) {
+            continue;
+        }
+
+        Player *otherPlayer = static_cast<Player *>(sentient);
+
+        // Skip enemies (check team affiliation)
+        if (otherPlayer->GetTeam() != bot->GetTeam()) {
+            continue; // Different team, skip
+        }
+
+        // Check if we can see this ally
+        float       angleFromForward = 0.0f;
+        bool        inCentralFOV     = CheckFOV(botPos, botAngles, sentient->origin, centralFOV, angleFromForward);
+        bool        inPeripheralFOV  = false;
+        const float distance         = (sentient->origin - botPos).length();
+
+        // If not in central FOV, check peripheral
+        if (!inCentralFOV) {
+            inPeripheralFOV = CheckFOV(botPos, botAngles, sentient->origin, peripheralFOV, angleFromForward);
+        }
+
+        // Skip if not in any FOV
+        if (!inCentralFOV && !inPeripheralFOV) {
+            continue;
+        }
+
+        // Check distance
+        if (distance > maxVisionDistance) {
+            continue;
+        }
+
+        // Perform line of sight trace
+        if (!PerformLineOfSightTrace(bot, sentient)) {
+            continue;
+        }
+
+        // Ally is visible - create AllyInfo
+        AllyInfo allyInfo;
+        allyInfo.entity           = otherPlayer;
+        allyInfo.position         = sentient->origin;
+        allyInfo.velocity         = sentient->velocity;
+        allyInfo.distance         = distance;
+        allyInfo.angleFromForward = angleFromForward;
+        allyInfo.canSeeMe         = false; // Will be calculated in future if needed
+
+        visibleAllies.push_back(allyInfo);
+    }
+
+    return visibleAllies;
 }
 
 // Added in OPM - Phase 2 Task 2A.1.2

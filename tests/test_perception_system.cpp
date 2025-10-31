@@ -40,6 +40,26 @@ struct MockEnemyInfo {
     }
 };
 
+// Mock AllyInfo (mirrors production struct)
+struct MockAllyInfo {
+    MockSentient *entity;
+    TestVector    position;
+    TestVector    velocity;
+    float         distance;
+    float         angleFromForward;
+    bool          canSeeMe;
+
+    MockAllyInfo()
+        : entity(nullptr)
+        , position(TestVector(0, 0, 0))
+        , velocity(TestVector(0, 0, 0))
+        , distance(0.0f)
+        , angleFromForward(0.0f)
+        , canSeeMe(false)
+    {
+    }
+};
+
 // Mock EnemyMemory (mirrors production struct)
 struct MockEnemyMemory {
     MockSentient *enemy;
@@ -89,16 +109,19 @@ struct MockAudioEvent {
 // Mock PerceptionSnapshot (mirrors production struct)
 struct MockPerceptionSnapshot {
     std::vector<MockEnemyInfo>   visibleEnemies;
+    std::vector<MockAllyInfo>    visibleAllies;
     std::vector<MockAudioEvent>  recentSounds;
     std::vector<MockEnemyMemory> knownEnemies;
 
     size_t closestEnemyIndex;        // SIZE_MAX if none
     size_t mostDangerousEnemyIndex;  // SIZE_MAX if none
+    size_t closestAllyIndex;         // SIZE_MAX if none
     size_t loudestSoundIndex;        // SIZE_MAX if none
 
     MockPerceptionSnapshot()
         : closestEnemyIndex(SIZE_MAX)
         , mostDangerousEnemyIndex(SIZE_MAX)
+        , closestAllyIndex(SIZE_MAX)
         , loudestSoundIndex(SIZE_MAX)
     {
     }
@@ -111,6 +134,11 @@ struct MockPerceptionSnapshot {
     MockEnemyInfo *GetMostDangerousEnemy()
     {
         return mostDangerousEnemyIndex < visibleEnemies.size() ? &visibleEnemies[mostDangerousEnemyIndex] : nullptr;
+    }
+
+    MockAllyInfo *GetClosestAlly()
+    {
+        return closestAllyIndex < visibleAllies.size() ? &visibleAllies[closestAllyIndex] : nullptr;
     }
 
     MockAudioEvent *GetLoudestSound()
@@ -129,7 +157,14 @@ public:
         return visibleEnemies;
     }
 
+    std::vector<MockAllyInfo> UpdateAllies(const TestVector &botPos, float deltaTime)
+    {
+        // Return pre-configured visible allies for testing
+        return visibleAllies;
+    }
+
     std::vector<MockEnemyInfo> visibleEnemies;
+    std::vector<MockAllyInfo>  visibleAllies;
 };
 
 // Mock AudioSensor
@@ -356,6 +391,9 @@ public:
         // Step 1: Update vision - get currently visible enemies
         snapshot.visibleEnemies = visionSensor->UpdateVision(*botPos, deltaTime);
 
+        // Step 1b: Update allies
+        snapshot.visibleAllies = visionSensor->UpdateAllies(*botPos, deltaTime);
+
         // Step 2: Update memory with visible enemies
         for (const auto &enemyInfo : snapshot.visibleEnemies) {
             memory->UpdateMemory(enemyInfo, currentTime);
@@ -397,6 +435,18 @@ public:
                 if (snapshot.recentSounds[i].loudness > maxLoudness) {
                     maxLoudness                = snapshot.recentSounds[i].loudness;
                     snapshot.loudestSoundIndex = i;
+                }
+            }
+        }
+
+        // Step 7b: Calculate closest ally index
+        snapshot.closestAllyIndex = SIZE_MAX;
+        if (!snapshot.visibleAllies.empty()) {
+            float minDistance = FLT_MAX;
+            for (size_t i = 0; i < snapshot.visibleAllies.size(); i++) {
+                if (snapshot.visibleAllies[i].distance < minDistance) {
+                    minDistance               = snapshot.visibleAllies[i].distance;
+                    snapshot.closestAllyIndex = i;
                 }
             }
         }
@@ -674,4 +724,101 @@ TEST_F(PerceptionSystemTest, Update_CleansUpOldAudioEvents)
     // Update at t=6 (beyond 5s window)
     MockPerceptionSnapshot snapshot2 = system.Update(&botPos, 0.1f, 6.0f);
     EXPECT_EQ(snapshot2.recentSounds.size(), 0); // Event cleaned up
+}
+
+// ============================================================================
+// Ally Detection Tests (Phase 2 Task 2A.1.7)
+// ============================================================================
+
+// Test 1: Update() detects visible allies
+TEST_F(PerceptionSystemTest, Update_DetectsVisibleAllies)
+{
+    // Setup: Bot at origin with 2 allies visible
+    TestVector botPos(0, 0, 0);
+
+    // Create mock allies
+    MockSentient ally1(101);
+    MockSentient ally2(102);
+
+    // Add 2 allies
+    MockAllyInfo allyInfo1;
+    allyInfo1.entity           = &ally1;
+    allyInfo1.position         = TestVector(100, 0, 0);
+    allyInfo1.velocity         = TestVector(0, 0, 0);
+    allyInfo1.distance         = 100.0f;
+    allyInfo1.angleFromForward = 0.0f;
+
+    MockAllyInfo allyInfo2;
+    allyInfo2.entity           = &ally2;
+    allyInfo2.position         = TestVector(200, 50, 0);
+    allyInfo2.velocity         = TestVector(5, 0, 0);
+    allyInfo2.distance         = 206.2f;
+    allyInfo2.angleFromForward = 14.0f;
+
+    system.visionSensor->visibleAllies.push_back(allyInfo1);
+    system.visionSensor->visibleAllies.push_back(allyInfo2);
+
+    MockPerceptionSnapshot snapshot = system.Update(&botPos, 0.1f, 10.0f);
+
+    // Verify allies detected
+    ASSERT_EQ(snapshot.visibleAllies.size(), 2);
+    EXPECT_FLOAT_EQ(snapshot.visibleAllies[0].distance, 100.0f);
+    EXPECT_FLOAT_EQ(snapshot.visibleAllies[1].distance, 206.2f);
+    EXPECT_EQ(snapshot.visibleAllies[0].entity, &ally1);
+    EXPECT_EQ(snapshot.visibleAllies[1].entity, &ally2);
+}
+
+// Test 2: Update() calculates closest ally correctly
+TEST_F(PerceptionSystemTest, Update_CalculatesClosestAlly)
+{
+    TestVector botPos(0, 0, 0);
+
+    // Create mock allies
+    MockSentient ally1(101);
+    MockSentient ally2(102);
+    MockSentient ally3(103);
+
+    // Add 3 allies at different distances: 200, 50, 100
+    MockAllyInfo allyInfo1;
+    allyInfo1.entity   = &ally1;
+    allyInfo1.distance = 200.0f;
+
+    MockAllyInfo allyInfo2;
+    allyInfo2.entity   = &ally2;
+    allyInfo2.distance = 50.0f; // Closest
+
+    MockAllyInfo allyInfo3;
+    allyInfo3.entity   = &ally3;
+    allyInfo3.distance = 100.0f;
+
+    system.visionSensor->visibleAllies = {allyInfo1, allyInfo2, allyInfo3};
+
+    MockPerceptionSnapshot snapshot = system.Update(&botPos, 0.1f, 10.0f);
+
+    // Closest ally should be index 1 (50 units)
+    EXPECT_EQ(snapshot.closestAllyIndex, 1);
+    EXPECT_FLOAT_EQ(snapshot.visibleAllies[1].distance, 50.0f);
+
+    // Test accessor method
+    MockAllyInfo *closest = snapshot.GetClosestAlly();
+    ASSERT_NE(closest, nullptr);
+    EXPECT_FLOAT_EQ(closest->distance, 50.0f);
+    EXPECT_EQ(closest->entity, &ally2);
+}
+
+// Test 3: Update() returns no closest ally when none visible
+TEST_F(PerceptionSystemTest, Update_EmptyAllies_ReturnsNoClosest)
+{
+    TestVector botPos(0, 0, 0);
+
+    // No allies visible
+    system.visionSensor->visibleAllies.clear();
+
+    MockPerceptionSnapshot snapshot = system.Update(&botPos, 0.1f, 10.0f);
+
+    EXPECT_EQ(snapshot.visibleAllies.size(), 0);
+    EXPECT_EQ(snapshot.closestAllyIndex, SIZE_MAX);
+
+    // Test accessor returns nullptr
+    EXPECT_EQ(snapshot.GetClosestAlly(), nullptr);
 }
