@@ -215,6 +215,21 @@ public:
 
         return recentSounds;
     }
+
+    void CleanupOldEvents(float currentTime, float maxAge)
+    {
+        eventQueue.erase(
+            std::remove_if(
+                eventQueue.begin(),
+                eventQueue.end(),
+                [currentTime, maxAge](const MockAudioEvent &event) {
+                    const float age = currentTime - event.timestamp;
+                    return age > maxAge;
+                }
+            ),
+            eventQueue.end()
+        );
+    }
 };
 
 // Mock MemorySystem
@@ -330,12 +345,16 @@ public:
     {
     }
 
-    MockPerceptionSnapshot Update(const TestVector &botPos, float deltaTime, float currentTime)
+    MockPerceptionSnapshot Update(const TestVector *botPos, float deltaTime, float currentTime)
     {
         MockPerceptionSnapshot snapshot;
 
+        if (!botPos) {
+            return snapshot;
+        }
+
         // Step 1: Update vision - get currently visible enemies
-        snapshot.visibleEnemies = visionSensor->UpdateVision(botPos, deltaTime);
+        snapshot.visibleEnemies = visionSensor->UpdateVision(*botPos, deltaTime);
 
         // Step 2: Update memory with visible enemies
         for (const auto &enemyInfo : snapshot.visibleEnemies) {
@@ -346,7 +365,7 @@ public:
         snapshot.knownEnemies = memory->GetKnownEnemies(currentTime);
 
         // Step 4: Get recent audio events (5 second window per plan)
-        snapshot.recentSounds = audioSensor->GetRecentSounds(botPos, currentTime, 5.0f);
+        snapshot.recentSounds = audioSensor->GetRecentSounds(*botPos, currentTime, 5.0f);
 
         // Step 5: Calculate closest enemy index
         snapshot.closestEnemyIndex = SIZE_MAX;
@@ -370,8 +389,11 @@ public:
         // Step 7: Calculate loudest sound index
         snapshot.loudestSoundIndex = SIZE_MAX;
         if (!snapshot.recentSounds.empty()) {
-            float maxLoudness = 0.0f;
-            for (size_t i = 0; i < snapshot.recentSounds.size(); i++) {
+            // Start with first sound as baseline to handle 0.0 and negative loudness correctly
+            float maxLoudness = snapshot.recentSounds[0].loudness;
+            snapshot.loudestSoundIndex = 0;
+
+            for (size_t i = 1; i < snapshot.recentSounds.size(); i++) {
                 if (snapshot.recentSounds[i].loudness > maxLoudness) {
                     maxLoudness                = snapshot.recentSounds[i].loudness;
                     snapshot.loudestSoundIndex = i;
@@ -379,7 +401,8 @@ public:
             }
         }
 
-        // Step 8: Cleanup old memories
+        // Step 8: Cleanup old events (prevents unbounded growth)
+        audioSensor->CleanupOldEvents(currentTime, 5.0f); // Match GetRecentSounds window
         const float maxAge = 30.0f; // MEMORY_MAX_AGE_SECONDS
         memory->CleanupOldMemories(currentTime, maxAge);
 
@@ -437,7 +460,7 @@ TEST_F(PerceptionSystemTest, Update_IntegratesAllSensors)
     system.audioSensor->ProcessEvent(2, TestVector(400, 0, 0), 1.0f, currentTime - 6.0f); // Old explosion (6s ago)
 
     // Update perception system
-    MockPerceptionSnapshot snapshot = system.Update(botPos, 0.1f, currentTime);
+    MockPerceptionSnapshot snapshot = system.Update(&botPos, 0.1f, currentTime);
 
     // Verify vision sensor integration
     EXPECT_EQ(snapshot.visibleEnemies.size(), 3);
@@ -486,7 +509,7 @@ TEST_F(PerceptionSystemTest, Update_CalculatesClosestEnemy)
     system.visionSensor->visibleEnemies.push_back(midEnemy);
 
     // Update perception system
-    MockPerceptionSnapshot snapshot = system.Update(botPos, 0.1f, currentTime);
+    MockPerceptionSnapshot snapshot = system.Update(&botPos, 0.1f, currentTime);
 
     // Verify closest enemy is calculated correctly
     EXPECT_NE(snapshot.closestEnemyIndex, SIZE_MAX);
@@ -525,7 +548,7 @@ TEST_F(PerceptionSystemTest, Update_IdentifiesLoudestSound)
     system.audioSensor->ProcessEvent(10, TestVector(200, 0, 0), 0.3f, currentTime - 0.5f);
 
     // Update perception system
-    MockPerceptionSnapshot snapshot = system.Update(botPos, 0.1f, currentTime);
+    MockPerceptionSnapshot snapshot = system.Update(&botPos, 0.1f, currentTime);
 
     // Verify we have all 3 sounds
     EXPECT_EQ(snapshot.recentSounds.size(), 3);
@@ -552,7 +575,7 @@ TEST_F(PerceptionSystemTest, Update_EmptyEnemies_ReturnsNoClosest)
     const float      currentTime = 10.0f;
 
     // No visible enemies
-    MockPerceptionSnapshot snapshot = system.Update(botPos, 0.1f, currentTime);
+    MockPerceptionSnapshot snapshot = system.Update(&botPos, 0.1f, currentTime);
 
     EXPECT_EQ(snapshot.visibleEnemies.size(), 0);
     EXPECT_EQ(snapshot.closestEnemyIndex, SIZE_MAX);
@@ -568,9 +591,87 @@ TEST_F(PerceptionSystemTest, Update_NoSounds_ReturnsNoLoudest)
     const float      currentTime = 10.0f;
 
     // No audio events
-    MockPerceptionSnapshot snapshot = system.Update(botPos, 0.1f, currentTime);
+    MockPerceptionSnapshot snapshot = system.Update(&botPos, 0.1f, currentTime);
 
     EXPECT_EQ(snapshot.recentSounds.size(), 0);
     EXPECT_EQ(snapshot.loudestSoundIndex, SIZE_MAX);
     EXPECT_EQ(snapshot.GetLoudestSound(), nullptr);
+}
+
+// Test: Null bot returns empty snapshot
+TEST_F(PerceptionSystemTest, Update_NullBot_ReturnsEmptySnapshot)
+{
+    // Test that passing null bot returns empty snapshot safely
+    MockPerceptionSnapshot snapshot = system.Update(nullptr, 0.1f, 10.0f);
+
+    EXPECT_EQ(snapshot.visibleEnemies.size(), 0);
+    EXPECT_EQ(snapshot.recentSounds.size(), 0);
+    EXPECT_EQ(snapshot.knownEnemies.size(), 0);
+    EXPECT_EQ(snapshot.closestEnemyIndex, SIZE_MAX);
+    EXPECT_EQ(snapshot.mostDangerousEnemyIndex, SIZE_MAX);
+    EXPECT_EQ(snapshot.loudestSoundIndex, SIZE_MAX);
+}
+
+// Test: All sounds with 0.0 loudness returns first sound
+TEST_F(PerceptionSystemTest, Update_AllZeroLoudness_ReturnsFirstSound)
+{
+    // Test that sounds with 0.0 loudness are still identified
+    // (e.g., sounds attenuated to 0.0 by distance)
+    TestVector botPos(0, 0, 0);
+
+    // Add 3 sounds all with 0.0 loudness (e.g., very distant sounds)
+    system.audioSensor->ProcessEvent(0, TestVector(2000, 0, 0), 0.0f, 0.0f); // Weapon fire
+    system.audioSensor->ProcessEvent(0, TestVector(2100, 0, 0), 0.0f, 1.0f); // Weapon fire
+    system.audioSensor->ProcessEvent(0, TestVector(2200, 0, 0), 0.0f, 2.0f); // Weapon fire
+
+    MockPerceptionSnapshot snapshot = system.Update(&botPos, 0.1f, 3.0f);
+
+    // Should return first sound (index 0) even though all are 0.0 loudness
+    ASSERT_EQ(snapshot.recentSounds.size(), 3);
+    EXPECT_EQ(snapshot.loudestSoundIndex, 0);
+    EXPECT_NE(snapshot.loudestSoundIndex, SIZE_MAX); // Key assertion - should NOT be SIZE_MAX
+}
+
+// Test: Cleanup old memories
+TEST_F(PerceptionSystemTest, Update_CleansUpOldMemories)
+{
+    // Test that memories beyond MAX_AGE are cleaned up
+    MockSentient enemy1(1);
+    TestVector   botPos(0, 0, 0);
+
+    // See enemy at t=0
+    MockEnemyInfo visibleEnemy;
+    visibleEnemy.entity   = &enemy1;
+    visibleEnemy.position = TestVector(100, 0, 0);
+    visibleEnemy.distance = 100.0f;
+    system.visionSensor->visibleEnemies.push_back(visibleEnemy);
+
+    MockPerceptionSnapshot snapshot1 = system.Update(&botPos, 0.1f, 0.0f);
+    ASSERT_EQ(snapshot1.knownEnemies.size(), 1); // Enemy in memory
+
+    // Clear vision (enemy no longer visible)
+    system.visionSensor->visibleEnemies.clear();
+
+    // Update at t=31 (beyond MEMORY_MAX_AGE_SECONDS = 30.0)
+    MockPerceptionSnapshot snapshot2 = system.Update(&botPos, 0.1f, 31.0f);
+
+    // Memory should be cleaned up
+    EXPECT_EQ(snapshot2.knownEnemies.size(), 0); // Old memory removed
+}
+
+// Test: Cleanup old audio events
+TEST_F(PerceptionSystemTest, Update_CleansUpOldAudioEvents)
+{
+    TestVector botPos(0, 0, 0);
+
+    // Add audio event at t=0
+    system.audioSensor->ProcessEvent(0, TestVector(100, 0, 0), 1.0f, 0.0f);
+
+    // Update at t=3 (within 5s window)
+    MockPerceptionSnapshot snapshot1 = system.Update(&botPos, 0.1f, 3.0f);
+    ASSERT_EQ(snapshot1.recentSounds.size(), 1); // Event still in window
+
+    // Update at t=6 (beyond 5s window)
+    MockPerceptionSnapshot snapshot2 = system.Update(&botPos, 0.1f, 6.0f);
+    EXPECT_EQ(snapshot2.recentSounds.size(), 0); // Event cleaned up
 }

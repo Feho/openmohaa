@@ -60,8 +60,12 @@ PerceptionSnapshot PerceptionSystem::Update(Player *bot, float deltaTime)
     // Step 7: Calculate loudest sound index
     snapshot.loudestSoundIndex = SIZE_MAX;
     if (!snapshot.recentSounds.empty()) {
-        float maxLoudness = 0.0f;
-        for (size_t i = 0; i < snapshot.recentSounds.size(); i++) {
+        // Fixed in OPM
+        //  Start with first sound as baseline to handle 0.0 and negative loudness correctly
+        float maxLoudness = snapshot.recentSounds[0].loudness;
+        snapshot.loudestSoundIndex = 0;
+
+        for (size_t i = 1; i < snapshot.recentSounds.size(); i++) {
             if (snapshot.recentSounds[i].loudness > maxLoudness) {
                 maxLoudness                = snapshot.recentSounds[i].loudness;
                 snapshot.loudestSoundIndex = i;
@@ -69,7 +73,8 @@ PerceptionSnapshot PerceptionSystem::Update(Player *bot, float deltaTime)
         }
     }
 
-    // Step 8: Cleanup old memories (prevents unbounded growth)
+    // Step 8: Cleanup old events (prevents unbounded growth)
+    audioSensor->CleanupOldEvents(currentTime, 5.0f); // Match GetRecentSounds window
     memory->CleanupOldMemories(currentTime, BotConstants::MEMORY_MAX_AGE_SECONDS);
 
     return snapshot;
@@ -463,6 +468,21 @@ std::vector<AudioEvent> AudioSensor::GetRecentSounds(const Player *bot, float cu
         });
 
     return recentSounds;
+}
+
+void AudioSensor::CleanupOldEvents(float currentTime, float maxAge)
+{
+    eventQueue.erase(
+        std::remove_if(
+            eventQueue.begin(),
+            eventQueue.end(),
+            [currentTime, maxAge](const AudioEvent &event) {
+                const float age = currentTime - event.timestamp;
+                return age > maxAge;
+            }
+        ),
+        eventQueue.end()
+    );
 }
 
 // ========================================================================

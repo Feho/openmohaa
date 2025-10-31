@@ -286,6 +286,9 @@ public:
     // Get recent audio events with 3D directional calculation
     std::vector<AudioEvent> GetRecentSounds(const Player *bot, float currentTime, float timeWindow) const;
 
+    // Cleanup old audio events beyond time window
+    void CleanupOldEvents(float currentTime, float maxAge);
+
 #ifdef UNIT_TESTING
 public:
 #else
