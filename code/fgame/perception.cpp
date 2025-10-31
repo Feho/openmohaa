@@ -3,6 +3,7 @@
 
 #include "perception.h"
 #include <algorithm>
+#include <cfloat>
 
 // ========================================================================
 // PerceptionSystem - Main perception coordinator
@@ -11,18 +12,65 @@
 // Changed in OPM - Phase 2 Task 2A.1.1 Code Review
 //  Fixed: Removed manual constructor/destructor (now using std::unique_ptr with = default)
 
-// Added in OPM - Phase 2 Task 2A.1.1
+// Added in OPM - Phase 2 Task 2A.1.6
 //  Main update method - integrates data from all sensors
 PerceptionSnapshot PerceptionSystem::Update(Player *bot, float deltaTime)
 {
-    PerceptionSnapshot snapshot;
+    if (!bot) {
+        return PerceptionSnapshot{};
+    }
 
-    // Stub implementation - will be fleshed out in subsequent tasks
-    // Task 2A.1.2: Vision sensor integration
-    // Task 2A.1.4: Audio sensor integration
-    // Task 2A.1.5: Memory system integration
-    // Task 2A.1.6: Threat level calculation
-    // Task 2A.1.7: Ally detection
+    PerceptionSnapshot snapshot;
+    const float        currentTime = level.svsTime * 0.001f; // Convert ms to seconds
+
+    // Step 1: Update vision - get currently visible enemies
+    snapshot.visibleEnemies = visionSensor->UpdateVision(bot, deltaTime);
+
+    // Step 2: Update memory with visible enemies
+    for (const auto &enemyInfo : snapshot.visibleEnemies) {
+        memory->UpdateMemory(enemyInfo, currentTime);
+    }
+
+    // Step 3: Get known enemies from memory (includes decay and prediction)
+    snapshot.knownEnemies = memory->GetKnownEnemies(currentTime);
+
+    // Step 4: Get recent audio events (5 second window per plan)
+    snapshot.recentSounds = audioSensor->GetRecentSounds(bot, currentTime, 5.0f);
+
+    // Step 5: Calculate closest enemy index
+    snapshot.closestEnemyIndex = SIZE_MAX;
+    if (!snapshot.visibleEnemies.empty()) {
+        float minDistance = FLT_MAX;
+        for (size_t i = 0; i < snapshot.visibleEnemies.size(); i++) {
+            if (snapshot.visibleEnemies[i].distance < minDistance) {
+                minDistance                = snapshot.visibleEnemies[i].distance;
+                snapshot.closestEnemyIndex = i;
+            }
+        }
+    }
+
+    // Step 6: Calculate most dangerous enemy index
+    snapshot.mostDangerousEnemyIndex = SIZE_MAX;
+    if (!snapshot.visibleEnemies.empty()) {
+        // For now, use closest enemy as most dangerous
+        // In future (Phase 3), consider: distance + weapon threat + behavior
+        snapshot.mostDangerousEnemyIndex = snapshot.closestEnemyIndex;
+    }
+
+    // Step 7: Calculate loudest sound index
+    snapshot.loudestSoundIndex = SIZE_MAX;
+    if (!snapshot.recentSounds.empty()) {
+        float maxLoudness = 0.0f;
+        for (size_t i = 0; i < snapshot.recentSounds.size(); i++) {
+            if (snapshot.recentSounds[i].loudness > maxLoudness) {
+                maxLoudness                = snapshot.recentSounds[i].loudness;
+                snapshot.loudestSoundIndex = i;
+            }
+        }
+    }
+
+    // Step 8: Cleanup old memories (prevents unbounded growth)
+    memory->CleanupOldMemories(currentTime, BotConstants::MEMORY_MAX_AGE_SECONDS);
 
     return snapshot;
 }
