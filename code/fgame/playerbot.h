@@ -42,6 +42,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "navigate.h"
 #include "navigation_path.h"
 
+// Added in OPM - Phase 2B Task 2B.4
+//  Include behavior tree and profile system for integration
+#include "behavior_tree.h"
+#include "bot_profile.h"
+
 #define MAX_BOT_FUNCTIONS 5
 
 // Added in OPM
@@ -536,6 +541,11 @@ private:
     bool      HasEnemy(void) const;
     Sentient *GetEnemy(void) const;
 
+    // Added in OPM - Phase 2B Task 2B.4
+    //  Behavior tree execution helpers
+    void PopulateBlackboard(void);
+    void ExecuteBehaviorTree(float deltaTime);
+
     static void InitState_Grenade(botfunc_t *func);
     bool        CheckCondition_Grenade(void);
     void        State_Grenade(void);
@@ -637,6 +647,14 @@ public:
     void         PressFireButton() { m_botCmd.buttons |= BUTTON_ATTACKLEFT; }
     usercmd_t   &GetBotCmd() { return m_botCmd; }
 
+    // Added in OPM - Phase 2B Task 2B.4
+    //  Profile and behavior tree integration
+    void LoadProfile(const char *profileName);
+    void ReloadProfile();
+    BehaviorTree *GetBehaviorTree() { return behaviorTree.get(); }
+    Blackboard &GetBlackboard() { return blackboard; }
+    BotProfile *GetProfile() { return profile.get(); }
+
     // Added in OPM
     //  Debug visualization and introspection methods
 
@@ -701,6 +719,12 @@ public:
 
 private:
     SafePtr<Player> controlledEnt;
+
+    // Added in OPM - Phase 2B Task 2B.4
+    //  Behavior tree system integration
+    std::unique_ptr<BotProfile>    profile;        // Bot personality profile
+    std::unique_ptr<BehaviorTree>  behaviorTree;   // Current behavior tree
+    Blackboard                     blackboard;     // Shared data for BT nodes
 };
 
 class BotControllerManager : public Listener

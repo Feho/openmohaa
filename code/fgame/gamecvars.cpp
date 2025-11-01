@@ -321,6 +321,10 @@ cvar_t *g_bot_state_minduration_investigate;
 cvar_t *g_bot_target_switch_threshold;
 cvar_t *g_bot_target_lock_time;
 
+// Added in OPM - Phase 2B Task 2B.4
+//  Feature flag to enable new behavior tree AI system
+cvar_t *g_bot_use_new_ai_system;
+
 cvar_t *g_rankedserver;
 cvar_t *g_spectatefollow_firstperson;
 
@@ -739,6 +743,10 @@ void CVAR_Init(void)
     g_bot_state_minduration_investigate        = gi.Cvar_Get("g_bot_state_minduration_investigate", "1.5", 0);
     g_bot_target_switch_threshold              = gi.Cvar_Get("g_bot_target_switch_threshold", "256", 0);
     g_bot_target_lock_time                     = gi.Cvar_Get("g_bot_target_lock_time", "1.0", 0);
+
+    // Added in OPM - Phase 2B Task 2B.4
+    //  Feature flag to enable new behavior tree AI system (default 0 = old state machine)
+    g_bot_use_new_ai_system                    = gi.Cvar_Get("g_bot_use_new_ai_system", "0", 0);
 
     g_rankedserver               = gi.Cvar_Get("g_rankedserver", "0", 0);
     g_spectatefollow_firstperson = gi.Cvar_Get("g_spectatefollow_firstperson", "0", 0);

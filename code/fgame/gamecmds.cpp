@@ -59,6 +59,13 @@ qboolean G_BT_ReloadCmd(gentity_t *ent);
 qboolean G_BT_ListActionsCmd(gentity_t *ent);
 qboolean G_BT_ListConditionsCmd(gentity_t *ent);
 
+// Added in OPM - Phase 2B Task 2B.4
+//  Forward declarations for bot profile commands
+qboolean G_BotSetProfileCmd(gentity_t *ent);
+qboolean G_BotListProfilesCmd(gentity_t *ent);
+qboolean G_BotBlackboardCmd(gentity_t *ent);
+qboolean G_BotReloadProfilesCmd(gentity_t *ent);
+
 consolecmd_t G_ConsoleCmds[] = {
     //   command name       function             available in multiplayer?
     {"say",             G_SayCmd,             qtrue },
@@ -91,6 +98,12 @@ consolecmd_t G_ConsoleCmds[] = {
 #ifdef _DEBUG
     {"bot",                 G_BotCommand,            qfalse},
 #endif
+    // Added in OPM - Phase 2B Task 2B.4
+    //  Bot profile management commands
+    {"bot_setprofile",      G_BotSetProfileCmd,      qfalse},
+    {"bot_listprofiles",    G_BotListProfilesCmd,    qfalse},
+    {"bot_blackboard",      G_BotBlackboardCmd,      qfalse},
+    {"bot_reload_profiles", G_BotReloadProfilesCmd,  qfalse},
     // Added in OPM - Phase 2B Task 2B.2
     //  Behavior tree YAML loading commands
     {"bt_load",             G_BT_LoadCmd,            qfalse},
@@ -1053,4 +1066,186 @@ qboolean G_BT_UnloadCmd(gentity_t *ent)
         gi.Printf("  Use 'bt_list' to see all loaded trees\n");
         return qfalse;
     }
+}
+
+// Added in OPM - Phase 2B Task 2B.4
+//  Bot profile management commands
+
+/*
+====================
+G_BotSetProfileCmd
+
+Change a bot's active profile at runtime
+Usage: bot_setprofile <botIndex> <profileName>
+====================
+*/
+qboolean G_BotSetProfileCmd(gentity_t *ent)
+{
+    if (gi.Argc() < 3) {
+        gi.Printf("Usage: bot_setprofile <botIndex> <profileName>\n");
+        gi.Printf("Example: bot_setprofile 1 aggressive\n");
+        gi.Printf("Available profiles: aggressive, balanced, defensive, sniper, rusher\n");
+        return qfalse;
+    }
+
+    const Container<BotController *>& controllers = botManager.getControllerManager().getControllers();
+
+    if (controllers.NumObjects() < 1) {
+        gi.Printf("No bots spawned\n");
+        return qfalse;
+    }
+
+    int         botIndex    = atoi(gi.Argv(1));
+    const char *profileName = gi.Argv(2);
+
+    // Validate bot index (Container uses 1-based indexing)
+    if (botIndex < 1 || botIndex > controllers.NumObjects()) {
+        gi.Printf("Invalid bot index %d (valid range: 1-%d)\n", botIndex, controllers.NumObjects());
+        return qfalse;
+    }
+
+    // Get the controller
+    BotController *bot = controllers.ObjectAt(botIndex);
+    if (!bot) {
+        gi.Printf("Failed to get bot %d controller\n", botIndex);
+        return qfalse;
+    }
+
+    // Load the new profile
+    bot->LoadProfile(profileName);
+    gi.Printf("Bot %d profile set to '%s'\n", botIndex, profileName);
+
+    return qtrue;
+}
+
+/*
+====================
+G_BotListProfilesCmd
+
+List all available bot profiles
+Usage: bot_listprofiles
+====================
+*/
+qboolean G_BotListProfilesCmd(gentity_t *ent)
+{
+    gi.Printf("=== Available Bot Profiles ===\n");
+
+    // Hardcoded list of standard profiles (Task 2B.3)
+    const char *profiles[] = {"aggressive", "balanced", "defensive", "sniper", "rusher"};
+
+    for (int i = 0; i < 5; i++) {
+        gi.Printf("  - %s\n", profiles[i]);
+    }
+
+    gi.Printf("\nUsage: bot_setprofile <botIndex> <profileName>\n");
+    gi.Printf("Example: bot_setprofile 1 aggressive\n");
+
+    return qtrue;
+}
+
+/*
+====================
+G_BotBlackboardCmd
+
+Display blackboard contents for a specific bot
+Usage: bot_blackboard <botIndex>
+====================
+*/
+qboolean G_BotBlackboardCmd(gentity_t *ent)
+{
+    if (gi.Argc() < 2) {
+        gi.Printf("Usage: bot_blackboard <botIndex>\n");
+        gi.Printf("Example: bot_blackboard 1\n");
+        return qfalse;
+    }
+
+    const Container<BotController *>& controllers = botManager.getControllerManager().getControllers();
+
+    if (controllers.NumObjects() < 1) {
+        gi.Printf("No bots spawned\n");
+        return qfalse;
+    }
+
+    int botIndex = atoi(gi.Argv(1));
+
+    // Validate bot index (Container uses 1-based indexing)
+    if (botIndex < 1 || botIndex > controllers.NumObjects()) {
+        gi.Printf("Invalid bot index %d (valid range: 1-%d)\n", botIndex, controllers.NumObjects());
+        return qfalse;
+    }
+
+    // Get the controller
+    BotController *bot = controllers.ObjectAt(botIndex);
+    if (!bot) {
+        gi.Printf("Failed to get bot %d controller\n", botIndex);
+        return qfalse;
+    }
+
+    // Get blackboard reference
+    Blackboard &bb = bot->GetBlackboard();
+
+    gi.Printf("=== Bot %d Blackboard ===\n", botIndex);
+
+    // Display health information
+    if (bb.Has("health")) {
+        float health    = bb.GetOrDefault<float>("health", 0.0f);
+        float maxHealth = bb.GetOrDefault<float>("maxHealth", 100.0f);
+        gi.Printf("  health: %.1f / %.1f (%.0f%%)\n", health, maxHealth, (health / maxHealth) * 100.0f);
+    }
+
+    // Display enemy information
+    if (bb.Has("enemy")) {
+        auto enemy = bb.TryGet<Sentient *>("enemy");
+        if (enemy && *enemy) {
+            gi.Printf("  enemy: %s (entnum %d)\n", (*enemy)->targetname.c_str(), (*enemy)->entnum);
+        } else {
+            gi.Printf("  enemy: (none)\n");
+        }
+    }
+
+    // Display profile information
+    if (bb.Has("profile")) {
+        auto profile = bb.TryGet<BotProfile *>("profile");
+        if (profile && *profile) {
+            gi.Printf("  profile: %s\n", (*profile)->GetName().c_str());
+            gi.Printf("  behaviorTree: %s\n", (*profile)->GetBehaviorTree().c_str());
+        }
+    }
+
+    gi.Printf("  (Use g_bot_debug %d for more detailed information)\n", botIndex);
+
+    return qtrue;
+}
+
+/*
+====================
+G_BotReloadProfilesCmd
+
+Reload profiles for all bots from disk
+Usage: bot_reload_profiles
+====================
+*/
+qboolean G_BotReloadProfilesCmd(gentity_t *ent)
+{
+    const Container<BotController *>& controllers = botManager.getControllerManager().getControllers();
+
+    if (controllers.NumObjects() < 1) {
+        gi.Printf("No bots spawned\n");
+        return qfalse;
+    }
+
+    gi.Printf("Reloading all bot profiles...\n");
+
+    int reloadCount = 0;
+    for (int i = 1; i <= controllers.NumObjects(); i++) {
+        BotController *bot = controllers.ObjectAt(i);
+        if (bot) {
+            bot->ReloadProfile();
+            reloadCount++;
+        }
+    }
+
+    gi.Printf("Reloaded profiles for %d bots\n", reloadCount);
+
+    return qtrue;
 }

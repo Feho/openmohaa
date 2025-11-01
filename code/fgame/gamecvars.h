@@ -432,6 +432,13 @@ extern cvar_t *g_bot_target_switch_threshold;
  */
 extern cvar_t *g_bot_target_lock_time;
 
+// Added in OPM - Phase 2B Task 2B.4
+//  Feature flag to enable new behavior tree AI system
+/**
+ * @brief Enable new behavior tree AI system (0=old state machine, 1=new BT system).
+ */
+extern cvar_t *g_bot_use_new_ai_system;
+
 extern cvar_t *g_rankedserver;
 extern cvar_t *g_spectatefollow_firstperson;
 

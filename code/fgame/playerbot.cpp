@@ -24,6 +24,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "g_local.h"
 #include "playerbot.h"
 
+// Added in OPM - Phase 2B Task 2B.4
+//  Include behavior tree loader for LoadProfile
+#include "bt_yaml_loader.h"
+
 // We assume that we have limited access to the server-side
 // and that most logic come from the playerstate_s structure
 
@@ -90,12 +94,170 @@ void BotController::UpdateBotStates(void)
     CheckValidWeapon();
 }
 
+// Added in OPM - Phase 2B Task 2B.4
+//  Load bot profile and behavior tree
+void BotController::LoadProfile(const char *profileName)
+{
+    if (!profileName || !profileName[0]) {
+        gi.Printf("ERROR: LoadProfile called with empty profile name\n");
+        return;
+    }
+
+    // Build profile file path
+    char profilePath[256];
+    Com_sprintf(profilePath, sizeof(profilePath), "profiles/%s.yaml", profileName);
+
+    // Load profile
+    profile = BotProfile::LoadFromFile(profilePath);
+    if (!profile) {
+        gi.Printf("ERROR: Failed to load profile '%s' for bot %d, using default\n", profileName, controlledEnt ? controlledEnt->entnum : -1);
+        // Try to load default balanced profile
+        profile = BotProfile::LoadFromFile("profiles/balanced.yaml");
+        if (!profile) {
+            gi.Printf("CRITICAL ERROR: Could not load default balanced profile\n");
+            return;
+        }
+    }
+
+    // Load behavior tree if BT system is enabled
+    if (g_bot_use_new_ai_system->integer) {
+        const std::string &treeName = profile->GetBehaviorTree();
+        char               treePath[256];
+        Com_sprintf(treePath, sizeof(treePath), "behaviors/%s.yaml", treeName.c_str());
+
+        behaviorTree = BTYamlLoader::LoadFromFile(treePath);
+        if (!behaviorTree) {
+            gi.Printf("ERROR: Failed to load behavior tree '%s' for bot %d\n", treeName.c_str(), controlledEnt ? controlledEnt->entnum : -1);
+        } else {
+            gi.DPrintf("Bot %d loaded profile '%s' with tree '%s'\n", controlledEnt ? controlledEnt->entnum : -1, profileName, treeName.c_str());
+        }
+    }
+}
+
+// Added in OPM - Phase 2B Task 2B.4
+//  Reload current profile from disk
+void BotController::ReloadProfile()
+{
+    if (!profile) {
+        gi.Printf("ERROR: ReloadProfile called but no profile loaded\n");
+        return;
+    }
+
+    const std::string &profileName = profile->GetName();
+    LoadProfile(profileName.c_str());
+}
+
+// Added in OPM - Phase 2B Task 2B.4
+//  Populate blackboard with current bot state for BT execution
+void BotController::PopulateBlackboard()
+{
+    // Store bot controller and entity references
+    blackboard.Set<BotController *>("bot", this);
+    blackboard.Set<Player *>("entity", static_cast<Player *>(controlledEnt.Pointer()));
+
+    // Store health information
+    if (controlledEnt) {
+        blackboard.Set<float>("health", controlledEnt->health);
+        blackboard.Set<float>("maxHealth", controlledEnt->max_health);
+    }
+
+    // Store current enemy
+    if (m_pEnemy) {
+        blackboard.Set<Sentient *>("enemy", static_cast<Sentient *>(m_pEnemy.Pointer()));
+    }
+
+    // Store profile for easy access by nodes
+    blackboard.Set<BotProfile *>("profile", profile.get());
+}
+
+// Added in OPM - Phase 2B Task 2B.4
+//  Execute behavior tree for one frame
+void BotController::ExecuteBehaviorTree(float deltaTime)
+{
+    if (!behaviorTree) {
+        return;
+    }
+
+    BTNode::Status status = behaviorTree->Execute(blackboard, deltaTime);
+
+    // Debug output
+    if (g_bot_debug->integer && controlledEnt && g_bot_debug->integer == controlledEnt->entnum) {
+        const char *statusStr = (status == BTNode::Status::SUCCESS)   ? "SUCCESS"
+                                : (status == BTNode::Status::FAILURE) ? "FAILURE"
+                                                                        : "RUNNING";
+        gi.Printf("Bot %d BT status: %s\n", controlledEnt->entnum, statusStr);
+    }
+}
+
 void BotController::Think()
 {
     usercmd_t  ucmd;
     usereyes_t eyeinfo;
 
-    UpdateBotStates();
+    // Changed in OPM - Phase 2B Task 2B.4
+    //  Modified to support behavior tree execution based on feature flag
+    if (g_bot_use_new_ai_system->integer) {
+        // New behavior tree system
+        if (!controlledEnt) {
+            return;
+        }
+
+        m_botCmd.serverTime = level.svsTime;
+
+        // Handle weapon selection
+        if (!controlledEnt->client->pers.dm_primary[0]) {
+            Event *event;
+            event = new Event(EV_Player_PrimaryDMWeapon);
+            event->AddString("auto");
+            controlledEnt->ProcessEvent(event);
+        }
+
+        // Handle team joining
+        if (controlledEnt->GetTeam() == TEAM_NONE || controlledEnt->GetTeam() == TEAM_SPECTATOR) {
+            float time;
+            time = controlledEnt->entnum / 20.0;
+
+            if (!controlledEnt->EventPending(EV_Player_AutoJoinDMTeam)) {
+                controlledEnt->PostEvent(EV_Player_AutoJoinDMTeam, time);
+            }
+            return;
+        }
+
+        // Handle respawning
+        if (controlledEnt->IsDead() || controlledEnt->IsSpectator()) {
+            m_botCmd.buttons ^= BUTTON_ATTACKLEFT;
+            return;
+        }
+
+        m_botCmd.buttons |= BUTTON_RUN;
+
+        m_botEyes.ofs[0]    = 0;
+        m_botEyes.ofs[1]    = 0;
+        m_botEyes.ofs[2]    = controlledEnt->viewheight;
+        m_botEyes.angles[0] = 0;
+        m_botEyes.angles[1] = 0;
+
+        CheckStates();
+
+        float deltaTime = level.frametime;
+
+        // Populate blackboard with current state
+        PopulateBlackboard();
+
+        // Execute behavior tree
+        ExecuteBehaviorTree(deltaTime);
+
+        // Still need movement and rotation processing
+        movement.MoveThink(m_botCmd);
+        rotation.TurnThink(m_botCmd, m_botEyes);
+
+        CheckUse();
+        CheckValidWeapon();
+    } else {
+        // Old state machine system
+        UpdateBotStates();
+    }
+
     GetUsercmd(&ucmd);
     GetEyeInfo(&eyeinfo);
 

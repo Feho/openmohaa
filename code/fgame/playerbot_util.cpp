@@ -562,6 +562,25 @@ void BotController::DrawDebugVisualization(void)
         G_DebugString(origin + Vector(0, 0, 10), 0.4f, 0.0f, 1.0f, 0.0f, "HP: %.0f", player->health);
     }
 
+    // Added in OPM - Phase 2B Task 2B.4
+    //  Draw behavior tree visualization
+    if (g_bot_use_new_ai_system->integer && behaviorTree && m_bShowState) {
+        // Draw profile name above bot
+        if (profile) {
+            G_DebugString(origin + Vector(0, 0, 35), 0.5f, 1.0f, 0.5f, 1.0f, "Profile: %s", profile->GetName().c_str());
+        }
+
+        // Draw BT execution status
+        BTNode *root = behaviorTree->GetRoot();
+        if (root) {
+            const char *rootName = root->GetName();
+            // Get root execution status color (green=success, red=failure, yellow=running)
+            float r = 1.0f, g = 1.0f, b = 0.0f; // Default yellow for running
+
+            G_DebugString(origin + Vector(0, 0, 30), 0.4f, r, g, b, "BT: %s", rootName);
+        }
+    }
+
     // Draw enemy visualization
     if (m_bShowEnemy) {
         if (m_pEnemy) {

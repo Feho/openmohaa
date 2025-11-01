@@ -36,7 +36,18 @@ public:
     static std::unique_ptr<BehaviorTree> LoadFromFile(const char *filepath)
     {
         try {
-            YAML::Node root = YAML::LoadFile(filepath);
+            // Load YAML file using game filesystem
+            void *buffer = nullptr;
+            long  length = gi.FS_ReadFile(filepath, &buffer, qfalse);
+            
+            if (length < 0 || !buffer) {
+                gi.Printf("ERROR: Could not read behavior tree file: %s\n", filepath);
+                return nullptr;
+            }
+
+            // Parse YAML from buffer
+            YAML::Node root = YAML::Load(static_cast<const char *>(buffer));
+            gi.FS_FreeFile(buffer);
 
             if (!root["tree"]) {
                 gi.Printf("ERROR: YAML file missing 'tree' root node: %s\n", filepath);

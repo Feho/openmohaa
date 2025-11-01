@@ -31,8 +31,18 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 std::unique_ptr<BotProfile> BotProfile::LoadFromFile(const char *filepath)
 {
     try {
-        // Load YAML file
-        YAML::Node root = YAML::LoadFile(filepath);
+        // Load YAML file using game filesystem
+        void *buffer = nullptr;
+        long  length = gi.FS_ReadFile(filepath, &buffer, qfalse);
+        
+        if (length < 0 || !buffer) {
+            gi.Printf("ERROR: Could not read profile file: %s\n", filepath);
+            return nullptr;
+        }
+
+        // Parse YAML from buffer
+        YAML::Node root = YAML::Load(static_cast<const char *>(buffer));
+        gi.FS_FreeFile(buffer);
 
         // Validate root structure
         if (!root["profile"]) {

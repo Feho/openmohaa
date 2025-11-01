@@ -85,6 +85,13 @@ void BotController::Spawned(void)
     ClearEnemy();
     m_iCuriousTime   = 0;
     m_botCmd.buttons = 0;
+
+    // Added in OPM - Phase 2B Task 2B.4
+    //  Load bot profile on spawn if not already loaded
+    if (!profile) {
+        // Default to balanced profile, could be made configurable per-bot
+        LoadProfile("balanced");
+    }
 }
 
 void BotController::Killed(const Event& ev)
