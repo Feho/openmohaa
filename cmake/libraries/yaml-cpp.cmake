@@ -30,6 +30,10 @@ else()
 
     FetchContent_MakeAvailable(yaml-cpp)
 
+    # Added in OPM - Phase 2B Task 2B.2
+    #  Enable position independent code for linking into shared libraries
+    set_target_properties(yaml-cpp PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
     message(STATUS "yaml-cpp fetched and configured")
 endif()
 

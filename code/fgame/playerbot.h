@@ -631,6 +631,12 @@ public:
     BotMovement& GetMovement();
     BotRotation& GetRotation();
 
+    // Added in OPM - Phase 2B Task 2B.2
+    //  Helper methods for behavior tree actions
+    void         SetEnemy(Sentient *enemy) { m_pEnemy = enemy; }
+    void         PressFireButton() { m_botCmd.buttons |= BUTTON_ATTACKLEFT; }
+    usercmd_t   &GetBotCmd() { return m_botCmd; }
+
     // Added in OPM
     //  Debug visualization and introspection methods
 

@@ -85,6 +85,10 @@ void (*SV_Free)(void *ptr);
 qboolean LevelArchiveValid(Archiver& arc);
 void     ClosePlayerLogFile(void);
 
+// Added in OPM - Phase 2B Task 2B.2
+//  Forward declaration for behavior tree action registration
+void RegisterCoreBTActions(void);
+
 /*
 ===============
 G_Printf
@@ -278,6 +282,10 @@ void G_InitGame(int levelTime, int randomSeed)
     Director.Reset();
     Actor::Init();
     G_BotInit();
+
+    // Added in OPM - Phase 2B Task 2B.2
+    //  Register behavior tree actions and conditions for YAML loading
+    RegisterCoreBTActions();
 
     sv_numtraces   = 0;
     sv_numpmtraces = 0;

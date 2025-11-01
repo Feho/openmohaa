@@ -35,6 +35,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "playerbot.h"
 #include "consoleevent.h"
 #include "g_bot.h"
+// Added in OPM - Phase 2B Task 2B.2
+//  Include behavior tree YAML loader
+#include "bt_yaml_loader.h"
+#include "bt_action_registry.h"
 
 typedef struct {
     const char *command;
@@ -46,6 +50,13 @@ typedef struct {
     const char       *prefix;
     SafePtr<Listener> master;
 } commandmaster_t;
+
+// Added in OPM - Phase 2B Task 2B.2
+//  Forward declarations for BT console commands
+qboolean G_BT_LoadCmd(gentity_t *ent);
+qboolean G_BT_ReloadCmd(gentity_t *ent);
+qboolean G_BT_ListActionsCmd(gentity_t *ent);
+qboolean G_BT_ListConditionsCmd(gentity_t *ent);
 
 consolecmd_t G_ConsoleCmds[] = {
     //   command name       function             available in multiplayer?
@@ -79,6 +90,12 @@ consolecmd_t G_ConsoleCmds[] = {
 #ifdef _DEBUG
     {"bot",                 G_BotCommand,            qfalse},
 #endif
+    // Added in OPM - Phase 2B Task 2B.2
+    //  Behavior tree YAML loading commands
+    {"bt_load",             G_BT_LoadCmd,            qfalse},
+    {"bt_reload",           G_BT_ReloadCmd,          qfalse},
+    {"bt_list_actions",     G_BT_ListActionsCmd,     qfalse},
+    {"bt_list_conditions",  G_BT_ListConditionsCmd,  qfalse},
     //====
     {NULL,                  NULL,                    qfalse}
 };
@@ -893,5 +910,60 @@ qboolean G_BotShowPerceptionCmd(gentity_t *ent)
     // Toggle perception visualization
     bot->TogglePerceptionVisualization();
     gi.Printf("Bot %d perception visualization toggled\n", botIndex);
+    return qtrue;
+}
+
+// Added in OPM - Phase 2B Task 2B.2
+//  Console commands for behavior tree YAML loading
+qboolean G_BT_LoadCmd(gentity_t *ent)
+{
+    if (gi.Argc() < 2) {
+        gi.Printf("Usage: bt_load <filename>\n");
+        gi.Printf("Example: bt_load engage_enemy\n");
+        return qfalse;
+    }
+
+    const char *filename = gi.Argv(1);
+    char        path[256];
+    Com_sprintf(path, sizeof(path), "behaviors/%s.yaml", filename);
+
+    auto tree = BTYamlLoader::LoadFromFile(path);
+    if (tree) {
+        gi.Printf("Successfully loaded behavior tree: %s\n", filename);
+        // TODO: Store tree for testing/assignment to bots
+        return qtrue;
+    } else {
+        gi.Printf("Failed to load behavior tree: %s\n", filename);
+        return qfalse;
+    }
+}
+
+qboolean G_BT_ReloadCmd(gentity_t *ent)
+{
+    // Same as load for now
+    return G_BT_LoadCmd(ent);
+}
+
+qboolean G_BT_ListActionsCmd(gentity_t *ent)
+{
+    auto actions = BTActionRegistry::Instance().GetActionNames();
+
+    gi.Printf("=== Registered BT Actions (%d) ===\n", static_cast<int>(actions.size()));
+    for (const auto &name : actions) {
+        gi.Printf("  - %s\n", name.c_str());
+    }
+
+    return qtrue;
+}
+
+qboolean G_BT_ListConditionsCmd(gentity_t *ent)
+{
+    auto conditions = BTActionRegistry::Instance().GetConditionNames();
+
+    gi.Printf("=== Registered BT Conditions (%d) ===\n", static_cast<int>(conditions.size()));
+    for (const auto &name : conditions) {
+        gi.Printf("  - %s\n", name.c_str());
+    }
+
     return qtrue;
 }

@@ -62,6 +62,7 @@ file(GLOB BOT_SOURCE_FILES
     ${SOURCE_DIR}/fgame/playerbot*.cpp
     ${SOURCE_DIR}/fgame/bot_behaviors*.cpp
     ${SOURCE_DIR}/fgame/behavior_tree*.cpp
+    ${SOURCE_DIR}/fgame/bt_*.cpp
 )
 
 # Apply stricter warning flags for bot files
@@ -120,6 +121,9 @@ if(BUILD_GAME_LIBRARIES)
     add_library(                ${GAME_MODULE_BINARY_BASEGAME} SHARED ${GAME_SOURCES_BASEGAME} ${BG_SOURCES} ${GAME_BINARY_SOURCES})
     target_compile_definitions( ${GAME_MODULE_BINARY_BASEGAME} PRIVATE GAME_DLL WITH_SCRIPT_ENGINE ARCHIVE_SUPPORTED)
     target_link_libraries(      ${GAME_MODULE_BINARY_BASEGAME} PRIVATE RecastNavigation::Detour RecastNavigation::DetourCrowd RecastNavigation::Recast)
+    # Added in OPM - Phase 2B Task 2B.2
+    #  Link yaml-cpp for behavior tree loading
+    target_link_libraries(      ${GAME_MODULE_BINARY_BASEGAME} PRIVATE yaml-cpp)
     target_link_libraries(      ${GAME_MODULE_BINARY_BASEGAME} PRIVATE ${COMMON_LIBRARIES})
     set_target_properties(      ${GAME_MODULE_BINARY_BASEGAME} PROPERTIES OUTPUT_NAME ${GAME_MODULE_BINARY})
     set_output_dirs(            ${GAME_MODULE_BINARY_BASEGAME} SUBDIRECTORY ${BASEGAME})
