@@ -1,0 +1,62 @@
+# balanced.yaml
+# Balanced bot profile - well-rounded, no extreme behaviors
+# Added in OPM - Phase 2B.3: Complete Profile System
+
+profile:
+  # === METADATA ===
+  metadata:
+    name: "Balanced Soldier"
+    description: "Well-rounded, no extreme behaviors"
+    difficulty: medium
+    author: "OpenMoHAA Team"
+    version: "1.0"
+
+  # === PERSONALITY ===
+  personality:
+    aggression: 0.5
+    caution: 0.5
+    teamwork: 0.6
+    creativity: 0.5
+
+  # === COMBAT PARAMETERS ===
+  combat:
+    preferred_range: 512.0
+    fire_discipline: 0.5
+    burst_length: [0.3, 0.8]
+    burst_delay: [0.2, 0.5]
+    ammo_conservation: 0.5
+    reload_under_fire: false
+
+  # === MOVEMENT PARAMETERS ===
+  movement:
+    speed_preference: 1.0
+    crouch_frequency: 0.4
+    jump_frequency: 0.4
+    strafe_usage: 0.5
+
+  # === AIM PARAMETERS ===
+  aim:
+    reaction_time: [0.2, 0.5]
+    tracking_smoothness: 0.7
+    spread_multiplier: 1.0
+    headshot_bias: 0.5
+
+  # === TACTICAL PARAMETERS ===
+  tactics:
+    cover_usage: 0.5
+    retreat_threshold: 0.25
+    flank_preference: 0.5
+    grenade_frequency: 0.4
+
+  # === PERCEPTION ===
+  perception:
+    vision:
+      fov: 80.0
+      range: 2048.0
+      peripheral_range: 0.6
+    hearing:
+      range: 1024.0
+      priority_threshold: 0.5
+
+  # === BEHAVIOR TREE REFERENCE ===
+  behavior_tree: "engage_enemy"

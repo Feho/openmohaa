@@ -1,0 +1,62 @@
+# sniper.yaml
+# Sniper bot profile - long range, patient, accurate
+# Added in OPM - Phase 2B.3: Complete Profile System
+
+profile:
+  # === METADATA ===
+  metadata:
+    name: "Sniper"
+    description: "Long range, patient, accurate"
+    difficulty: hard
+    author: "OpenMoHAA Team"
+    version: "1.0"
+
+  # === PERSONALITY ===
+  personality:
+    aggression: 0.4
+    caution: 0.8
+    teamwork: 0.5
+    creativity: 0.6
+
+  # === COMBAT PARAMETERS ===
+  combat:
+    preferred_range: 1536.0
+    fire_discipline: 0.9
+    burst_length: [0.1, 0.3]
+    burst_delay: [0.5, 1.0]
+    ammo_conservation: 0.8
+    reload_under_fire: false
+
+  # === MOVEMENT PARAMETERS ===
+  movement:
+    speed_preference: 0.9
+    crouch_frequency: 0.8
+    jump_frequency: 0.1
+    strafe_usage: 0.3
+
+  # === AIM PARAMETERS ===
+  aim:
+    reaction_time: [0.2, 0.4]
+    tracking_smoothness: 0.9
+    spread_multiplier: 0.6
+    headshot_bias: 0.9
+
+  # === TACTICAL PARAMETERS ===
+  tactics:
+    cover_usage: 0.8
+    retreat_threshold: 0.3
+    flank_preference: 0.4
+    grenade_frequency: 0.2
+
+  # === PERCEPTION ===
+  perception:
+    vision:
+      fov: 60.0
+      range: 3072.0
+      peripheral_range: 0.5
+    hearing:
+      range: 1024.0
+      priority_threshold: 0.6
+
+  # === BEHAVIOR TREE REFERENCE ===
+  behavior_tree: "engage_enemy"

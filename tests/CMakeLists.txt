@@ -96,6 +96,10 @@ add_bot_test(test_perception_system)
 # Behavior tree framework tests
 add_bot_test(test_behavior_tree)
 
+# Added in OPM - Phase 2B Task 2B.3
+# Bot profile system tests
+add_bot_test(test_bot_profile)
+
 # Added in OPM - Phase 2 Task 2.0
 # yaml-cpp integration test
 add_executable(test_yaml_cpp test_yaml_cpp.cpp)

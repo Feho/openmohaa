@@ -61,6 +61,7 @@ set(GAME_MODULE_SHARED_SOURCES
 file(GLOB BOT_SOURCE_FILES
     ${SOURCE_DIR}/fgame/playerbot*.cpp
     ${SOURCE_DIR}/fgame/bot_behaviors*.cpp
+    ${SOURCE_DIR}/fgame/bot_profile*.cpp
     ${SOURCE_DIR}/fgame/behavior_tree*.cpp
     ${SOURCE_DIR}/fgame/bt_*.cpp
 )

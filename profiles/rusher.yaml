@@ -1,0 +1,62 @@
+# rusher.yaml
+# Close quarters rusher bot profile - fast, aggressive, close range
+# Added in OPM - Phase 2B.3: Complete Profile System
+
+profile:
+  # === METADATA ===
+  metadata:
+    name: "Close Quarters Rusher"
+    description: "Fast, aggressive, close range"
+    difficulty: medium
+    author: "OpenMoHAA Team"
+    version: "1.0"
+
+  # === PERSONALITY ===
+  personality:
+    aggression: 0.95
+    caution: 0.1
+    teamwork: 0.4
+    creativity: 0.8
+
+  # === COMBAT PARAMETERS ===
+  combat:
+    preferred_range: 192.0
+    fire_discipline: 0.2
+    burst_length: [0.8, 2.0]
+    burst_delay: [0.1, 0.2]
+    ammo_conservation: 0.1
+    reload_under_fire: true
+
+  # === MOVEMENT PARAMETERS ===
+  movement:
+    speed_preference: 1.5
+    crouch_frequency: 0.05
+    jump_frequency: 0.9
+    strafe_usage: 0.9
+
+  # === AIM PARAMETERS ===
+  aim:
+    reaction_time: [0.1, 0.25]
+    tracking_smoothness: 0.5
+    spread_multiplier: 1.5
+    headshot_bias: 0.3
+
+  # === TACTICAL PARAMETERS ===
+  tactics:
+    cover_usage: 0.2
+    retreat_threshold: 0.1
+    flank_preference: 0.9
+    grenade_frequency: 0.7
+
+  # === PERCEPTION ===
+  perception:
+    vision:
+      fov: 90.0
+      range: 1536.0
+      peripheral_range: 0.7
+    hearing:
+      range: 800.0
+      priority_threshold: 0.3
+
+  # === BEHAVIOR TREE REFERENCE ===
+  behavior_tree: "engage_enemy"

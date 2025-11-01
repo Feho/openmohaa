@@ -1,0 +1,62 @@
+# defensive.yaml
+# Defensive bot profile - cautious, cover-focused, patient
+# Added in OPM - Phase 2B.3: Complete Profile System
+
+profile:
+  # === METADATA ===
+  metadata:
+    name: "Defensive Guardian"
+    description: "Cautious, cover-focused, patient"
+    difficulty: medium
+    author: "OpenMoHAA Team"
+    version: "1.0"
+
+  # === PERSONALITY ===
+  personality:
+    aggression: 0.3
+    caution: 0.9
+    teamwork: 0.7
+    creativity: 0.4
+
+  # === COMBAT PARAMETERS ===
+  combat:
+    preferred_range: 768.0
+    fire_discipline: 0.8
+    burst_length: [0.2, 0.5]
+    burst_delay: [0.3, 0.7]
+    ammo_conservation: 0.7
+    reload_under_fire: false
+
+  # === MOVEMENT PARAMETERS ===
+  movement:
+    speed_preference: 0.8
+    crouch_frequency: 0.7
+    jump_frequency: 0.2
+    strafe_usage: 0.4
+
+  # === AIM PARAMETERS ===
+  aim:
+    reaction_time: [0.3, 0.6]
+    tracking_smoothness: 0.8
+    spread_multiplier: 0.8
+    headshot_bias: 0.6
+
+  # === TACTICAL PARAMETERS ===
+  tactics:
+    cover_usage: 0.9
+    retreat_threshold: 0.4
+    flank_preference: 0.2
+    grenade_frequency: 0.3
+
+  # === PERCEPTION ===
+  perception:
+    vision:
+      fov: 90.0
+      range: 2500.0
+      peripheral_range: 0.7
+    hearing:
+      range: 1200.0
+      priority_threshold: 0.4
+
+  # === BEHAVIOR TREE REFERENCE ===
+  behavior_tree: "engage_enemy"
