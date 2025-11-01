@@ -629,6 +629,7 @@ public:
     void EventStuffText(const str& text);
 
     BotMovement& GetMovement();
+    BotRotation& GetRotation();
 
     // Added in OPM
     //  Debug visualization and introspection methods

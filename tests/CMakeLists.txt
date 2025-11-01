@@ -92,6 +92,10 @@ add_bot_test(test_memory_system)
 # PerceptionSystem integration tests
 add_bot_test(test_perception_system)
 
+# Added in OPM - Phase 2B Task 2B.1
+# Behavior tree framework tests
+add_bot_test(test_behavior_tree)
+
 # Added in OPM - Phase 2 Task 2.0
 # yaml-cpp integration test
 add_executable(test_yaml_cpp test_yaml_cpp.cpp)

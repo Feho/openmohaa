@@ -121,6 +121,11 @@ BotMovement& BotController::GetMovement()
     return movement;
 }
 
+BotRotation& BotController::GetRotation()
+{
+    return rotation;
+}
+
 void BotController::GetUsercmd(usercmd_t *ucmd)
 {
     *ucmd = m_botCmd;
