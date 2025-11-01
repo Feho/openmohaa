@@ -117,12 +117,17 @@ private:
             return nullptr;
         }
 
+        // Changed in OPM
+        //  Fixed unsafe static_cast - BTSelector inherits from BTComposite, so cast is safe
+        //  but we make it explicit for clarity and use the composite pointer directly
+        BTComposite *composite = selector.get();
+
         for (const auto &childNode : node["children"]) {
             auto child = LoadNode(childNode, filepath);
             if (!child) {
                 return nullptr;
             }
-            static_cast<BTComposite *>(selector.get())->AddChild(std::move(child));
+            composite->AddChild(std::move(child));
         }
 
         return selector;
@@ -137,12 +142,17 @@ private:
             return nullptr;
         }
 
+        // Changed in OPM
+        //  Fixed unsafe static_cast - BTSequence inherits from BTComposite, so cast is safe
+        //  but we make it explicit for clarity and use the composite pointer directly
+        BTComposite *composite = sequence.get();
+
         for (const auto &childNode : node["children"]) {
             auto child = LoadNode(childNode, filepath);
             if (!child) {
                 return nullptr;
             }
-            static_cast<BTComposite *>(sequence.get())->AddChild(std::move(child));
+            composite->AddChild(std::move(child));
         }
 
         return sequence;
@@ -163,7 +173,20 @@ private:
             }
         }
 
+        // Changed in OPM
+        //  Added validation for parallel node configuration
         int requiredCount = node["required_count"] ? node["required_count"].as<int>() : 0;
+
+        // Validate requiredCount
+        if (requiredCount < 0) {
+            gi.Printf("ERROR: Parallel node has negative required_count (%d) in %s\n", requiredCount, filepath);
+            return nullptr;
+        }
+
+        if (policy == BTParallel::Policy::RequireN && requiredCount == 0) {
+            gi.Printf("ERROR: Parallel node with RequireN policy must have required_count > 0 in %s\n", filepath);
+            return nullptr;
+        }
 
         auto parallel = std::make_unique<BTParallel>(policy, requiredCount);
 
@@ -172,12 +195,29 @@ private:
             return nullptr;
         }
 
+        // Changed in OPM
+        //  Fixed unsafe static_cast - BTParallel inherits from BTComposite, so cast is safe
+        //  but we make it explicit for clarity and use the composite pointer directly
+        BTComposite *composite = parallel.get();
+
+        // Load children and count them
+        int childCount = 0;
         for (const auto &childNode : node["children"]) {
             auto child = LoadNode(childNode, filepath);
             if (!child) {
                 return nullptr;
             }
-            static_cast<BTComposite *>(parallel.get())->AddChild(std::move(child));
+            composite->AddChild(std::move(child));
+            ++childCount;
+        }
+
+        // Changed in OPM
+        //  Validate that requiredCount doesn't exceed child count
+        if (policy == BTParallel::Policy::RequireN && requiredCount > childCount) {
+            gi.Printf(
+                "ERROR: Parallel node requires %d children but only has %d in %s\n", requiredCount, childCount, filepath
+            );
+            return nullptr;
         }
 
         return parallel;

@@ -2,9 +2,13 @@
 // bt_core_actions.cpp: Registration of core behavior tree actions and conditions
 
 #include "bt_action_registry.h"
+#include "bt_blackboard_keys.h"
 #include "perception.h"
 #include "playerbot.h"
 #include "player.h"
+
+// Changed in OPM
+//  Added bt_blackboard_keys.h to use consistent key constants
 
 /**
  * Register all core actions and conditions.
@@ -20,7 +24,7 @@ void RegisterCoreBTActions()
     // === CONDITIONS ===
 
     REGISTER_BT_CONDITION("HasVisibleEnemy", [](Blackboard &bb) {
-        auto snapshot = bb.TryGet<PerceptionSnapshot *>("perception");
+        auto snapshot = bb.TryGet<PerceptionSnapshot *>(BlackboardKeys::PERCEPTION);
         if (!snapshot) {
             return false;
         }
@@ -28,7 +32,7 @@ void RegisterCoreBTActions()
     });
 
     REGISTER_BT_CONDITION("HasKnownEnemy", [](Blackboard &bb) {
-        auto snapshot = bb.TryGet<PerceptionSnapshot *>("perception");
+        auto snapshot = bb.TryGet<PerceptionSnapshot *>(BlackboardKeys::PERCEPTION);
         if (!snapshot) {
             return false;
         }
@@ -36,7 +40,7 @@ void RegisterCoreBTActions()
     });
 
     REGISTER_BT_CONDITION("LowHealth", [](Blackboard &bb) {
-        auto player = bb.TryGet<Player *>("player");
+        auto player = bb.TryGet<Player *>(BlackboardKeys::PLAYER);
         if (!player || !(*player)) {
             return false;
         }
@@ -46,7 +50,7 @@ void RegisterCoreBTActions()
     });
 
     REGISTER_BT_CONDITION("HasAmmo", [](Blackboard &bb) {
-        auto player = bb.TryGet<Player *>("player");
+        auto player = bb.TryGet<Player *>(BlackboardKeys::PLAYER);
         if (!player || !(*player)) {
             return false;
         }
@@ -61,7 +65,7 @@ void RegisterCoreBTActions()
     });
 
     REGISTER_BT_CONDITION("HeardRecentSound", [](Blackboard &bb) {
-        auto snapshot = bb.TryGet<PerceptionSnapshot *>("perception");
+        auto snapshot = bb.TryGet<PerceptionSnapshot *>(BlackboardKeys::PERCEPTION);
         if (!snapshot) {
             return false;
         }
@@ -72,8 +76,8 @@ void RegisterCoreBTActions()
     // === ACTIONS ===
 
     REGISTER_BT_ACTION("AimAtEnemy", [](Blackboard &bb, float /* dt */) {
-        auto bot      = bb.TryGet<BotController *>("bot");
-        auto snapshot = bb.TryGet<PerceptionSnapshot *>("perception");
+        auto bot      = bb.TryGet<BotController *>(BlackboardKeys::BOT);
+        auto snapshot = bb.TryGet<PerceptionSnapshot *>(BlackboardKeys::PERCEPTION);
 
         if (!bot || !(*bot) || !snapshot) {
             return BTNode::Status::FAILURE;
@@ -84,16 +88,23 @@ void RegisterCoreBTActions()
             return BTNode::Status::FAILURE;
         }
 
+        // Changed in OPM
+        //  Added entity validation - verify entity is still valid and in use
+        Sentient *enemy = closestEnemy->entity;
+        if (!enemy || !enemy->edict->inuse) {
+            return BTNode::Status::FAILURE;
+        }
+
         // Set enemy for aiming system
-        (*bot)->SetEnemy(closestEnemy->entity);
+        (*bot)->SetEnemy(enemy);
 
         return BTNode::Status::SUCCESS;
     });
 
     REGISTER_BT_ACTION("ShootEnemy", [](Blackboard &bb, float /* dt */) {
-        auto bot      = bb.TryGet<BotController *>("bot");
-        auto snapshot = bb.TryGet<PerceptionSnapshot *>("perception");
-        auto player   = bb.TryGet<Player *>("player");
+        auto bot      = bb.TryGet<BotController *>(BlackboardKeys::BOT);
+        auto snapshot = bb.TryGet<PerceptionSnapshot *>(BlackboardKeys::PERCEPTION);
+        auto player   = bb.TryGet<Player *>(BlackboardKeys::PLAYER);
 
         if (!bot || !(*bot) || !snapshot || !player || !(*player)) {
             return BTNode::Status::FAILURE;
@@ -101,6 +112,13 @@ void RegisterCoreBTActions()
 
         const EnemyInfo *closestEnemy = (*snapshot)->GetClosestEnemy();
         if (!closestEnemy || !closestEnemy->entity) {
+            return BTNode::Status::FAILURE;
+        }
+
+        // Changed in OPM
+        //  Added entity validation - verify entity is still valid and in use
+        Sentient *enemy = closestEnemy->entity;
+        if (!enemy || !enemy->edict->inuse) {
             return BTNode::Status::FAILURE;
         }
 
@@ -126,9 +144,9 @@ void RegisterCoreBTActions()
     });
 
     REGISTER_BT_ACTION("Retreat", [](Blackboard &bb, float /* dt */) {
-        auto bot      = bb.TryGet<BotController *>("bot");
-        auto snapshot = bb.TryGet<PerceptionSnapshot *>("perception");
-        auto player   = bb.TryGet<Player *>("player");
+        auto bot      = bb.TryGet<BotController *>(BlackboardKeys::BOT);
+        auto snapshot = bb.TryGet<PerceptionSnapshot *>(BlackboardKeys::PERCEPTION);
+        auto player   = bb.TryGet<Player *>(BlackboardKeys::PLAYER);
 
         if (!bot || !(*bot) || !snapshot || !player || !(*player)) {
             return BTNode::Status::FAILURE;
@@ -136,6 +154,13 @@ void RegisterCoreBTActions()
 
         const EnemyInfo *closestEnemy = (*snapshot)->GetClosestEnemy();
         if (!closestEnemy || !closestEnemy->entity) {
+            return BTNode::Status::FAILURE;
+        }
+
+        // Changed in OPM
+        //  Added entity validation - verify entity is still valid and in use
+        Sentient *enemy = closestEnemy->entity;
+        if (!enemy || !enemy->edict->inuse) {
             return BTNode::Status::FAILURE;
         }
 
@@ -155,8 +180,8 @@ void RegisterCoreBTActions()
     });
 
     REGISTER_BT_ACTION("MoveToSound", [](Blackboard &bb, float /* dt */) {
-        auto bot      = bb.TryGet<BotController *>("bot");
-        auto snapshot = bb.TryGet<PerceptionSnapshot *>("perception");
+        auto bot      = bb.TryGet<BotController *>(BlackboardKeys::BOT);
+        auto snapshot = bb.TryGet<PerceptionSnapshot *>(BlackboardKeys::PERCEPTION);
 
         if (!bot || !(*bot) || !snapshot) {
             return BTNode::Status::FAILURE;
@@ -174,7 +199,7 @@ void RegisterCoreBTActions()
     });
 
     REGISTER_BT_ACTION("PatrolWaypoints", [](Blackboard &bb, float /* dt */) {
-        auto bot = bb.TryGet<BotController *>("bot");
+        auto bot = bb.TryGet<BotController *>(BlackboardKeys::BOT);
 
         if (!bot || !(*bot)) {
             return BTNode::Status::FAILURE;

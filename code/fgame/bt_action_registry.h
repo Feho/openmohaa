@@ -9,6 +9,33 @@
 #include <string>
 #include <vector>
 
+// Changed in OPM
+//  Added metadata structure for better error messages and documentation
+/**
+ * Metadata about a registered action or condition.
+ */
+struct BTNodeMetadata {
+    std::string              name;              // Node name
+    std::string              description;       // What it does
+    std::vector<std::string> requiredKeys;      // Required blackboard keys
+    std::string              category;          // Category (Movement, Combat, Perception, etc.)
+
+    BTNodeMetadata() = default;
+
+    BTNodeMetadata(
+        const std::string              &n,
+        const std::string              &desc      = "",
+        const std::vector<std::string> &keys      = {},
+        const std::string              &cat       = "General"
+    )
+        : name(n)
+        , description(desc)
+        , requiredKeys(keys)
+        , category(cat)
+    {
+    }
+};
+
 /**
  * Registry for mapping action/condition names to C++ functions.
  * Used by YAML loader to create BTAction and BTCondition nodes.
@@ -31,30 +58,70 @@ public:
      * Register an action that can be used in YAML.
      * @param name Action name as it appears in YAML (e.g., "AimAtEnemy")
      * @param func Function that implements the action
+     * @param metadata Optional metadata about the action
+     * @param allowOverwrite Allow overwriting existing registration (default: false in debug)
      */
-    void RegisterAction(const std::string &name, ActionFunc func)
+    void RegisterAction(
+        const std::string  &name,
+        ActionFunc          func,
+        const BTNodeMetadata &metadata      = BTNodeMetadata(),
+        bool                allowOverwrite = true
+    )
     {
         if (actions.find(name) != actions.end()) {
 #ifndef BEHAVIOR_TREE_TESTING
+#ifdef _DEBUG
+            if (!allowOverwrite) {
+                gi.Error(ERR_DROP, "BTActionRegistry: Duplicate action registration '%s'", name.c_str());
+            }
+#endif
             gi.DPrintf("WARNING: Overwriting existing action '%s'\n", name.c_str());
 #endif
         }
         actions[name] = func;
+
+        // Store metadata if provided
+        if (!metadata.name.empty()) {
+            actionMetadata[name] = metadata;
+        } else if (actionMetadata.find(name) == actionMetadata.end()) {
+            // Create basic metadata if none provided
+            actionMetadata[name] = BTNodeMetadata(name);
+        }
     }
 
     /**
      * Register a condition that can be used in YAML.
      * @param name Condition name as it appears in YAML (e.g., "HasVisibleEnemy")
      * @param func Function that implements the condition check
+     * @param metadata Optional metadata about the condition
+     * @param allowOverwrite Allow overwriting existing registration (default: false in debug)
      */
-    void RegisterCondition(const std::string &name, ConditionFunc func)
+    void RegisterCondition(
+        const std::string  &name,
+        ConditionFunc       func,
+        const BTNodeMetadata &metadata      = BTNodeMetadata(),
+        bool                allowOverwrite = true
+    )
     {
         if (conditions.find(name) != conditions.end()) {
 #ifndef BEHAVIOR_TREE_TESTING
+#ifdef _DEBUG
+            if (!allowOverwrite) {
+                gi.Error(ERR_DROP, "BTActionRegistry: Duplicate condition registration '%s'", name.c_str());
+            }
+#endif
             gi.DPrintf("WARNING: Overwriting existing condition '%s'\n", name.c_str());
 #endif
         }
         conditions[name] = func;
+
+        // Store metadata if provided
+        if (!metadata.name.empty()) {
+            conditionMetadata[name] = metadata;
+        } else if (conditionMetadata.find(name) == conditionMetadata.end()) {
+            // Create basic metadata if none provided
+            conditionMetadata[name] = BTNodeMetadata(name);
+        }
     }
 
     /**
@@ -86,6 +153,30 @@ public:
     [[nodiscard]] bool HasCondition(const std::string &name) const
     {
         return conditions.find(name) != conditions.end();
+    }
+
+    // Changed in OPM
+    //  Added metadata retrieval methods
+    /**
+     * Get metadata for an action.
+     * @param name Action name
+     * @return Pointer to metadata, or nullptr if not found
+     */
+    [[nodiscard]] const BTNodeMetadata *GetActionMetadata(const std::string &name) const
+    {
+        auto it = actionMetadata.find(name);
+        return (it != actionMetadata.end()) ? &it->second : nullptr;
+    }
+
+    /**
+     * Get metadata for a condition.
+     * @param name Condition name
+     * @return Pointer to metadata, or nullptr if not found
+     */
+    [[nodiscard]] const BTNodeMetadata *GetConditionMetadata(const std::string &name) const
+    {
+        auto it = conditionMetadata.find(name);
+        return (it != conditionMetadata.end()) ? &it->second : nullptr;
     }
 
     /**
@@ -121,6 +212,10 @@ public:
     {
         actions.clear();
         conditions.clear();
+        // Changed in OPM
+        //  Also clear metadata
+        actionMetadata.clear();
+        conditionMetadata.clear();
     }
 
 private:
@@ -128,6 +223,11 @@ private:
 
     std::unordered_map<std::string, ActionFunc>    actions;
     std::unordered_map<std::string, ConditionFunc> conditions;
+
+    // Changed in OPM
+    //  Added metadata storage
+    std::unordered_map<std::string, BTNodeMetadata> actionMetadata;
+    std::unordered_map<std::string, BTNodeMetadata> conditionMetadata;
 };
 
 // Convenience macros for registering actions/conditions

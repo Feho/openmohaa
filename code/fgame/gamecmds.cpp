@@ -36,9 +36,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "consoleevent.h"
 #include "g_bot.h"
 // Added in OPM - Phase 2B Task 2B.2
-//  Include behavior tree YAML loader
+//  Include behavior tree YAML loader and manager
 #include "bt_yaml_loader.h"
 #include "bt_action_registry.h"
+#include "bt_manager.h"
 
 typedef struct {
     const char *command;
@@ -94,6 +95,8 @@ consolecmd_t G_ConsoleCmds[] = {
     //  Behavior tree YAML loading commands
     {"bt_load",             G_BT_LoadCmd,            qfalse},
     {"bt_reload",           G_BT_ReloadCmd,          qfalse},
+    {"bt_unload",           G_BT_UnloadCmd,          qfalse},
+    {"bt_list",             G_BT_ListTreesCmd,       qfalse},
     {"bt_list_actions",     G_BT_ListActionsCmd,     qfalse},
     {"bt_list_conditions",  G_BT_ListConditionsCmd,  qfalse},
     //====
@@ -924,13 +927,36 @@ qboolean G_BT_LoadCmd(gentity_t *ent)
     }
 
     const char *filename = gi.Argv(1);
-    char        path[256];
+
+    // Changed in OPM
+    //  Added path traversal protection to prevent directory escape attacks
+    // Validate filename to prevent path traversal attacks
+    if (!filename || strlen(filename) == 0) {
+        gi.Printf("ERROR: Empty filename\n");
+        return qfalse;
+    }
+
+    // Check for path traversal sequences
+    if (strstr(filename, "..") != nullptr || strchr(filename, '/') != nullptr || strchr(filename, '\\') != nullptr) {
+        gi.Printf("ERROR: Invalid filename '%s' - path separators and '..' not allowed\n", filename);
+        return qfalse;
+    }
+
+    // Check filename length (leave room for path prefix and extension)
+    constexpr size_t maxFilenameLen = 200;
+    if (strlen(filename) > maxFilenameLen) {
+        gi.Printf("ERROR: Filename too long (max %d characters)\n", static_cast<int>(maxFilenameLen));
+        return qfalse;
+    }
+
+    char path[256];
     Com_sprintf(path, sizeof(path), "behaviors/%s.yaml", filename);
 
-    auto tree = BTYamlLoader::LoadFromFile(path);
-    if (tree) {
+    // Changed in OPM
+    //  Use BTManager to load and store tree
+    if (BTManager::Instance().LoadTree(filename, path)) {
         gi.Printf("Successfully loaded behavior tree: %s\n", filename);
-        // TODO: Store tree for testing/assignment to bots
+        gi.Printf("  Use 'bt_list' to see all loaded trees\n");
         return qtrue;
     } else {
         gi.Printf("Failed to load behavior tree: %s\n", filename);
@@ -940,8 +966,29 @@ qboolean G_BT_LoadCmd(gentity_t *ent)
 
 qboolean G_BT_ReloadCmd(gentity_t *ent)
 {
-    // Same as load for now
-    return G_BT_LoadCmd(ent);
+    if (gi.Argc() < 2) {
+        gi.Printf("Usage: bt_reload <tree_name>\n");
+        gi.Printf("Example: bt_reload engage_enemy\n");
+        return qfalse;
+    }
+
+    const char *treeName = gi.Argv(1);
+
+    // Changed in OPM
+    //  Implement proper reload semantics using BTManager
+    if (!BTManager::Instance().HasTree(treeName)) {
+        gi.Printf("ERROR: Tree '%s' not loaded. Use bt_load to load it first.\n", treeName);
+        gi.Printf("  Use 'bt_list' to see all loaded trees\n");
+        return qfalse;
+    }
+
+    if (BTManager::Instance().ReloadTree(treeName)) {
+        gi.Printf("Successfully reloaded behavior tree: %s\n", treeName);
+        return qtrue;
+    } else {
+        gi.Printf("Failed to reload behavior tree: %s\n", treeName);
+        return qfalse;
+    }
 }
 
 qboolean G_BT_ListActionsCmd(gentity_t *ent)
@@ -966,4 +1013,44 @@ qboolean G_BT_ListConditionsCmd(gentity_t *ent)
     }
 
     return qtrue;
+}
+
+// Added in OPM - Phase 2B Task 2B.2 Review Fixes
+//  New command to list loaded behavior trees
+qboolean G_BT_ListTreesCmd(gentity_t *ent)
+{
+    auto treeNames = BTManager::Instance().GetLoadedTreeNames();
+
+    gi.Printf("=== Loaded Behavior Trees (%d) ===\n", static_cast<int>(treeNames.size()));
+    if (treeNames.empty()) {
+        gi.Printf("  (none loaded - use 'bt_load' to load trees)\n");
+    } else {
+        for (const auto &name : treeNames) {
+            gi.Printf("  - %s\n", name.c_str());
+        }
+    }
+
+    return qtrue;
+}
+
+// Added in OPM - Phase 2B Task 2B.2 Review Fixes
+//  New command to unload a behavior tree
+qboolean G_BT_UnloadCmd(gentity_t *ent)
+{
+    if (gi.Argc() < 2) {
+        gi.Printf("Usage: bt_unload <tree_name>\n");
+        gi.Printf("Example: bt_unload engage_enemy\n");
+        return qfalse;
+    }
+
+    const char *treeName = gi.Argv(1);
+
+    if (BTManager::Instance().UnloadTree(treeName)) {
+        gi.Printf("Unloaded behavior tree: %s\n", treeName);
+        return qtrue;
+    } else {
+        gi.Printf("ERROR: Tree '%s' not found\n", treeName);
+        gi.Printf("  Use 'bt_list' to see all loaded trees\n");
+        return qfalse;
+    }
 }

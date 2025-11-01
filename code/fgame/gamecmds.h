@@ -68,3 +68,12 @@ qboolean G_BotCommand(gentity_t *ent);
 qboolean G_BotDebugInfoCmd(gentity_t *ent);
 qboolean G_BotForceStateCmd(gentity_t *ent);
 qboolean G_BotShowPerceptionCmd(gentity_t *ent);
+
+// Added in OPM - Phase 2B Task 2B.2
+//  Behavior tree YAML loading console commands
+qboolean G_BT_LoadCmd(gentity_t *ent);
+qboolean G_BT_ReloadCmd(gentity_t *ent);
+qboolean G_BT_UnloadCmd(gentity_t *ent);
+qboolean G_BT_ListActionsCmd(gentity_t *ent);
+qboolean G_BT_ListConditionsCmd(gentity_t *ent);
+qboolean G_BT_ListTreesCmd(gentity_t *ent);
