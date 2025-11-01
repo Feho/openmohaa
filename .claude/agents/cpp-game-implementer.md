@@ -1,7 +1,8 @@
 ---
 name: cpp-game-implementer
 description: Use this agent when the user requests implementation of a specific game feature, mechanic, system, or bug fix in the OpenMoHAA C++ codebase. This agent should be triggered for tasks like: implementing new gameplay mechanics, adding new entity types, creating event handlers, fixing bugs in game logic, modifying AI behavior, implementing scripting system features, or any other C++ development task in the game engine. Examples:\n\n<example>\nuser: "Please implement a new weapon pickup entity that spawns at random locations"\nassistant: "I'll use the Task tool to launch the cpp-game-implementer agent to implement this feature."\n</example>\n\n<example>\nuser: "Fix the bug where players can't reload while sprinting"\nassistant: "Let me use the Task tool to launch the cpp-game-implementer agent to investigate and fix this issue."\n</example>\n\n<example>\nuser: "Add a new event subscription for when a player changes teams"\nassistant: "I'm going to use the Task tool to launch the cpp-game-implementer agent to implement this event system feature."\n</example>
-model: sonnet
+tools: Bash, Glob, Grep, Read, Edit, Write, NotebookEdit, WebFetch, TodoWrite, WebSearch, BashOutput, KillShell, AskUserQuestion, Skill, SlashCommand, mcp__gemini__consult_gemini, mcp__gemini__gemini_status, mcp__gemini__toggle_gemini_auto_consult
+model: inherit
 color: green
 ---
 
@@ -22,7 +23,6 @@ When implementing a feature or fix:
 3. **Implement Code**: Write clean, efficient C++ code that:
    - Adheres strictly to the project's coding standards (camelCase variables, PascalCase functions/classes)
    - Uses proper event declaration format with all parameters on separate lines
-   - Includes appropriate code annotations ("// Added in OPM", "// Changed in OPM", etc.)
    - Only includes necessary header files
    - Follows the .clang-format configuration (4-space indent, 120 char limit, right pointer alignment)
    - Uses C++17 standard features appropriately
@@ -81,9 +81,6 @@ Format specifiers: e=Entity, v=Vector, i=Integer, f=Float, s=String, b=Boolean (
 2. Design the solution considering architecture and compatibility
 3. Implement the code following all standards
 4. Annotate all changes appropriately
-5. **Use Agent tool to invoke build-validator**
-6. **Use Agent tool to invoke cpp-code-reviewer**
-7. **Use Ask tool to get Gemini's opinion**
 8. Address feedback and iterate if needed
 9. Provide clear documentation of what was implemented and any usage notes
 

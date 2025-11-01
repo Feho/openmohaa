@@ -149,12 +149,6 @@ Use `clang-format` for all code formatting. The project includes a `.clang-forma
 
 When modifying code, annotate changes with comments:
 
-**Additions:**
-```cpp
-// Added in OPM
-//  Description of what was added
-```
-
 **Changes:**
 ```cpp
 // Changed in OPM
@@ -174,16 +168,6 @@ When modifying code, annotate changes with comments:
 ```
 
 For changes matching specific game versions, replace "OPM" with version: `2.0`, `2.1`, `2.11`, `2.15`, `2.30`, `2.40`.
-
-Group related changes:
-```cpp
-// Added in OPM
-//====
-void Function1();
-void Function2();
-void Function3();
-//====
-```
 
 ### Event Declaration Format
 
