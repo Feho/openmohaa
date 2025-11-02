@@ -44,6 +44,7 @@ profile:
     tracking_smoothness: 0.6     # 0.0 (instant snap) - 1.0 (smooth)
     spread_multiplier: 1.3       # Higher = less accurate
     headshot_bias: 0.4           # 0.0 (center mass) - 1.0 (headshots)
+    aim_tolerance: 8.0           # Degrees - fires before perfectly aimed (aggressive)
 
   # === TACTICAL PARAMETERS ===
   tactics:

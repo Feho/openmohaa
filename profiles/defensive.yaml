@@ -43,6 +43,7 @@ profile:
     tracking_smoothness: 0.8
     spread_multiplier: 0.8
     headshot_bias: 0.6
+    aim_tolerance: 3.0           # Degrees - high precision (defensive)
 
   # === TACTICAL PARAMETERS ===
   tactics:

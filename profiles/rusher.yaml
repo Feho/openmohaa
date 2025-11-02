@@ -43,6 +43,7 @@ profile:
     tracking_smoothness: 0.5
     spread_multiplier: 1.5
     headshot_bias: 0.3
+    aim_tolerance: 12.0          # Degrees - very loose, spray and pray
 
   # === TACTICAL PARAMETERS ===
   tactics:

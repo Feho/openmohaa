@@ -154,6 +154,10 @@ std::unique_ptr<BotProfile> BotProfile::LoadFromFile(const char *filepath)
             if (aim["headshot_bias"]) {
                 bp->aim.headshotBias = aim["headshot_bias"].as<float>();
             }
+            // Added in OPM - Phase 3 Task 3.1b (Gemini review)
+            if (aim["aim_tolerance"]) {
+                bp->aim.aimTolerance = aim["aim_tolerance"].as<float>();
+            }
         }
 
         // === TACTICS ===

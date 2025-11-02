@@ -32,6 +32,17 @@ constexpr const char *TARGET_SWITCHED   = "targetSwitched";   // bool - Whether 
 constexpr const char *PREVIOUS_TARGET   = "previousTarget";   // Sentient* - Previous target (for comparison)
 constexpr const char *PROFILE           = "profile";          // BotProfile* - Bot profile with parameters
 
+// Added in OPM - Phase 3 Task 3.1b
+//  Aiming and fire control system
+constexpr const char *AIM_OFFSET         = "aimOffset";         // Vector - Current aim inaccuracy offset
+constexpr const char *AIM_UPDATE_TIME    = "aimUpdateTime";     // float - Last time aim offset was updated
+constexpr const char *IS_AIMED_AT_TARGET = "isAimedAtTarget";   // bool - Whether aim is within tolerance
+constexpr const char *ENEMY_EYES_TAG     = "enemyEyesTag";      // int - Cached eye bone tag for target
+constexpr const char *BURST_STATE        = "burstState";        // int - 0=not firing, 1=burst, 2=pause
+constexpr const char *BURST_START_TIME   = "burstStartTime";    // float - When current burst started
+constexpr const char *CONTINUOUS_FIRE_TIME = "continuousFireTime"; // float - Total fire time in burst
+constexpr const char *LAST_FIRE_TIME     = "lastFireTime";      // float - Last shot time
+
 // Behavior state (for multi-frame actions)
 constexpr const char *BEHAVIOR_STATE     = "behavior_state";     // int - State machine index
 constexpr const char *BEHAVIOR_TIMESTAMP = "behavior_timestamp"; // float - When behavior started

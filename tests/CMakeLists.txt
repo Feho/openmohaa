@@ -104,6 +104,10 @@ add_bot_test(test_bot_profile)
 # Target selection and tracking tests
 add_bot_test(test_target_selection)
 
+# Added in OPM - Phase 3 Task 3.1b
+# Aiming and fire control tests
+add_bot_test(test_aim_fire)
+
 # Added in OPM - Phase 2 Task 2.0
 # yaml-cpp integration test
 add_executable(test_yaml_cpp test_yaml_cpp.cpp)

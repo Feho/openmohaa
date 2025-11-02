@@ -102,6 +102,9 @@ public:
 
     float GetHeadshotBias() const { return aim.headshotBias; }
 
+    // Added in OPM - Phase 3 Task 3.1b (Gemini review)
+    float GetAimTolerance() const { return aim.aimTolerance; }
+
     // === TACTICS ===
     float GetCoverUsage() const { return tactics.coverUsage; }
 
@@ -174,6 +177,8 @@ private:
         float                   trackingSmoothness = 0.7f;         // 0.0 (instant snap) - 1.0 (smooth)
         float                   spreadMultiplier   = 1.0f;         // Higher = less accurate
         float                   headshotBias       = 0.5f;         // 0.0 (center mass) - 1.0 (headshots)
+        // Added in OPM - Phase 3 Task 3.1b (Gemini review)
+        float                   aimTolerance       = 5.0f;         // Degrees - how precise aim must be before firing
     } aim;
 
     struct Tactics {

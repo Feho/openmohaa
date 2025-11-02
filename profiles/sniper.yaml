@@ -43,6 +43,7 @@ profile:
     tracking_smoothness: 0.9
     spread_multiplier: 0.6
     headshot_bias: 0.9
+    aim_tolerance: 1.5           # Degrees - very precise (sniper)
 
   # === TACTICAL PARAMETERS ===
   tactics:
