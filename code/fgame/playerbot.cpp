@@ -223,7 +223,6 @@ void BotController::Think()
     // Changed in OPM - Phase 2B Task 2B.4
     //  Modified to support behavior tree execution based on feature flag
     if (g_bot_use_new_ai_system->integer) {
-        // New behavior tree system
         if (!controlledEnt) {
             return;
         }
@@ -232,55 +231,50 @@ void BotController::Think()
 
         // Handle weapon selection
         if (!controlledEnt->client->pers.dm_primary[0]) {
-            Event *event;
-            event = new Event(EV_Player_PrimaryDMWeapon);
+            Event *event = new Event(EV_Player_PrimaryDMWeapon);
             event->AddString("auto");
             controlledEnt->ProcessEvent(event);
         }
 
         // Handle team joining
-        if (controlledEnt->GetTeam() == TEAM_NONE || controlledEnt->GetTeam() == TEAM_SPECTATOR) {
-            float time;
-            time = controlledEnt->entnum / 20.0;
-
+        bool needsTeam = (controlledEnt->GetTeam() == TEAM_NONE || controlledEnt->GetTeam() == TEAM_SPECTATOR);
+        if (needsTeam) {
+            float time = controlledEnt->entnum / 20.0;
             if (!controlledEnt->EventPending(EV_Player_AutoJoinDMTeam)) {
                 controlledEnt->PostEvent(EV_Player_AutoJoinDMTeam, time);
             }
-            return;
         }
 
-        // Handle respawning
-        if (controlledEnt->IsDead() || controlledEnt->IsSpectator()) {
+        // Fixed in OPM
+        //  Toggle respawn button when dead/spectator to create repeating "new button press" detection
+        //  This matches the old system's XOR toggle behavior to trigger respawn
+        bool isDeadOrSpectator = controlledEnt->IsDead() || controlledEnt->IsSpectator();
+        if (needsTeam || isDeadOrSpectator) {
             m_botCmd.buttons ^= BUTTON_ATTACKLEFT;
-            return;
+        } else {
+            m_botCmd.buttons = 0;
+            m_botCmd.buttons |= BUTTON_RUN;
+
+            m_botEyes.ofs[0]    = 0;
+            m_botEyes.ofs[1]    = 0;
+            m_botEyes.ofs[2]    = controlledEnt->viewheight;
+            m_botEyes.angles[0] = 0;
+            m_botEyes.angles[1] = 0;
+
+            CheckStates();
+
+            float deltaTime = level.frametime;
+
+            PopulateBlackboard();
+            ExecuteBehaviorTree(deltaTime);
+
+            movement.MoveThink(m_botCmd);
+            rotation.TurnThink(m_botCmd, m_botEyes);
+
+            CheckUse();
+            CheckValidWeapon();
         }
-
-        m_botCmd.buttons |= BUTTON_RUN;
-
-        m_botEyes.ofs[0]    = 0;
-        m_botEyes.ofs[1]    = 0;
-        m_botEyes.ofs[2]    = controlledEnt->viewheight;
-        m_botEyes.angles[0] = 0;
-        m_botEyes.angles[1] = 0;
-
-        CheckStates();
-
-        float deltaTime = level.frametime;
-
-        // Populate blackboard with current state
-        PopulateBlackboard();
-
-        // Execute behavior tree
-        ExecuteBehaviorTree(deltaTime);
-
-        // Still need movement and rotation processing
-        movement.MoveThink(m_botCmd);
-        rotation.TurnThink(m_botCmd, m_botEyes);
-
-        CheckUse();
-        CheckValidWeapon();
     } else {
-        // Old state machine system
         UpdateBotStates();
     }
 
