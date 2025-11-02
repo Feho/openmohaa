@@ -23,6 +23,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // bt_conditions_combat.cpp
 // Combat condition implementations
 // Added in OPM - Phase 3 Task 3.1b
+// Changed in OPM - Phase 3 Task 3.1f (Gemini review)
+//  Refactored to stateless functions using blackboard for state
 
 #include "bt_conditions_combat.h"
 #include "bt_blackboard_keys.h"
@@ -30,66 +32,56 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "g_local.h"
 
 // ============================================================================
-// Condition_IsAimedAtTarget
+// Condition_IsAimedAtTarget_Check
 // ============================================================================
 
-void Condition_IsAimedAtTarget::Reset()
-{
-    lastStatus = Status::FAILURE;
-}
-
-BTNode::Status Condition_IsAimedAtTarget::Execute(Blackboard &blackboard, float deltaTime)
+bool Condition_IsAimedAtTarget_Check(Blackboard &blackboard)
 {
     auto isAimedOpt = blackboard.TryGet<bool>(BlackboardKeys::IS_AIMED_AT_TARGET);
     
     if (isAimedOpt && *isAimedOpt) {
-        return Status::SUCCESS;
+        return true;
     }
     
-    return Status::FAILURE;
+    return false;
 }
 
 // ============================================================================
-// Condition_WeaponReady
+// Condition_WeaponReady_Check
 // ============================================================================
 
-void Condition_WeaponReady::Reset()
-{
-    lastStatus = Status::FAILURE;
-}
-
-BTNode::Status Condition_WeaponReady::Execute(Blackboard &blackboard, float deltaTime)
+bool Condition_WeaponReady_Check(Blackboard &blackboard)
 {
     auto playerOpt = blackboard.TryGet<Player *>(BlackboardKeys::PLAYER);
     auto profileOpt = blackboard.TryGet<BotProfile *>(BlackboardKeys::PROFILE);
     
     if (!playerOpt || !profileOpt) {
-        return Status::FAILURE;
+        return false;
     }
     
     Player *player = *playerOpt;
     BotProfile *profile = *profileOpt;
     
     if (!player || !profile) {
-        return Status::FAILURE;
+        return false;
     }
     
     // Get active weapon
     Weapon *weapon = player->GetActiveWeapon(WEAPON_MAIN);
     if (!weapon) {
-        return Status::FAILURE;
+        return false;
     }
     
     // Check ammo
     if (player->client->ps.stats[STAT_AMMO] <= 0 && player->client->ps.stats[STAT_CLIPAMMO] <= 0) {
-        return Status::FAILURE;
+        return false;
     }
     
     // Added in OPM - Phase 3 Task 3.1b (Gemini review)
     //  Check if weapon is currently reloading
     if (weapon->HasAmmoInClip(FIRE_PRIMARY) == false && player->client->ps.stats[STAT_CLIPAMMO] > 0) {
         // Weapon needs reload or is reloading
-        return Status::FAILURE;
+        return false;
     }
     
     // Check weapon spread if fire discipline is high
@@ -97,47 +89,42 @@ BTNode::Status Condition_WeaponReady::Execute(Blackboard &blackboard, float delt
     if (fireDiscipline > 0.5f) {
         float spreadFactor = weapon->GetSpreadFactor(FIRE_PRIMARY);
         if (spreadFactor >= BotConstants::WEAPON_SPREAD_THRESHOLD) {
-            return Status::FAILURE; // Too inaccurate, need to wait
+            return false; // Too inaccurate, need to wait
         }
     }
     
-    return Status::SUCCESS;
+    return true;
 }
 
 // ============================================================================
-// Condition_InMeleeRange
+// Condition_InMeleeRange_Check
 // ============================================================================
 
-void Condition_InMeleeRange::Reset()
-{
-    lastStatus = Status::FAILURE;
-}
-
-BTNode::Status Condition_InMeleeRange::Execute(Blackboard &blackboard, float deltaTime)
+bool Condition_InMeleeRange_Check(Blackboard &blackboard)
 {
     auto targetOpt = blackboard.TryGet<Sentient *>(BlackboardKeys::SELECTED_TARGET);
     auto playerOpt = blackboard.TryGet<Player *>(BlackboardKeys::PLAYER);
     
     if (!targetOpt || !playerOpt) {
-        return Status::FAILURE;
+        return false;
     }
     
     Sentient *target = *targetOpt;
     Player *player = *playerOpt;
     
     if (!target || !player) {
-        return Status::FAILURE;
+        return false;
     }
     
     // Get active weapon and check for melee capability
     Weapon *weapon = player->GetActiveWeapon(WEAPON_MAIN);
     if (!weapon) {
-        return Status::FAILURE;
+        return false;
     }
     
     // Check if weapon has melee secondary fire
     if (weapon->GetFireType(FIRE_SECONDARY) != FT_MELEE) {
-        return Status::FAILURE;
+        return false;
     }
     
     // Check distance to target
@@ -146,8 +133,8 @@ BTNode::Status Condition_InMeleeRange::Execute(Blackboard &blackboard, float del
     float meleeRangeSq = meleeRange * meleeRange;
     
     if (distanceSq <= meleeRangeSq) {
-        return Status::SUCCESS;
+        return true;
     }
     
-    return Status::FAILURE;
+    return false;
 }

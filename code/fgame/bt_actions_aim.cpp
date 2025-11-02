@@ -23,18 +23,18 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // bt_actions_aim.cpp
 // Aiming system implementation
 // Added in OPM - Phase 3 Task 3.1b
+// Changed in OPM - Phase 3 Task 3.1f (Gemini review)
+//  Refactored to stateless function using blackboard for state management
 
 #include "bt_actions_aim.h"
 #include "bt_blackboard_keys.h"
 #include "bot_profile.h"
 #include "g_local.h"
 
-void Action_AimAtTarget::Reset()
-{
-    lastStatus = Status::FAILURE;
-}
+// Constants
+static constexpr float AIM_UPDATE_INTERVAL = 0.1f;  // Update offset every 100ms
 
-BTNode::Status Action_AimAtTarget::Execute(Blackboard &blackboard, float deltaTime)
+BTNode::Status Action_AimAtTarget_Execute(Blackboard &blackboard, float deltaTime)
 {
     // Get required data from blackboard
     auto targetOpt = blackboard.TryGet<Sentient *>(BlackboardKeys::SELECTED_TARGET);
@@ -43,7 +43,7 @@ BTNode::Status Action_AimAtTarget::Execute(Blackboard &blackboard, float deltaTi
     auto profileOpt = blackboard.TryGet<BotProfile *>(BlackboardKeys::PROFILE);
 
     if (!targetOpt || !botOpt || !playerOpt || !profileOpt) {
-        return Status::FAILURE;
+        return BTNode::Status::FAILURE;
     }
 
     Sentient    *target  = *targetOpt;
@@ -53,7 +53,7 @@ BTNode::Status Action_AimAtTarget::Execute(Blackboard &blackboard, float deltaTi
 
     if (!target || !bot || !player || !profile) {
         blackboard.Set<bool>(BlackboardKeys::IS_AIMED_AT_TARGET, false);
-        return Status::FAILURE;
+        return BTNode::Status::FAILURE;
     }
 
     // Get cached eye tag or find it
@@ -151,8 +151,8 @@ BTNode::Status Action_AimAtTarget::Execute(Blackboard &blackboard, float deltaTi
     blackboard.Set<bool>(BlackboardKeys::IS_AIMED_AT_TARGET, isAimed);
 
     if (isAimed) {
-        return Status::SUCCESS;
+        return BTNode::Status::SUCCESS;
     } else {
-        return Status::RUNNING;
+        return BTNode::Status::RUNNING;
     }
 }

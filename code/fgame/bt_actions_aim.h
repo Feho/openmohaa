@@ -31,39 +31,31 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "playerbot.h"
 
 /**
- * Action_AimAtTarget - Smoothly aims at the current target with profile-based inaccuracy
+ * Action_AimAtTarget_Execute - Smoothly aims at the current target with profile-based inaccuracy
+ *
+ * Changed in OPM - Phase 3 Task 3.1f (Gemini review)
+ *  Refactored from stateful class to stateless function using blackboard for state
  *
  * Reads from blackboard:
  *   - SELECTED_TARGET (Sentient*) - Current attack target
  *   - BOT (BotController*) - Bot controller
  *   - PLAYER (Player*) - Player entity
  *   - PROFILE (BotProfile*) - Bot profile with aim parameters
- *   - AIM_OFFSET (Vector) - Current aim offset
- *   - AIM_UPDATE_TIME (float) - Last aim offset update time
- *   - ENEMY_EYES_TAG (int) - Cached eye bone tag
+ *   - AIM_OFFSET (Vector) - Current aim offset (state)
+ *   - AIM_UPDATE_TIME (float) - Last aim offset update time (state)
+ *   - ENEMY_EYES_TAG (int) - Cached eye bone tag (state)
  *
  * Writes to blackboard:
  *   - IS_AIMED_AT_TARGET (bool) - Whether aim is within tolerance
- *   - AIM_OFFSET (Vector) - Updated aim offset
- *   - AIM_UPDATE_TIME (float) - Updated time
- *   - ENEMY_EYES_TAG (int) - Cached tag
+ *   - AIM_OFFSET (Vector) - Updated aim offset (state)
+ *   - AIM_UPDATE_TIME (float) - Updated time (state)
+ *   - ENEMY_EYES_TAG (int) - Cached tag (state)
  *
  * Returns:
  *   - RUNNING: Aiming in progress (multi-frame)
- *   - SUCCESS: Aimed within tolerance (5 degrees)
+ *   - SUCCESS: Aimed within tolerance (profile.aim_tolerance degrees)
  *   - FAILURE: No target or target invalid
  */
-class Action_AimAtTarget : public BTAction
-{
-public:
-    Status Execute(Blackboard &blackboard, float deltaTime) override;
-    void   Reset() override;
-    const char *GetName() const override { return "AimAtTarget"; }
-
-private:
-    // Changed in OPM - Phase 3 Task 3.1b (Gemini review)
-    //  Moved AIM_TOLERANCE_DEGREES to profile parameter (aim_tolerance)
-    static constexpr float AIM_UPDATE_INTERVAL = 0.1f;  // Update offset every 100ms
-};
+BTNode::Status Action_AimAtTarget_Execute(Blackboard &blackboard, float deltaTime);
 
 #endif // __BT_ACTIONS_AIM_H__

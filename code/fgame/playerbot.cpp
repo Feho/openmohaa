@@ -27,6 +27,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // Added in OPM - Phase 2B Task 2B.4
 //  Include behavior tree loader for LoadProfile
 #include "bt_yaml_loader.h"
+// Added in OPM - Phase 3 Task 3.1f
+//  Include blackboard keys for combat tree assembly
+#include "bt_blackboard_keys.h"
 
 // We assume that we have limited access to the server-side
 // and that most logic come from the playerstate_s structure
@@ -149,25 +152,48 @@ void BotController::ReloadProfile()
 
 // Added in OPM - Phase 2B Task 2B.4
 //  Populate blackboard with current bot state for BT execution
+// Changed in OPM - Phase 3 Task 3.1f
+//  Updated to use BlackboardKeys constants and add proper combat data
 void BotController::PopulateBlackboard()
 {
-    // Store bot controller and entity references
-    blackboard.Set<BotController *>("bot", this);
-    blackboard.Set<Player *>("entity", static_cast<Player *>(controlledEnt.Pointer()));
+    // Core references
+    blackboard.Set<BotController *>(BlackboardKeys::BOT, this);
+    blackboard.Set<Player *>(BlackboardKeys::PLAYER, static_cast<Player *>(controlledEnt.Pointer()));
+    blackboard.Set<BotProfile *>(BlackboardKeys::PROFILE, profile.get());
 
-    // Store health information
+    // TODO: Add PerceptionSystem integration in future task
+    //  For now, perception snapshot will be created on-demand by actions
+    //  or we'll use legacy enemy tracking from m_pEnemy
+    // PerceptionSnapshot *snapshot = &perceptionSystem.GetSnapshot();
+    // blackboard.Set<PerceptionSnapshot *>(BlackboardKeys::PERCEPTION, snapshot);
+
+    // Health state
     if (controlledEnt) {
         blackboard.Set<float>("health", controlledEnt->health);
         blackboard.Set<float>("maxHealth", controlledEnt->max_health);
+        
+        // Weapon and ammo state
+        Weapon *weapon = controlledEnt->GetActiveWeapon(WEAPON_MAIN);
+        if (weapon) {
+            blackboard.Set<bool>("hasAmmo", weapon->HasAmmo(FIRE_PRIMARY) != qfalse);
+            // Calculate ammo percent manually
+            int clipAmmo = controlledEnt->client->ps.stats[STAT_CLIPAMMO];
+            int clipSize = weapon->GetClipSize(FIRE_PRIMARY);
+            float ammoPercent = clipSize > 0 ? (float)clipAmmo / (float)clipSize : 0.0f;
+            blackboard.Set<float>("ammoPercent", ammoPercent);
+        }
     }
 
-    // Store current enemy
+    // Current enemy (for legacy compatibility with existing actions)
     if (m_pEnemy) {
-        blackboard.Set<Sentient *>("enemy", static_cast<Sentient *>(m_pEnemy.Pointer()));
+        blackboard.Set<Sentient *>(BlackboardKeys::SELECTED_TARGET, static_cast<Sentient *>(m_pEnemy.Pointer()));
+        
+        // Calculate distance to enemy
+        if (controlledEnt && m_pEnemy) {
+            float distance = (m_pEnemy->origin - controlledEnt->origin).length();
+            blackboard.Set<float>(BlackboardKeys::TARGET_DISTANCE, distance);
+        }
     }
-
-    // Store profile for easy access by nodes
-    blackboard.Set<BotProfile *>("profile", profile.get());
 }
 
 // Added in OPM - Phase 2B Task 2B.4

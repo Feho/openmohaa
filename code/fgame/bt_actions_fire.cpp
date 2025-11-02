@@ -23,6 +23,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // bt_actions_fire.cpp
 // Weapon firing and melee implementation
 // Added in OPM - Phase 3 Task 3.1b
+// Changed in OPM - Phase 3 Task 3.1f (Gemini review)
+//  Refactored to stateless functions using blackboard for state management
 
 #include "bt_actions_fire.h"
 #include "bt_blackboard_keys.h"
@@ -30,18 +32,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "g_local.h"
 
 // ============================================================================
-// Action_FireWeapon
+// Action_FireWeapon_Execute
 // ============================================================================
 
-void Action_FireWeapon::Reset()
-{
-    lastStatus = Status::FAILURE;
-    // Note: Burst state persists across Reset() calls to maintain firing cadence.
-    // Burst state is explicitly cleared in blackboard when target is lost or
-    // action fails, ensuring clean transitions.
-}
-
-BTNode::Status Action_FireWeapon::Execute(Blackboard &blackboard, float deltaTime)
+BTNode::Status Action_FireWeapon_Execute(Blackboard &blackboard, float deltaTime)
 {
     // Get required data from blackboard
     auto targetOpt = blackboard.TryGet<Sentient *>(BlackboardKeys::SELECTED_TARGET);
@@ -51,7 +45,7 @@ BTNode::Status Action_FireWeapon::Execute(Blackboard &blackboard, float deltaTim
     auto isAimedOpt = blackboard.TryGet<bool>(BlackboardKeys::IS_AIMED_AT_TARGET);
 
     if (!targetOpt || !botOpt || !playerOpt || !profileOpt) {
-        return Status::FAILURE;
+        return BTNode::Status::FAILURE;
     }
 
     Sentient    *target  = *targetOpt;
@@ -64,13 +58,13 @@ BTNode::Status Action_FireWeapon::Execute(Blackboard &blackboard, float deltaTim
         //  Clear burst state when target is lost for clean state machine transitions
         blackboard.Set<int>(BlackboardKeys::BURST_STATE, 0); // BURST_IDLE
         blackboard.Set<float>(BlackboardKeys::CONTINUOUS_FIRE_TIME, 0.0f);
-        return Status::FAILURE;
+        return BTNode::Status::FAILURE;
     }
 
     // Get weapon
     Weapon *weapon = player->GetActiveWeapon(WEAPON_MAIN);
     if (!weapon) {
-        return Status::FAILURE;
+        return BTNode::Status::FAILURE;
     }
 
     // Check ammo
@@ -82,7 +76,7 @@ BTNode::Status Action_FireWeapon::Execute(Blackboard &blackboard, float deltaTim
         //  Clear burst state when out of ammo (allows reload or weapon switch to take over)
         blackboard.Set<int>(BlackboardKeys::BURST_STATE, 0); // BURST_IDLE
         blackboard.Set<float>(BlackboardKeys::CONTINUOUS_FIRE_TIME, 0.0f);
-        return Status::FAILURE;
+        return BTNode::Status::FAILURE;
     }
 
     // Check range
@@ -94,7 +88,7 @@ BTNode::Status Action_FireWeapon::Execute(Blackboard &blackboard, float deltaTim
         usercmd_t &botCmd = bot->GetBotCmd();
         botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
         player->ZoomOff();
-        return Status::FAILURE;
+        return BTNode::Status::FAILURE;
     }
 
     // Added in OPM - Phase 3 Task 3.1b (Gemini review)
@@ -114,7 +108,7 @@ BTNode::Status Action_FireWeapon::Execute(Blackboard &blackboard, float deltaTim
         // Something is blocking line of sight
         usercmd_t &botCmd = bot->GetBotCmd();
         botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
-        return Status::FAILURE;
+        return BTNode::Status::FAILURE;
     }
 
     // Check max fire movement - stop if weapon requires accuracy
@@ -127,7 +121,7 @@ BTNode::Status Action_FireWeapon::Execute(Blackboard &blackboard, float deltaTim
     }
 
     // Get burst state
-    int burstState = BURST_IDLE;
+    int burstState = BurstState::IDLE;
     auto burstStateOpt = blackboard.TryGet<int>(BlackboardKeys::BURST_STATE);
     if (burstStateOpt) {
         burstState = *burstStateOpt;
@@ -160,18 +154,18 @@ BTNode::Status Action_FireWeapon::Execute(Blackboard &blackboard, float deltaTim
     float currentTime = level.svsTime;
 
     // Handle burst states
-    if (burstState == BURST_PAUSING) {
+    if (burstState == BurstState::PAUSING) {
         // In pause between bursts
         if (currentTime - burstStartTime >= burstDelay) {
             // Pause complete, return to idle
-            burstState = BURST_IDLE;
+            burstState = BurstState::IDLE;
             continuousFireTime = 0.0f;
             blackboard.Set<int>(BlackboardKeys::BURST_STATE, burstState);
             blackboard.Set<float>(BlackboardKeys::CONTINUOUS_FIRE_TIME, continuousFireTime);
         } else {
             // Still pausing, don't fire
             botCmd.buttons &= ~BUTTON_ATTACKLEFT;
-            return Status::RUNNING;
+            return BTNode::Status::RUNNING;
         }
     }
 
@@ -204,7 +198,7 @@ BTNode::Status Action_FireWeapon::Execute(Blackboard &blackboard, float deltaTim
                 }
                 
                 blackboard.Set<float>(BlackboardKeys::LAST_FIRE_TIME, currentTime);
-                return Status::SUCCESS;
+                return BTNode::Status::SUCCESS;
             } else {
                 // Spread too high or not aimed, wait
                 BotMovement &movement = bot->GetMovement();
@@ -222,53 +216,48 @@ BTNode::Status Action_FireWeapon::Execute(Blackboard &blackboard, float deltaTim
             BotMovement &movement = bot->GetMovement();
             movement.ClearMove();
             botCmd.buttons &= ~BUTTON_ATTACKLEFT;
-            return Status::RUNNING;
+            return BTNode::Status::RUNNING;
         }
 
-        if (burstState == BURST_IDLE) {
+        if (burstState == BurstState::IDLE) {
             // Start new burst
-            burstState = BURST_FIRING;
+            burstState = BurstState::FIRING;
             burstStartTime = currentTime;
             continuousFireTime = 0.0f;
             blackboard.Set<int>(BlackboardKeys::BURST_STATE, burstState);
             blackboard.Set<float>(BlackboardKeys::BURST_START_TIME, burstStartTime);
         }
 
-        if (burstState == BURST_FIRING) {
+        if (burstState == BurstState::FIRING) {
             // Continue burst
             continuousFireTime += deltaTime;
             blackboard.Set<float>(BlackboardKeys::CONTINUOUS_FIRE_TIME, continuousFireTime);
             
             if (continuousFireTime >= burstDuration) {
                 // Burst complete, start pause
-                burstState = BURST_PAUSING;
+                burstState = BurstState::PAUSING;
                 burstStartTime = currentTime;
                 blackboard.Set<int>(BlackboardKeys::BURST_STATE, burstState);
                 blackboard.Set<float>(BlackboardKeys::BURST_START_TIME, burstStartTime);
                 botCmd.buttons &= ~BUTTON_ATTACKLEFT;
-                return Status::SUCCESS; // Burst complete
+                return BTNode::Status::SUCCESS; // Burst complete
             } else {
                 // Continue firing
                 botCmd.buttons |= BUTTON_ATTACKLEFT;
                 blackboard.Set<float>(BlackboardKeys::LAST_FIRE_TIME, currentTime);
-                return Status::RUNNING;
+                return BTNode::Status::RUNNING;
             }
         }
     }
 
-    return Status::RUNNING;
+    return BTNode::Status::RUNNING;
 }
 
 // ============================================================================
-// Action_MeleeAttack
+// Action_MeleeAttack_Execute
 // ============================================================================
 
-void Action_MeleeAttack::Reset()
-{
-    lastStatus = Status::FAILURE;
-}
-
-BTNode::Status Action_MeleeAttack::Execute(Blackboard &blackboard, float deltaTime)
+BTNode::Status Action_MeleeAttack_Execute(Blackboard &blackboard, float deltaTime)
 {
     // Get required data from blackboard
     auto targetOpt = blackboard.TryGet<Sentient *>(BlackboardKeys::SELECTED_TARGET);
@@ -276,7 +265,7 @@ BTNode::Status Action_MeleeAttack::Execute(Blackboard &blackboard, float deltaTi
     auto playerOpt = blackboard.TryGet<Player *>(BlackboardKeys::PLAYER);
 
     if (!targetOpt || !botOpt || !playerOpt) {
-        return Status::FAILURE;
+        return BTNode::Status::FAILURE;
     }
 
     Sentient    *target  = *targetOpt;
@@ -284,18 +273,18 @@ BTNode::Status Action_MeleeAttack::Execute(Blackboard &blackboard, float deltaTi
     Player      *player  = *playerOpt;
 
     if (!target || !bot || !player) {
-        return Status::FAILURE;
+        return BTNode::Status::FAILURE;
     }
 
     // Get weapon
     Weapon *weapon = player->GetActiveWeapon(WEAPON_MAIN);
     if (!weapon) {
-        return Status::FAILURE;
+        return BTNode::Status::FAILURE;
     }
 
     // Check if weapon has melee secondary fire
     if (weapon->GetFireType(FIRE_SECONDARY) != FT_MELEE) {
-        return Status::FAILURE;
+        return BTNode::Status::FAILURE;
     }
 
     // Check distance to target
@@ -311,10 +300,10 @@ BTNode::Status Action_MeleeAttack::Execute(Blackboard &blackboard, float deltaTi
     if (distanceSq <= meleeRangeSq) {
         // In range, toggle melee attack (secondary fire)
         botCmd.buttons ^= BUTTON_ATTACKRIGHT;
-        return Status::SUCCESS;
+        return BTNode::Status::SUCCESS;
     } else {
         // Out of range, clear melee button
         botCmd.buttons &= ~BUTTON_ATTACKRIGHT;
-        return Status::FAILURE;
+        return BTNode::Status::FAILURE;
     }
 }

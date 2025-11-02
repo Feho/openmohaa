@@ -9,6 +9,12 @@
 // Added in OPM - Phase 3 Task 3.1c
 #include "bt_actions_movement.h"
 #include "bt_conditions_range.h"
+// Added in OPM - Phase 3 Task 3.1f
+//  Include all combat action headers for complete combat tree
+#include "bt_actions_target.h"
+#include "bt_actions_aim.h"
+#include "bt_actions_fire.h"
+#include "bt_conditions_combat.h"
 
 // Changed in OPM
 //  Added bt_blackboard_keys.h to use consistent key constants
@@ -239,5 +245,40 @@ void RegisterCoreBTActions()
 
     REGISTER_BT_CONDITION("InOptimalRange", [](Blackboard &bb) {
         return Condition_InOptimalRange(bb) == BTNode::Status::SUCCESS;
+    });
+
+    // Added in OPM - Phase 3 Task 3.1f
+    //  Register all combat system actions for complete combat tree assembly
+
+    // === Task 3.1a: Target Selection ===
+    RegisterTargetActions();
+
+    // === Task 3.1b: Aiming & Fire Control (Actions) ===
+    // Changed in OPM - Phase 3 Task 3.1f (Gemini review)
+    //  Refactored to use blackboard-based state management instead of thread_local
+    //  This prevents state-sharing bugs when multiple bots run on the same thread
+    REGISTER_BT_ACTION("AimAtTarget", [](Blackboard &bb, float dt) -> BTNode::Status {
+        return Action_AimAtTarget_Execute(bb, dt);
+    });
+
+    REGISTER_BT_ACTION("FireWeapon", [](Blackboard &bb, float dt) -> BTNode::Status {
+        return Action_FireWeapon_Execute(bb, dt);
+    });
+
+    REGISTER_BT_ACTION("MeleeAttack", [](Blackboard &bb, float dt) -> BTNode::Status {
+        return Action_MeleeAttack_Execute(bb, dt);
+    });
+
+    // === Task 3.1b: Combat Conditions ===
+    REGISTER_BT_CONDITION("WeaponReady", [](Blackboard &bb) -> bool {
+        return Condition_WeaponReady_Check(bb);
+    });
+
+    REGISTER_BT_CONDITION("IsAimedAtTarget", [](Blackboard &bb) -> bool {
+        return Condition_IsAimedAtTarget_Check(bb);
+    });
+
+    REGISTER_BT_CONDITION("InMeleeRange", [](Blackboard &bb) -> bool {
+        return Condition_InMeleeRange_Check(bb);
     });
 }

@@ -31,7 +31,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "playerbot.h"
 
 /**
- * Action_FireWeapon - Fires weapon with burst control
+ * Action_FireWeapon_Execute - Fires weapon with burst control
+ *
+ * Changed in OPM - Phase 3 Task 3.1f (Gemini review)
+ *  Refactored from stateful class to stateless function using blackboard for state
  *
  * Reads from blackboard:
  *   - SELECTED_TARGET (Sentient*) - Current attack target
@@ -39,10 +42,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *   - BOT (BotController*) - Bot controller
  *   - PLAYER (Player*) - Player entity
  *   - PROFILE (BotProfile*) - Bot profile with burst parameters
- *   - BURST_STATE (int) - 0=not firing, 1=burst, 2=pause
- *   - BURST_START_TIME (float) - When burst started
- *   - CONTINUOUS_FIRE_TIME (float) - Total fire time
- *   - LAST_FIRE_TIME (float) - Last shot time
+ *   - BURST_STATE (int) - 0=not firing, 1=burst, 2=pause (state)
+ *   - BURST_START_TIME (float) - When burst started (state)
+ *   - CONTINUOUS_FIRE_TIME (float) - Total fire time (state)
+ *   - LAST_FIRE_TIME (float) - Last shot time (state)
  *
  * Writes to blackboard:
  *   - BURST_STATE (int) - Updated state
@@ -55,23 +58,20 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *   - SUCCESS: Burst complete (pause started)
  *   - FAILURE: Cannot fire (no target, no ammo, out of range)
  */
-class Action_FireWeapon : public BTAction
-{
-public:
-    Status Execute(Blackboard &blackboard, float deltaTime) override;
-    void   Reset() override;
-    const char *GetName() const override { return "FireWeapon"; }
+BTNode::Status Action_FireWeapon_Execute(Blackboard &blackboard, float deltaTime);
 
-private:
-    enum BurstState {
-        BURST_IDLE = 0,
-        BURST_FIRING = 1,
-        BURST_PAUSING = 2
-    };
-};
+// Burst state constants
+namespace BurstState {
+    constexpr int IDLE = 0;
+    constexpr int FIRING = 1;
+    constexpr int PAUSING = 2;
+}
 
 /**
- * Action_MeleeAttack - Executes melee attack (secondary fire)
+ * Action_MeleeAttack_Execute - Executes melee attack (secondary fire)
+ *
+ * Changed in OPM - Phase 3 Task 3.1f (Gemini review)
+ *  Refactored from stateful class to stateless function
  *
  * Reads from blackboard:
  *   - SELECTED_TARGET (Sentient*) - Current target
@@ -83,12 +83,6 @@ private:
  *   - SUCCESS: Melee attack performed
  *   - FAILURE: Cannot melee (no target, no weapon, out of range)
  */
-class Action_MeleeAttack : public BTAction
-{
-public:
-    Status Execute(Blackboard &blackboard, float deltaTime) override;
-    void   Reset() override;
-    const char *GetName() const override { return "MeleeAttack"; }
-};
+BTNode::Status Action_MeleeAttack_Execute(Blackboard &blackboard, float deltaTime);
 
 #endif // __BT_ACTIONS_FIRE_H__

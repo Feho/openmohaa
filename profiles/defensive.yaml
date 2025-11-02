@@ -64,4 +64,6 @@ profile:
       priority_threshold: 0.4
 
   # === BEHAVIOR TREE REFERENCE ===
-  behavior_tree: "engage_enemy"
+  # Added in OPM - Phase 3 Task 3.1f
+  #  Updated to use complete combat behavior tree
+  behavior_tree: "combat"
