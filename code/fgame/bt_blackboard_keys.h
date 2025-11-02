@@ -43,6 +43,13 @@ constexpr const char *BURST_START_TIME   = "burstStartTime";    // float - When 
 constexpr const char *CONTINUOUS_FIRE_TIME = "continuousFireTime"; // float - Total fire time in burst
 constexpr const char *LAST_FIRE_TIME     = "lastFireTime";      // float - Last shot time
 
+// Added in OPM - Phase 3 Task 3.1c
+//  Combat movement system
+constexpr const char *MOVING_TO_POSITION = "movingToPosition";  // Vector - Target position being moved to
+constexpr const char *STRAFE_DIRECTION   = "strafeDirection";   // int - 1=right, -1=left, 0=not strafing
+constexpr const char *STRAFE_TIMER       = "strafeTimer";       // float - Time when current strafe direction started
+constexpr const char *OPTIMAL_RANGE      = "optimalRange";      // float - Weapon's optimal combat range
+
 // Behavior state (for multi-frame actions)
 constexpr const char *BEHAVIOR_STATE     = "behavior_state";     // int - State machine index
 constexpr const char *BEHAVIOR_TIMESTAMP = "behavior_timestamp"; // float - When behavior started

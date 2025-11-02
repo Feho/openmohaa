@@ -91,6 +91,9 @@ public:
 
     float GetStrafeUsage() const { return movement.strafeUsage; }
 
+    // Added in OPM - Phase 3 Task 3.1c
+    float GetPathDeviation() const { return movement.pathDeviation; }
+
     // === AIM ===
     float GetReactionTimeMin() const { return aim.reactionTime.first; }
 
@@ -170,6 +173,8 @@ private:
         float crouchFrequency = 0.3f; // 0.0 (never) - 1.0 (always)
         float jumpFrequency   = 0.3f; // How often to jump obstacles
         float strafeUsage     = 0.5f; // How much to strafe in combat
+        // Added in OPM - Phase 3 Task 3.1c
+        float pathDeviation   = 0.3f; // 0.0 (straight) - 1.0 (unpredictable path)
     } movement;
 
     struct Aim {

@@ -36,6 +36,7 @@ profile:
     crouch_frequency: 0.4
     jump_frequency: 0.4
     strafe_usage: 0.5
+    path_deviation: 0.3        # Added in OPM - Phase 3 Task 3.1c
 
   # === AIM PARAMETERS ===
   aim:

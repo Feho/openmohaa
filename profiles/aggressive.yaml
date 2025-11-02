@@ -37,6 +37,7 @@ profile:
     crouch_frequency: 0.1        # 0.0 (never) - 1.0 (always)
     jump_frequency: 0.8          # How often to jump obstacles
     strafe_usage: 0.7            # How much to strafe in combat
+    path_deviation: 0.5          # Added in OPM - Phase 3 Task 3.1c
 
   # === AIM PARAMETERS ===
   aim:

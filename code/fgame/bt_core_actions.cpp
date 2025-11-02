@@ -6,6 +6,9 @@
 #include "perception.h"
 #include "playerbot.h"
 #include "player.h"
+// Added in OPM - Phase 3 Task 3.1c
+#include "bt_actions_movement.h"
+#include "bt_conditions_range.h"
 
 // Changed in OPM
 //  Added bt_blackboard_keys.h to use consistent key constants
@@ -208,5 +211,33 @@ void RegisterCoreBTActions()
         // TODO: Implement waypoint system
         // For now, just succeed (bot will idle)
         return BTNode::Status::SUCCESS;
+    });
+
+    // Added in OPM - Phase 3 Task 3.1c
+    //  Combat movement actions
+    REGISTER_BT_ACTION("ApproachEnemy", [](Blackboard &bb, float /* dt */) {
+        return Action_ApproachEnemy(bb);
+    });
+
+    REGISTER_BT_ACTION("RetreatFromEnemy", [](Blackboard &bb, float /* dt */) {
+        return Action_RetreatFromEnemy(bb);
+    });
+
+    REGISTER_BT_ACTION("MaintainDistance", [](Blackboard &bb, float /* dt */) {
+        return Action_MaintainDistance(bb);
+    });
+
+    // Added in OPM - Phase 3 Task 3.1c
+    //  Range-based combat conditions
+    REGISTER_BT_CONDITION("EnemyTooClose", [](Blackboard &bb) {
+        return Condition_EnemyTooClose(bb) == BTNode::Status::SUCCESS;
+    });
+
+    REGISTER_BT_CONDITION("EnemyTooFar", [](Blackboard &bb) {
+        return Condition_EnemyTooFar(bb) == BTNode::Status::SUCCESS;
+    });
+
+    REGISTER_BT_CONDITION("InOptimalRange", [](Blackboard &bb) {
+        return Condition_InOptimalRange(bb) == BTNode::Status::SUCCESS;
     });
 }

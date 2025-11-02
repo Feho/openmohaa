@@ -134,6 +134,10 @@ std::unique_ptr<BotProfile> BotProfile::LoadFromFile(const char *filepath)
             if (move["strafe_usage"]) {
                 bp->movement.strafeUsage = move["strafe_usage"].as<float>();
             }
+            // Added in OPM - Phase 3 Task 3.1c
+            if (move["path_deviation"]) {
+                bp->movement.pathDeviation = move["path_deviation"].as<float>();
+            }
         }
 
         // === AIM ===
@@ -301,6 +305,8 @@ bool BotProfile::ValidateProfile(const BotProfile *profile)
     validateRange(profile->movement.crouchFrequency, 0.0f, 1.0f, "crouch_frequency");
     validateRange(profile->movement.jumpFrequency, 0.0f, 1.0f, "jump_frequency");
     validateRange(profile->movement.strafeUsage, 0.0f, 1.0f, "strafe_usage");
+    // Added in OPM - Phase 3 Task 3.1c
+    validateRange(profile->movement.pathDeviation, 0.0f, 1.0f, "path_deviation");
 
     // === VALIDATE AIM ===
     if (profile->aim.reactionTime.first > profile->aim.reactionTime.second) {

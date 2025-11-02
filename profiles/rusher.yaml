@@ -32,10 +32,11 @@ profile:
 
   # === MOVEMENT PARAMETERS ===
   movement:
-    speed_preference: 1.5
-    crouch_frequency: 0.05
-    jump_frequency: 0.9
-    strafe_usage: 0.9
+    speed_preference: 1.3
+    crouch_frequency: 0.1
+    jump_frequency: 0.6
+    strafe_usage: 0.8
+    path_deviation: 0.6        # Added in OPM - Phase 3 Task 3.1c
 
   # === AIM PARAMETERS ===
   aim:
