@@ -26,6 +26,9 @@ profile:
     burst_delay: [0.2, 0.5]
     ammo_conservation: 0.5
     reload_under_fire: false
+    # Added in OPM - Phase 3 Task 3.1a
+    target_lock_time: 2.0          # Seconds to lock onto target
+    target_switch_threshold: 128.0 # Distance advantage to switch targets
 
   # === MOVEMENT PARAMETERS ===
   movement:

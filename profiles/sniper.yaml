@@ -20,12 +20,15 @@ profile:
 
   # === COMBAT PARAMETERS ===
   combat:
-    preferred_range: 1536.0
+    preferred_range: 1024.0
     fire_discipline: 0.9
     burst_length: [0.1, 0.3]
-    burst_delay: [0.5, 1.0]
-    ammo_conservation: 0.8
+    burst_delay: [0.8, 1.5]
+    ammo_conservation: 0.9
     reload_under_fire: false
+    # Added in OPM - Phase 3 Task 3.1a
+    target_lock_time: 4.0          # Long lock for focused shots
+    target_switch_threshold: 200.0 # Committed to chosen target
 
   # === MOVEMENT PARAMETERS ===
   movement:

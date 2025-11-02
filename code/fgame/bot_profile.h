@@ -76,6 +76,12 @@ public:
 
     bool GetReloadUnderFire() const { return combat.reloadUnderFire; }
 
+    // Added in OPM - Phase 3 Task 3.1a
+    //  Target selection accessors
+    float GetTargetLockTime() const { return combat.targetLockTime; }
+
+    float GetTargetSwitchThreshold() const { return combat.targetSwitchThreshold; }
+
     // === MOVEMENT ===
     float GetSpeedPreference() const { return movement.speedPreference; }
 
@@ -144,12 +150,16 @@ private:
     } personality;
 
     struct Combat {
-        float                   preferredRange   = 512.0f;       // Ideal combat distance (units)
-        float                   fireDiscipline   = 0.5f;         // 0.0 (spray) - 1.0 (controlled bursts)
-        std::pair<float, float> burstLength      = {0.3f, 0.8f}; // [min, max] seconds of continuous fire
-        std::pair<float, float> burstDelay       = {0.2f, 0.5f}; // [min, max] seconds between bursts
-        float                   ammoConservation = 0.5f;         // 0.0 (spray) - 1.0 (conservative)
-        bool                    reloadUnderFire  = false;        // Will reload while taking damage?
+        float                   preferredRange        = 512.0f;       // Ideal combat distance (units)
+        float                   fireDiscipline        = 0.5f;         // 0.0 (spray) - 1.0 (controlled bursts)
+        std::pair<float, float> burstLength           = {0.3f, 0.8f}; // [min, max] seconds of continuous fire
+        std::pair<float, float> burstDelay            = {0.2f, 0.5f}; // [min, max] seconds between bursts
+        float                   ammoConservation      = 0.5f;         // 0.0 (spray) - 1.0 (conservative)
+        bool                    reloadUnderFire       = false;        // Will reload while taking damage?
+        // Added in OPM - Phase 3 Task 3.1a
+        //  Target selection parameters
+        float                   targetLockTime        = 2.0f;         // Seconds to lock onto target before allowing switch
+        float                   targetSwitchThreshold = 128.0f;       // Distance advantage (units) needed to switch targets
     } combat;
 
     struct Movement {

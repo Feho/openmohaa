@@ -23,6 +23,15 @@ constexpr const char *PERCEPTION = "perception"; // PerceptionSnapshot* - Curren
 constexpr const char *TARGET_ENTITY   = "target_entity";   // Sentient* - Current target entity
 constexpr const char *TARGET_POSITION = "target_position"; // Vector* - Target position to move to
 
+// Added in OPM - Phase 3 Task 3.1a
+//  Target selection and tracking (combat system)
+constexpr const char *SELECTED_TARGET   = "selectedTarget";   // Sentient* - Current attack target
+constexpr const char *TARGET_DISTANCE   = "targetDistance";   // float - Distance to target (units)
+constexpr const char *TARGET_LOCK_TIME  = "targetLockTime";   // float - When target was locked (level.svsTime)
+constexpr const char *TARGET_SWITCHED   = "targetSwitched";   // bool - Whether we switched targets this frame
+constexpr const char *PREVIOUS_TARGET   = "previousTarget";   // Sentient* - Previous target (for comparison)
+constexpr const char *PROFILE           = "profile";          // BotProfile* - Bot profile with parameters
+
 // Behavior state (for multi-frame actions)
 constexpr const char *BEHAVIOR_STATE     = "behavior_state";     // int - State machine index
 constexpr const char *BEHAVIOR_TIMESTAMP = "behavior_timestamp"; // float - When behavior started
