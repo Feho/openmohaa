@@ -193,6 +193,8 @@ Determines if the bot should retreat from combat
 */
 bool BotController::ShouldRetreat(void)
 {
+    return false; // Temporary disable retreating for testing
+
     // Health check
     float health      = controlledEnt->health;
     float maxHealth   = controlledEnt->max_health;
