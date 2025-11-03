@@ -152,6 +152,10 @@ namespace BotConstants
     constexpr float MEMORY_CONFIDENCE_DECAY_RATE = 0.1f;  // 10% per second (full decay in 10s)
     constexpr float MEMORY_MIN_CONFIDENCE        = 0.1f;  // Filters memories older than 9 seconds
     constexpr float MEMORY_MAX_AGE_SECONDS       = 30.0f; // Hard cutoff prevents unbounded memory growth
+    
+    // Added in OPM - Phase 3 Task 3.1h
+    //  Weapon switching thresholds
+    constexpr float WEAPON_SWITCH_SCORE_THRESHOLD = 0.3f; // Score advantage needed to switch weapons
 } // namespace BotConstants
 
 typedef struct nodeAttract_s {

@@ -15,6 +15,9 @@
 #include "bt_actions_aim.h"
 #include "bt_actions_fire.h"
 #include "bt_conditions_combat.h"
+// Added in OPM - Phase 3 Task 3.1h
+#include "bt_actions_weapon.h"
+#include "bt_conditions_weapon.h"
 
 // Changed in OPM
 //  Added bt_blackboard_keys.h to use consistent key constants
@@ -280,5 +283,27 @@ void RegisterCoreBTActions()
 
     REGISTER_BT_CONDITION("InMeleeRange", [](Blackboard &bb) -> bool {
         return Condition_InMeleeRange_Check(bb);
+    });
+
+    // === Task 3.1h: Weapon Switching ===
+    // Added in OPM - Phase 3 Task 3.1h
+    REGISTER_BT_ACTION("SelectBestWeapon", [](Blackboard &bb, float dt) -> BTNode::Status {
+        return Action_SelectBestWeapon_Execute(bb, dt);
+    });
+
+    REGISTER_BT_ACTION("SwitchWeapon", [](Blackboard &bb, float dt) -> BTNode::Status {
+        return Action_SwitchWeapon_Execute(bb, dt);
+    });
+
+    REGISTER_BT_CONDITION("CurrentWeaponEmpty", [](Blackboard &bb) -> bool {
+        return Condition_CurrentWeaponEmpty_Check(bb);
+    });
+
+    REGISTER_BT_CONDITION("BetterWeaponAvailable", [](Blackboard &bb) -> bool {
+        return Condition_BetterWeaponAvailable_Check(bb);
+    });
+
+    REGISTER_BT_CONDITION("WeaponSwitchReady", [](Blackboard &bb) -> bool {
+        return Condition_WeaponSwitchReady_Check(bb);
     });
 }

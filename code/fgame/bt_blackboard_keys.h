@@ -55,6 +55,11 @@ constexpr const char *BEHAVIOR_STATE     = "behavior_state";     // int - State 
 constexpr const char *BEHAVIOR_TIMESTAMP = "behavior_timestamp"; // float - When behavior started
 constexpr const char *BEHAVIOR_COUNTER   = "behavior_counter";   // int - Generic counter for behaviors
 
+// Added in OPM - Phase 3 Task 3.1h
+//  Weapon switching system
+constexpr const char *SELECTED_WEAPON     = "selectedWeapon";    // Weapon* - Weapon selected for switching
+constexpr const char *WEAPON_SWITCH_TIME  = "weaponSwitchTime";  // float - When weapon switch was initiated
+
 } // namespace BlackboardKeys
 
 #endif // __BT_BLACKBOARD_KEYS_H__

@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "bot_profile.h"
 #include "g_local.h"
+#include "bg_public.h"
 #include <yaml-cpp/yaml.h>
 
 std::unique_ptr<BotProfile> BotProfile::LoadFromFile(const char *filepath)
@@ -116,6 +117,37 @@ std::unique_ptr<BotProfile> BotProfile::LoadFromFile(const char *filepath)
             }
             if (combat["reload_under_fire"]) {
                 bp->combat.reloadUnderFire = combat["reload_under_fire"].as<bool>();
+            }
+            // Added in OPM - Phase 3 Task 3.1a
+            //  Target selection parameters
+            if (combat["target_lock_time"]) {
+                bp->combat.targetLockTime = combat["target_lock_time"].as<float>();
+            }
+            if (combat["target_switch_threshold"]) {
+                bp->combat.targetSwitchThreshold = combat["target_switch_threshold"].as<float>();
+            }
+            // Added in OPM - Phase 3 Task 3.1h
+            //  Weapon preferences
+            if (combat["weapon_preferences"]) {
+                YAML::Node wp = combat["weapon_preferences"];
+                if (wp["pistol"]) {
+                    bp->weaponPreferences.pistol = wp["pistol"].as<float>();
+                }
+                if (wp["rifle"]) {
+                    bp->weaponPreferences.rifle = wp["rifle"].as<float>();
+                }
+                if (wp["shotgun"]) {
+                    bp->weaponPreferences.shotgun = wp["shotgun"].as<float>();
+                }
+                if (wp["sniper"]) {
+                    bp->weaponPreferences.sniper = wp["sniper"].as<float>();
+                }
+                if (wp["smg"]) {
+                    bp->weaponPreferences.smg = wp["smg"].as<float>();
+                }
+                if (wp["mg"]) {
+                    bp->weaponPreferences.mg = wp["mg"].as<float>();
+                }
             }
         }
 
@@ -364,4 +396,38 @@ bool BotProfile::ValidateProfile(const BotProfile *profile)
     }
 
     return valid;
+}
+
+// ============================================================================
+// GetWeaponPreference
+// ============================================================================
+
+/**
+ * Added in OPM - Phase 3 Task 3.1h
+ *  Returns weapon preference based on weapon class bitmask
+ *
+ * @param weaponClass Weapon class from weaponclass_e enum (can be combined with |)
+ * @return Preference value 0.0-1.0, or 0.5 (neutral) if class unknown
+ */
+float BotProfile::GetWeaponPreference(int weaponClass) const
+{
+    // Handle single weapon class
+    if (weaponClass & WEAPON_CLASS_PISTOL) {
+        return weaponPreferences.pistol;
+    }
+    if (weaponClass & WEAPON_CLASS_RIFLE) {
+        return weaponPreferences.rifle;
+    }
+    if (weaponClass & WEAPON_CLASS_SMG) {
+        return weaponPreferences.smg;
+    }
+    if (weaponClass & WEAPON_CLASS_MG) {
+        return weaponPreferences.mg;
+    }
+    
+    // Note: shotgun and sniper don't have separate weapon classes in MOHAA
+    // They use WEAPON_CLASS_RIFLE with different stats
+    // Could be extended if needed
+    
+    return 0.5f; // Neutral preference for unknown classes
 }

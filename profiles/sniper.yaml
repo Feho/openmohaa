@@ -29,6 +29,12 @@ profile:
     # Added in OPM - Phase 3 Task 3.1a
     target_lock_time: 4.0          # Long lock for focused shots
     target_switch_threshold: 200.0 # Committed to chosen target
+    # Added in OPM - Phase 3 Task 3.1h
+    weapon_preferences:
+      pistol: 0.5  # Backup only
+      rifle: 1.0   # Maximum preference (precision)
+      smg: 0.2     # Very low
+      mg: 0.3      # Low
 
   # === MOVEMENT PARAMETERS ===
   movement:

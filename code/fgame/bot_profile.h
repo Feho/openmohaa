@@ -108,6 +108,10 @@ public:
     // Added in OPM - Phase 3 Task 3.1b (Gemini review)
     float GetAimTolerance() const { return aim.aimTolerance; }
 
+    // Added in OPM - Phase 3 Task 3.1h
+    //  Weapon preference system
+    float GetWeaponPreference(int weaponClass) const;
+
     // === TACTICS ===
     float GetCoverUsage() const { return tactics.coverUsage; }
 
@@ -205,6 +209,17 @@ private:
             float priorityThreshold = 0.5f;    // Minimum priority to react to sounds
         } hearing;
     } perception;
+
+    // Added in OPM - Phase 3 Task 3.1h
+    //  Weapon preferences (0.0 = avoid, 0.5 = neutral, 1.0 = prefer)
+    struct WeaponPreferences {
+        float pistol  = 0.3f;
+        float rifle   = 0.8f;
+        float shotgun = 0.5f;
+        float sniper  = 0.6f;
+        float smg     = 0.7f;
+        float mg      = 0.5f;
+    } weaponPreferences;
 
     std::string behaviorTree = "engage_enemy"; // Which behavior tree to use
 };
