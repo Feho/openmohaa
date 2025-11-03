@@ -491,6 +491,7 @@ private:
     //  Extracted functions from State_Attack for improved readability
     bool      ValidateAttackPreconditions(void);
     Sentient *SelectBestTarget(float maxDistance, float& outDistanceSq);
+    Sentient *SelectBestTarget(const Container<Sentient *>& sentients, float maxDistance, float& outDistanceSq);
     void      AimAtTarget(bool canSee);
     void      HandleMeleeAttack(bool canSee, float distanceSq, float secondaryRangeSq, Weapon *weapon, bool& outMelee);
     void      HandleBurstControl(bool firing, int fireDelay, int maxContinuousFireTime, int maxBurstTime);
