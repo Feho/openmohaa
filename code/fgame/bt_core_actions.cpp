@@ -26,6 +26,9 @@
 // Added in OPM - Phase 3 Task 3.1g
 #include "bt_actions_grenade.h"
 #include "bt_conditions_grenade.h"
+// Added in OPM - Phase 3 Task 3.2
+#include "bt_actions_investigation.h"
+#include "bt_conditions_investigation.h"
 
 // Changed in OPM
 //  Added bt_blackboard_keys.h to use consistent key constants
@@ -390,5 +393,66 @@ void RegisterCoreBTActions()
 
     REGISTER_BT_CONDITION("ShouldThrowGrenade", [](Blackboard &bb) -> bool {
         return Condition_ShouldThrowGrenade(bb);
+    });
+
+    // === Task 3.2: Investigation System ===
+    // Added in OPM - Phase 3 Task 3.2
+    
+    // Investigation actions
+    REGISTER_BT_ACTION("SetInvestigationTarget", [](Blackboard &bb, float dt) -> BTNode::Status {
+        return Action_SetInvestigationTarget_Execute(bb, dt);
+    });
+
+    REGISTER_BT_ACTION("MoveToInvestigationTarget", [](Blackboard &bb, float dt) -> BTNode::Status {
+        return Action_MoveToInvestigationTarget_Execute(bb, dt);
+    });
+
+    REGISTER_BT_ACTION("SearchArea", [](Blackboard &bb, float dt) -> BTNode::Status {
+        return Action_SearchArea_Execute(bb, dt);
+    });
+
+    REGISTER_BT_ACTION("SetSoundInvestigationTarget", [](Blackboard &bb, float dt) -> BTNode::Status {
+        return Action_SetSoundInvestigationTarget_Execute(bb, dt);
+    });
+
+    REGISTER_BT_ACTION("MoveToSoundLocation", [](Blackboard &bb, float dt) -> BTNode::Status {
+        return Action_MoveToSoundLocation_Execute(bb, dt);
+    });
+
+    REGISTER_BT_ACTION("LookAround", [](Blackboard &bb, float dt) -> BTNode::Status {
+        return Action_LookAround_Execute(bb, dt);
+    });
+
+    REGISTER_BT_ACTION("MarkSoundInvestigated", [](Blackboard &bb, float dt) -> BTNode::Status {
+        return Action_MarkSoundInvestigated_Execute(bb, dt);
+    });
+
+    REGISTER_BT_ACTION("AbandonInvestigation", [](Blackboard &bb, float dt) -> BTNode::Status {
+        return Action_AbandonInvestigation_Execute(bb, dt);
+    });
+
+    REGISTER_BT_ACTION("ReturnToIdle", [](Blackboard &bb, float dt) -> BTNode::Status {
+        return Action_ReturnToIdle_Execute(bb, dt);
+    });
+
+    // Investigation conditions
+    REGISTER_BT_CONDITION("HasHighConfidenceMemory", [](Blackboard &bb) -> bool {
+        return Condition_HasHighConfidenceMemory_Check(bb);
+    });
+
+    REGISTER_BT_CONDITION("HasInterestingSound", [](Blackboard &bb) -> bool {
+        return Condition_HasInterestingSound_Check(bb);
+    });
+
+    REGISTER_BT_CONDITION("ReachedInvestigationTarget", [](Blackboard &bb) -> bool {
+        return Condition_ReachedInvestigationTarget_Check(bb);
+    });
+
+    REGISTER_BT_CONDITION("InvestigationTimedOut", [](Blackboard &bb) -> bool {
+        return Condition_InvestigationTimedOut_Check(bb);
+    });
+
+    REGISTER_BT_CONDITION("ReachedSoundLocation", [](Blackboard &bb) -> bool {
+        return Condition_ReachedSoundLocation_Check(bb);
     });
 }

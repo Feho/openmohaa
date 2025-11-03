@@ -85,6 +85,23 @@ constexpr const char *ENEMY_COUNT            = "enemyCount";            // int -
 constexpr const char *GRENADE_TARGET_POSITION = "grenadeTargetPosition"; // Vector - Target position for grenade throw
 constexpr const char *LAST_GRENADE_TIME       = "lastGrenadeTime";       // float - When last grenade was thrown (level.svsTime)
 
+// Added in OPM - Phase 3 Task 3.2
+//  Investigation system
+constexpr const char *INVESTIGATION_TARGET         = "investigationTarget";        // Vector - Position being investigated
+constexpr const char *INVESTIGATION_START_TIME     = "investigationStartTime";     // float - When investigation started (level.svsTime)
+constexpr const char *INVESTIGATION_RADIUS         = "investigationRadius";        // float - Search radius around target
+constexpr const char *INVESTIGATING_MEMORY_INDEX   = "investigatingMemoryIndex";   // size_t - Index of memory being investigated
+constexpr const char *REACHED_INVESTIGATION_TARGET = "reachedInvestigationTarget"; // bool - Whether reached target
+constexpr const char *SEARCH_PHASE                 = "searchPhase";                // int - Current search phase
+constexpr const char *SEARCH_ANGLE                 = "searchAngle";                // float - Current search angle
+constexpr const char *SEARCH_TIMER                 = "searchTimer";                // float - Search timer
+constexpr const char *SEARCH_COMPLETE              = "searchComplete";             // bool - Whether search is complete
+constexpr const char *INVESTIGATING_SOUND          = "investigatingSound";         // bool - Whether investigating a sound
+constexpr const char *REACHED_SOUND_LOCATION       = "reachedSoundLocation";       // bool - Whether reached sound location
+constexpr const char *LOOK_TIMER                   = "lookTimer";                  // float - Look-around timer
+constexpr const char *LOOK_COUNT                   = "lookCount";                  // int - Number of look directions
+constexpr const char *LOOK_COMPLETE                = "lookComplete";               // bool - Whether look-around is complete
+
 } // namespace BlackboardKeys
 
 #endif // __BT_BLACKBOARD_KEYS_H__

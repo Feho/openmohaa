@@ -72,4 +72,6 @@ profile:
   # === BEHAVIOR TREE REFERENCE ===
   # Added in OPM - Phase 3 Task 3.1f
   #  Updated to use complete combat behavior tree
-  behavior_tree: "combat"
+  # Updated in OPM - Phase 3 Task 3.2
+  #  Changed to main_bot tree which includes combat + investigation + patrol
+  behavior_tree: "main_bot"
