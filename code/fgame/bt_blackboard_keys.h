@@ -60,6 +60,15 @@ constexpr const char *BEHAVIOR_COUNTER   = "behavior_counter";   // int - Generi
 constexpr const char *SELECTED_WEAPON     = "selectedWeapon";    // Weapon* - Weapon selected for switching
 constexpr const char *WEAPON_SWITCH_TIME  = "weaponSwitchTime";  // float - When weapon switch was initiated
 
+// Added in OPM - Phase 3 Task 3.1d
+//  Cover system integration
+constexpr const char *SELECTED_COVER = "selectedCover";  // CoverPoint - Selected cover position
+constexpr const char *COVER_QUALITY  = "coverQuality";   // float - Quality of selected cover (0.0-1.0)
+constexpr const char *COVER_STATE    = "coverState";     // int - Current cover state (CoverState enum)
+constexpr const char *PEEK_STATE     = "peekState";      // int - Peek state (0=init, 1=peeking, 2=done)
+constexpr const char *PEEK_START_TIME = "peekStartTime"; // float - When peek began (milliseconds)
+constexpr const char *PEEK_DURATION   = "peekDuration";  // float - How long to peek (milliseconds)
+
 } // namespace BlackboardKeys
 
 #endif // __BT_BLACKBOARD_KEYS_H__

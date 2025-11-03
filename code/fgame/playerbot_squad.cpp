@@ -479,7 +479,7 @@ void BotController::CoordinateAttack(void)
     case ROLE_FLANKER:
         {
             // Execute flanking maneuver
-            ExecuteFlankingManeuver();
+            // ExecuteFlankingManeuver(); // Disabled for testing
             break;
         }
 

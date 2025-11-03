@@ -121,6 +121,15 @@ public:
 
     float GetGrenadeFrequency() const { return tactics.grenadeFrequency; }
 
+    // Added in OPM - Phase 3 Task 3.1.06 (Gemini review)
+    float GetPeekDurationMin() const { return tactics.peekDuration.first; }
+
+    float GetPeekDurationMax() const { return tactics.peekDuration.second; }
+
+    float GetHideDurationMin() const { return tactics.hideDuration.first; }
+
+    float GetHideDurationMax() const { return tactics.hideDuration.second; }
+
     // === PERCEPTION ===
     float GetVisionFOV() const { return perception.vision.fov; }
 
@@ -191,10 +200,14 @@ private:
     } aim;
 
     struct Tactics {
-        float coverUsage       = 0.5f;  // 0.0 (ignore cover) - 1.0 (always use)
-        float retreatThreshold = 0.25f; // HP % before retreating
-        float flankPreference  = 0.5f;  // Likelihood to flank
-        float grenadeFrequency = 0.3f;  // How often to use grenades
+        float                   coverUsage       = 0.5f;         // 0.0 (ignore cover) - 1.0 (always use)
+        float                   retreatThreshold = 0.25f;        // HP % before retreating
+        float                   flankPreference  = 0.5f;         // Likelihood to flank
+        float                   grenadeFrequency = 0.3f;         // How often to use grenades
+        // Added in OPM - Phase 3 Task 3.1.06 (Gemini review)
+        //  Cover peek timing parameters (seconds)
+        std::pair<float, float> peekDuration     = {1.0f, 3.0f}; // [min, max] seconds to peek from cover
+        std::pair<float, float> hideDuration     = {0.5f, 1.5f}; // [min, max] seconds to hide in cover
     } tactics;
 
     struct Perception {
