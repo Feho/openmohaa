@@ -1,21 +1,99 @@
 # combat.yaml
 # Complete Combat Behavior Tree
 # Added in OPM - Phase 3 Task 3.1f
-# Uses actions from Tasks 3.1a (target), 3.1b (aim/fire), 3.1c (movement)
+# Enhanced in OPM - Phase 3 Task 3.1e (Tactical Combat & Retreat System)
+# Uses actions from Tasks 3.1a (target), 3.1b (aim/fire), 3.1c (movement), 3.1e (tactical)
 
 tree:
   name: "Combat Root"
-  description: "Complete combat behavior: target selection, aiming, firing, movement"
+  description: "Complete combat behavior: target selection, aiming, firing, movement, tactical retreat"
   
   metadata:
-    version: "1.0"
+    version: "1.1"
     author: "OpenMoHAA"
-    phase: "3.1f"
+    phase: "3.1e"
 
   root:
     type: selector
     children:
-    # Priority 1: Validate target exists
+    # Priority 0: Emergency Tactical Retreat (highest priority)
+    - type: sequence
+      name: "Emergency Tactical Retreat"
+      children:
+        - type: condition
+          check: "ShouldRetreat"
+        - type: selector
+          name: "Find Safety"
+          children:
+            # Try to find cover
+            - type: sequence
+              name: "Retreat To Cover"
+              children:
+                - type: action
+                  action: "FindCover"
+                - type: action
+                  action: "MoveToCover"
+                - type: action
+                  action: "TacticalRetreat"
+            
+            # Fallback: just retreat
+            - type: action
+              action: "TacticalRetreat"
+        
+        # While retreating, suppress fire if possible
+        - type: sequence
+          name: "Covering Fire While Retreating"
+          children:
+            - type: condition
+              check: "HasValidTarget"
+            - type: action
+              action: "SuppressFire"
+    
+    # Priority 1: Weapon switching (empty weapon or better available)
+    - type: sequence
+      name: "Weapon Switch"
+      children:
+        - type: selector
+          name: "Switch Reason"
+          children:
+            # Empty weapon - immediate switch
+            - type: sequence
+              name: "Switch Empty Weapon"
+              children:
+                - type: condition
+                  check: "CurrentWeaponEmpty"
+                - type: condition
+                  check: "WeaponSwitchReady"
+                - type: action
+                  action: "SelectBestWeapon"
+                - type: action
+                  action: "SwitchWeapon"
+            
+            # Better weapon available - opportunistic switch
+            - type: sequence
+              name: "Switch To Better Weapon"
+              children:
+                - type: condition
+                  check: "BetterWeaponAvailable"
+                - type: condition
+                  check: "WeaponSwitchReady"
+                - type: action
+                  action: "SelectBestWeapon"
+                - type: action
+                  action: "SwitchWeapon"
+    
+    # Priority 2: Safe Reload (when ammo low and safe)
+    - type: sequence
+      name: "Safe Reload Opportunity"
+      children:
+        - type: condition
+          check: "AmmoLow"
+        - type: condition
+          check: "SafeToReload"
+        - type: action
+          action: "SafeReload"
+    
+    # Priority 3: Validate target exists
     - type: sequence
       name: "Ensure Target Selected"
       children:
@@ -25,7 +103,22 @@ tree:
         - type: action
           action: "SelectTarget"  # ...then select one
     
-    # Priority 2: Main combat engagement
+    # Priority 4: Suppression Fire (enemy not visible but known position)
+    - type: sequence
+      name: "Suppression Fire"
+      children:
+        - type: condition
+          check: "HasValidTarget"
+        - type: condition
+          check: "TargetVisible"
+          invert: true  # NOT visible
+        - type: condition
+          check: "UnderHeavyFire"
+          invert: true  # NOT under fire (defensive only)
+        - type: action
+          action: "SuppressFire"
+    
+    # Priority 5: Main combat engagement
     - type: sequence
       name: "Engage Enemy"
       children:
@@ -99,8 +192,19 @@ tree:
                       check: "IsAimedAtTarget"
                     - type: action
                       action: "FireWeapon"
+                
+                # Need reload but can't (under fire)
+                - type: sequence
+                  name: "Emergency Reload Under Fire"
+                  children:
+                    - type: condition
+                      check: "AmmoLow"
+                    - type: condition
+                      check: "UnderHeavyFire"
+                    - type: action
+                      action: "SafeReload"
     
-    # Priority 3: Fallback - lost enemy
+    # Priority 6: Fallback - lost enemy
     - type: action
       action: "Idle"
       name: "No Enemy Visible"

@@ -155,6 +155,39 @@ int BotController::CountAlliesInRadius(float radius)
 
 /*
 ====================
+TrackDamage
+
+Tracks damage taken for tactical retreat decisions.
+Accumulates damage in a 2-second sliding window.
+Added in OPM - Phase 3 Task 3.1e
+====================
+*/
+void BotController::TrackDamage(float damage)
+{
+    float currentTime = level.svsTime / 1000.0f;
+
+    // Clear old damage outside 2-second window
+    if (combatState.damageWindowStart == 0 || 
+        (currentTime - combatState.damageWindowStart) > 2.0f) {
+        combatState.recentDamage = 0.0f;
+        combatState.damageWindowStart = level.inttime;
+    }
+
+    // Accumulate damage
+    combatState.recentDamage += damage;
+
+    if (g_bot_debug && g_bot_debug->integer >= 2) {
+        gi.Printf(
+            "[BOT] %s: Tracked %.1f damage (recent total: %.1f)\n",
+            controlledEnt->client->pers.netname,
+            damage,
+            combatState.recentDamage
+        );
+    }
+}
+
+/*
+====================
 DetermineCombatProfile
 
 Determines the current combat profile based on health, ammo, cover, and tactical situation
@@ -189,38 +222,64 @@ BotController::CombatProfile BotController::DetermineCombatProfile(void)
 ShouldRetreat
 
 Determines if the bot should retreat from combat
+Added in OPM - Phase 3 Task 3.1e
 ====================
 */
 bool BotController::ShouldRetreat(void)
 {
-    return false; // Temporary disable retreating for testing
+    // Get retreat threshold from profile, with fallback to cvar
+    float retreatThreshold = BotConstants::HEALTH_RETREAT_THRESHOLD;
+    float damageThreshold = BotConstants::DAMAGE_RETREAT_THRESHOLD;
+    
+    if (profile) {
+        retreatThreshold = profile->GetRetreatThreshold();
+        // damageThreshold could be a profile parameter in the future
+    } else if (g_bot_retreat_health_threshold) {
+        retreatThreshold = g_bot_retreat_health_threshold->value / 100.0f;
+    }
 
     // Health check
-    float health      = controlledEnt->health;
-    float maxHealth   = controlledEnt->max_health;
-    float healthRatio = (health / maxHealth) * 100.0f;
+    float health = controlledEnt->health;
+    float maxHealth = controlledEnt->max_health;
+    float healthRatio = health / maxHealth;
 
-    if (healthRatio < g_bot_retreat_health_threshold->value) {
+    if (healthRatio < retreatThreshold) {
+        if (g_bot_debug && g_bot_debug->integer >= 1) {
+            gi.Printf(
+                "[BOT] %s: Should retreat - low health (%.1f%% < %.1f%%)\n",
+                controlledEnt->client->pers.netname,
+                healthRatio * 100.0f,
+                retreatThreshold * 100.0f
+            );
+        }
         return true;
     }
 
-    // Outnumbered check
-    int nearbyEnemies = CountEnemiesInRadius(BotConstants::AWARENESS_RADIUS);
-    int nearbyAllies  = CountAlliesInRadius(BotConstants::AWARENESS_RADIUS);
-    if (nearbyEnemies >= 2 && nearbyAllies <= 1) {
-        return true;
-    }
-
-    // Out of ammo check
-    if (controlledEnt->client->ps.stats[STAT_AMMO] <= 0 && controlledEnt->client->ps.stats[STAT_CLIPAMMO] <= 0) {
-        return true;
-    }
-
-    // Changed in OPM
-    //  Refactored to use CombatState struct
-    // Sustained damage check (>30 damage in 2 seconds)
+    // Recent damage check (>30 damage in 2 seconds)
+    float currentTime = level.svsTime / 1000.0f;
     float damageWindow = (level.inttime - combatState.damageWindowStart) / 1000.0f;
-    if (combatState.recentDamage > 30.0f && damageWindow < 2.0f) {
+    if (combatState.recentDamage > damageThreshold && damageWindow < 2.0f) {
+        if (g_bot_debug && g_bot_debug->integer >= 1) {
+            gi.Printf(
+                "[BOT] %s: Should retreat - heavy damage (%.1f > %.1f in 2s)\n",
+                controlledEnt->client->pers.netname,
+                combatState.recentDamage,
+                damageThreshold
+            );
+        }
+        return true;
+    }
+
+    // Outnumbered check (3+ enemies)
+    int nearbyEnemies = CountEnemiesInRadius(BotConstants::AWARENESS_RADIUS);
+    if (nearbyEnemies >= 3) {
+        if (g_bot_debug && g_bot_debug->integer >= 1) {
+            gi.Printf(
+                "[BOT] %s: Should retreat - outnumbered (%d enemies)\n",
+                controlledEnt->client->pers.netname,
+                nearbyEnemies
+            );
+        }
         return true;
     }
 

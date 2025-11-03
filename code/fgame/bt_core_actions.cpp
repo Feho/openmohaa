@@ -18,6 +18,11 @@
 // Added in OPM - Phase 3 Task 3.1h
 #include "bt_actions_weapon.h"
 #include "bt_conditions_weapon.h"
+// Added in OPM - Phase 3 Task 3.1e
+#include "bt_actions_tactical.h"
+#include "bt_conditions_tactical.h"
+// Added in OPM - Phase 3 Task 3.1d
+#include "bt_actions_cover.h"
 
 // Changed in OPM
 //  Added bt_blackboard_keys.h to use consistent key constants
@@ -305,5 +310,57 @@ void RegisterCoreBTActions()
 
     REGISTER_BT_CONDITION("WeaponSwitchReady", [](Blackboard &bb) -> bool {
         return Condition_WeaponSwitchReady_Check(bb);
+    });
+
+    // === Task 3.1e: Tactical Combat & Retreat ===
+    // Added in OPM - Phase 3 Task 3.1e
+    
+    // Tactical actions
+    REGISTER_BT_ACTION("TacticalRetreat", [](Blackboard &bb, float dt) -> BTNode::Status {
+        return Action_TacticalRetreat(bb, dt);
+    });
+
+    REGISTER_BT_ACTION("SafeReload", [](Blackboard &bb, float dt) -> BTNode::Status {
+        return Action_SafeReload(bb, dt);
+    });
+
+    REGISTER_BT_ACTION("SuppressFire", [](Blackboard &bb, float dt) -> BTNode::Status {
+        return Action_SuppressFire(bb, dt);
+    });
+
+    // Tactical conditions
+    REGISTER_BT_CONDITION("ShouldRetreat", [](Blackboard &bb) -> bool {
+        return Condition_ShouldRetreat(bb);
+    });
+
+    REGISTER_BT_CONDITION("UnderHeavyFire", [](Blackboard &bb) -> bool {
+        return Condition_UnderHeavyFire(bb);
+    });
+
+    REGISTER_BT_CONDITION("AmmoLow", [](Blackboard &bb) -> bool {
+        return Condition_AmmoLow(bb);
+    });
+
+    REGISTER_BT_CONDITION("SafeToReload", [](Blackboard &bb) -> bool {
+        return Condition_SafeToReload(bb);
+    });
+
+    // === Task 3.1d: Cover System ===
+    // Added in OPM - Phase 3 Task 3.1d
+    
+    REGISTER_BT_ACTION("FindCover", [](Blackboard &bb, float /* dt */) -> BTNode::Status {
+        return Action_FindCover_Execute(bb);
+    });
+
+    REGISTER_BT_ACTION("MoveToCover", [](Blackboard &bb, float /* dt */) -> BTNode::Status {
+        return Action_MoveToCover_Execute(bb);
+    });
+
+    REGISTER_BT_ACTION("PeekFromCover", [](Blackboard &bb, float /* dt */) -> BTNode::Status {
+        return Action_PeekFromCover_Execute(bb);
+    });
+
+    REGISTER_BT_ACTION("ReturnToCover", [](Blackboard &bb, float /* dt */) -> BTNode::Status {
+        return Action_ReturnToCover_Execute(bb);
     });
 }

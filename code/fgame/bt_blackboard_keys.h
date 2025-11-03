@@ -69,6 +69,17 @@ constexpr const char *PEEK_STATE     = "peekState";      // int - Peek state (0=
 constexpr const char *PEEK_START_TIME = "peekStartTime"; // float - When peek began (milliseconds)
 constexpr const char *PEEK_DURATION   = "peekDuration";  // float - How long to peek (milliseconds)
 
+// Added in OPM - Phase 3 Task 3.1e
+//  Tactical combat and retreat system
+constexpr const char *RECENT_DAMAGE          = "recentDamage";          // float - Damage taken in last 2 seconds
+constexpr const char *LAST_DAMAGE_TIME       = "lastDamageTime";        // float - When last took damage (level.svsTime)
+constexpr const char *COMBAT_PROFILE         = "combatProfile";         // int - CombatProfile enum
+constexpr const char *RETREAT_POSITION       = "retreatPosition";       // Vector - Target retreat position
+constexpr const char *SUPPRESS_START_TIME    = "suppressStartTime";     // float - When suppression fire started
+constexpr const char *RELOAD_START_TIME      = "reloadStartTime";       // float - When reload started
+constexpr const char *LAST_KNOWN_ENEMY_POS   = "lastKnownEnemyPos";     // Vector - Last known enemy position
+constexpr const char *ENEMY_COUNT            = "enemyCount";            // int - Number of enemies in awareness radius
+
 } // namespace BlackboardKeys
 
 #endif // __BT_BLACKBOARD_KEYS_H__

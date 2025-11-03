@@ -524,7 +524,6 @@ private:
     // Tactical combat system
     void          UpdateTacticalCombat(void);
     void          UpdateSuppressionFire(void);
-    bool          ShouldRetreat(void);
     void          ExecuteRetreat(void);
     void          CalculateBurstTiming(void);
     void          CheckAmmoConservation(void);
@@ -600,6 +599,28 @@ public:
      * @brief Make the bot face toward the current path direction
      */
     void AimAtAimNode(void);
+
+    /**
+     * @brief Track damage taken for tactical retreat decisions
+     * 
+     * Updates recentDamage accumulator and tracks damage in 2-second window.
+     * Called automatically when bot takes damage.
+     * 
+     * @param damage Amount of damage taken
+     */
+    void TrackDamage(float damage);
+
+    /**
+     * @brief Check if bot should retreat based on tactical situation
+     * 
+     * Returns true if:
+     * - Health < retreat threshold (default 25%)
+     * - Recent damage > damage threshold (default 30)
+     * - Outnumbered (3+ enemies)
+     * 
+     * @return true if bot should retreat
+     */
+    bool ShouldRetreat(void);
 
     /**
      * @brief Notify bot of a game event (sound, visual, etc.)
