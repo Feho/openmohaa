@@ -64,7 +64,7 @@ bool BotController::CheckCondition_Investigate(void)
     bool hasEnemyMemory = false;
     if (memoryState.enemyMemory.enemy) {
         // Check if memory is still fresh
-        float timeSinceSeen  = level.svsTime - memoryState.enemyMemory.lastSeenTime;
+        float timeSinceSeen  = (level.svsTime - memoryState.enemyMemory.lastSeenTime) * 0.001f;
         float memoryDuration = g_bot_memory_duration->value;
 
         if (timeSinceSeen >= memoryDuration) {
@@ -80,7 +80,7 @@ bool BotController::CheckCondition_Investigate(void)
         } else {
             // Check if investigation timeout has expired
             if (memoryState.investigateStartTime > 0) {
-                float investigateTime = (level.svsTime - memoryState.investigateStartTime);
+                float investigateTime = (level.svsTime - memoryState.investigateStartTime) * 0.001f;
                 if (investigateTime >= g_bot_investigate_timeout->value) {
                     // Give up enemy investigation
                     if (g_bot_debug->integer >= 1) {
@@ -103,7 +103,7 @@ bool BotController::CheckCondition_Investigate(void)
     // Check for sound investigation mode (new behavior)
     bool hasSoundInvestigation = false;
     if (memoryState.investigateEventTime > 0) {
-        float timeSinceEvent = (level.svsTime - memoryState.investigateEventTime);
+        float timeSinceEvent = (level.svsTime - memoryState.investigateEventTime) * 0.001f;
         float soundTimeout   = g_bot_investigate_sound_timeout->value;
 
         if (timeSinceEvent >= soundTimeout) {
@@ -328,7 +328,7 @@ void BotController::State_Investigate(void)
         rotation.AimAt(memoryState.enemyMemory.lastKnownPosition);
 
         // Decay confidence over time
-        float timeSinceSeen                     = level.svsTime - memoryState.enemyMemory.lastSeenTime;
+        float timeSinceSeen                     = (level.svsTime - memoryState.enemyMemory.lastSeenTime) * 0.001f;
         memoryState.enemyMemory.confidenceLevel = 1.0f - (timeSinceSeen / g_bot_memory_duration->value);
     }
 }

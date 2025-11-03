@@ -116,7 +116,7 @@ bool BotController::CanExitState(int stateIndex)
     }
 
     // Check if enough time has passed
-    float timeInState = (level.svsTime - m_iStateEntryTime[stateIndex]);
+    float timeInState = (level.svsTime - m_iStateEntryTime[stateIndex]) * 0.001f;
     return timeInState >= minDuration;
 }
 

@@ -132,7 +132,7 @@ bool BotController::CheckCondition_Attack(void)
                 shouldSwitch = true;
             } else {
                 // Check if enough time has passed since target lock
-                float timeSinceLock = (level.svsTime - m_iTargetLockTime);
+                float timeSinceLock = (level.svsTime - m_iTargetLockTime) * 0.001f;
                 float minLockTime   = g_bot_target_lock_time->value;
 
                 if (timeSinceLock >= minLockTime) {
@@ -175,7 +175,7 @@ bool BotController::CheckCondition_Attack(void)
                         controlledEnt->client->pers.netname,
                         oldName,
                         newName,
-                        (level.svsTime - m_iTargetLockTime)
+                        (level.svsTime - m_iTargetLockTime) * 0.001f
                     );
                 }
             }
