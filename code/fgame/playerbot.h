@@ -156,6 +156,12 @@ namespace BotConstants
     // Added in OPM - Phase 3 Task 3.1h
     //  Weapon switching thresholds
     constexpr float WEAPON_SWITCH_SCORE_THRESHOLD = 0.3f; // Score advantage needed to switch weapons
+
+    // Added in OPM - Phase 3 Task 3.1g
+    //  Grenade system constants
+    constexpr float GRENADE_CLUSTER_RADIUS = 256.0f; // Max distance for enemies to be considered clustered
+    constexpr float GRENADE_ALLY_SAFETY    = 384.0f; // Min distance from allies to safely throw grenade
+    constexpr float GRENADE_COOLDOWN       = 10.0f;  // Seconds between grenade throws
 } // namespace BotConstants
 
 typedef struct nodeAttract_s {

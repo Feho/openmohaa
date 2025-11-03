@@ -2,16 +2,17 @@
 # Complete Combat Behavior Tree
 # Added in OPM - Phase 3 Task 3.1f
 # Enhanced in OPM - Phase 3 Task 3.1e (Tactical Combat & Retreat System)
-# Uses actions from Tasks 3.1a (target), 3.1b (aim/fire), 3.1c (movement), 3.1e (tactical)
+# Enhanced in OPM - Phase 3 Task 3.1g (Grenade System)
+# Uses actions from Tasks 3.1a (target), 3.1b (aim/fire), 3.1c (movement), 3.1e (tactical), 3.1g (grenades)
 
 tree:
   name: "Combat Root"
-  description: "Complete combat behavior: target selection, aiming, firing, movement, tactical retreat"
+  description: "Complete combat behavior: target selection, aiming, firing, movement, tactical retreat, grenade tactics"
   
   metadata:
-    version: "1.1"
+    version: "1.2"
     author: "OpenMoHAA"
-    phase: "3.1e"
+    phase: "3.1g"
 
   root:
     type: selector
@@ -103,7 +104,20 @@ tree:
         - type: action
           action: "SelectTarget"  # ...then select one
     
-    # Priority 4: Suppression Fire (enemy not visible but known position)
+    # Priority 4: Grenade Opportunity (clustered enemies)
+    - type: sequence
+      name: "Throw Grenade At Cluster"
+      children:
+        - type: condition
+          check: "HasGrenades"
+        - type: condition
+          check: "ShouldThrowGrenade"
+        - type: action
+          action: "CalculateGrenadeTarget"
+        - type: action
+          action: "ThrowGrenade"
+    
+    # Priority 5: Suppression Fire (enemy not visible but known position)
     - type: sequence
       name: "Suppression Fire"
       children:
@@ -118,7 +132,7 @@ tree:
         - type: action
           action: "SuppressFire"
     
-    # Priority 5: Main combat engagement
+    # Priority 6: Main combat engagement
     - type: sequence
       name: "Engage Enemy"
       children:
@@ -204,7 +218,7 @@ tree:
                     - type: action
                       action: "SafeReload"
     
-    # Priority 6: Fallback - lost enemy
+    # Priority 7: Fallback - lost enemy
     - type: action
       action: "Idle"
       name: "No Enemy Visible"

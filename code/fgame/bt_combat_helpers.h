@@ -64,6 +64,36 @@ float CalculateTargetScore(
  */
 const EnemyInfo *FindClosestVisibleEnemy(const PerceptionSnapshot *perception);
 
+// Added in OPM - Phase 3 Task 3.1g
+//  Grenade system helpers
+
+/**
+ * Check if enemies are clustered together within a radius
+ * 
+ * @param enemies List of enemies to check
+ * @param maxRadius Maximum distance from cluster center (units)
+ * @return true if 2+ enemies are all within maxRadius of cluster center
+ */
+bool AreEnemiesClustered(const std::vector<EnemyInfo>& enemies, float maxRadius);
+
+/**
+ * Calculate geometric center of enemy cluster
+ * 
+ * @param enemies List of enemies
+ * @return Center point (average position)
+ */
+Vector CalculateClusterCenter(const std::vector<EnemyInfo>& enemies);
+
+/**
+ * Check if any allies are near a position (for grenade safety)
+ * 
+ * @param position Position to check
+ * @param safetyRadius Minimum safe distance from allies (units)
+ * @param perception Perception snapshot with visible allies
+ * @return true if any ally within safetyRadius of position
+ */
+bool HasAlliesNearPosition(Vector position, float safetyRadius, PerceptionSnapshot* perception);
+
 } // namespace Combat
 } // namespace BT
 

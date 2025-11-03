@@ -130,6 +130,10 @@ add_bot_test(test_cover_system)
 # Tactical combat and retreat system tests
 add_bot_test(test_tactical_combat)
 
+# Added in OPM - Phase 3 Task 3.1g
+# Grenade system tests
+add_bot_test(test_grenade_system)
+
 # Added in OPM - Phase 2 Task 2.0
 # yaml-cpp integration test
 add_executable(test_yaml_cpp test_yaml_cpp.cpp)

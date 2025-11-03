@@ -23,6 +23,9 @@
 #include "bt_conditions_tactical.h"
 // Added in OPM - Phase 3 Task 3.1d
 #include "bt_actions_cover.h"
+// Added in OPM - Phase 3 Task 3.1g
+#include "bt_actions_grenade.h"
+#include "bt_conditions_grenade.h"
 
 // Changed in OPM
 //  Added bt_blackboard_keys.h to use consistent key constants
@@ -362,5 +365,30 @@ void RegisterCoreBTActions()
 
     REGISTER_BT_ACTION("ReturnToCover", [](Blackboard &bb, float /* dt */) -> BTNode::Status {
         return Action_ReturnToCover_Execute(bb);
+    });
+
+    // === Task 3.1g: Grenade System ===
+    // Added in OPM - Phase 3 Task 3.1g
+    
+    // Grenade actions
+    REGISTER_BT_ACTION("CalculateGrenadeTarget", [](Blackboard &bb, float dt) -> BTNode::Status {
+        return Action_CalculateGrenadeTarget(bb, dt);
+    });
+
+    REGISTER_BT_ACTION("ThrowGrenade", [](Blackboard &bb, float dt) -> BTNode::Status {
+        return Action_ThrowGrenade(bb, dt);
+    });
+
+    // Grenade conditions
+    REGISTER_BT_CONDITION("HasGrenades", [](Blackboard &bb) -> bool {
+        return Condition_HasGrenades(bb);
+    });
+
+    REGISTER_BT_CONDITION("EnemiesClustered", [](Blackboard &bb) -> bool {
+        return Condition_EnemiesClustered(bb);
+    });
+
+    REGISTER_BT_CONDITION("ShouldThrowGrenade", [](Blackboard &bb) -> bool {
+        return Condition_ShouldThrowGrenade(bb);
     });
 }

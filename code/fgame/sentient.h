@@ -259,12 +259,12 @@ public:
     void           EventUseWeapon(Event *ev);
     void           EventDeactivateWeapon(Event *ev);
     int            NumWeapons(void);
-    int            AmmoCount(str ammo_type);
+    int            AmmoCount(str ammo_type) const;
     int            MaxAmmoCount(str ammo_type);
-    int            AmmoIndex(str ammo_type);
+    int            AmmoIndex(str ammo_type) const;
     int            UseAmmo(str ammo_type, int amount);
     void           GiveAmmo(str type, int amount, int max_amount = -1);
-    Ammo          *FindAmmoByName(str name);
+    Ammo          *FindAmmoByName(str name) const;
     Item          *giveItem(str itemname, int amount = 1);
     void           takeItem(const char *itemname);
     void           takeAmmoType(const char *ammoname);

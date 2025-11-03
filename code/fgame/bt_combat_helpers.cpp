@@ -96,5 +96,98 @@ const EnemyInfo *FindClosestVisibleEnemy(const PerceptionSnapshot *perception)
     return perception->GetClosestEnemy();
 }
 
+// Added in OPM - Phase 3 Task 3.1g
+//  Grenade system helpers
+
+// Changed in OPM
+//  Improved clustering algorithm using density-based approach (Gemini review feedback)
+//  Checks if any enemy has at least 1 other enemy within maxRadius
+bool AreEnemiesClustered(const std::vector<EnemyInfo>& enemies, float maxRadius)
+{
+    if (enemies.size() < 2) {
+        return false;
+    }
+
+    float maxRadiusSq = maxRadius * maxRadius;
+
+    // Density-based approach: find if any enemy has at least 1 neighbor within radius
+    for (size_t i = 0; i < enemies.size(); i++) {
+        int nearbyCount = 0;
+        
+        for (size_t j = 0; j < enemies.size(); j++) {
+            if (i == j) continue; // Skip self
+            
+            float distanceSq = (enemies[i].position - enemies[j].position).lengthSquared();
+            if (distanceSq <= maxRadiusSq) {
+                nearbyCount++;
+                
+                // Found at least one neighbor - this is a valid cluster
+                if (nearbyCount >= 1) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+// Changed in OPM
+//  Returns the position of the enemy with the most neighbors (Gemini review feedback)
+//  This provides a better grenade target than geometric center
+Vector CalculateClusterCenter(const std::vector<EnemyInfo>& enemies)
+{
+    if (enemies.empty()) {
+        return Vector(0, 0, 0);
+    }
+
+    if (enemies.size() == 1) {
+        return enemies[0].position;
+    }
+
+    // Find the enemy with the most neighbors within cluster radius
+    float clusterRadiusSq = BotConstants::GRENADE_CLUSTER_RADIUS * BotConstants::GRENADE_CLUSTER_RADIUS;
+    int   maxNeighbors   = -1;
+    Vector bestPosition   = enemies[0].position;
+
+    for (size_t i = 0; i < enemies.size(); i++) {
+        int neighborCount = 0;
+        
+        for (size_t j = 0; j < enemies.size(); j++) {
+            if (i == j) continue; // Skip self
+            
+            float distanceSq = (enemies[i].position - enemies[j].position).lengthSquared();
+            if (distanceSq <= clusterRadiusSq) {
+                neighborCount++;
+            }
+        }
+        
+        if (neighborCount > maxNeighbors) {
+            maxNeighbors = neighborCount;
+            bestPosition = enemies[i].position;
+        }
+    }
+    
+    return bestPosition;
+}
+
+bool HasAlliesNearPosition(Vector position, float safetyRadius, PerceptionSnapshot* perception)
+{
+    if (!perception) {
+        return false;
+    }
+
+    float safetyRadiusSq = safetyRadius * safetyRadius;
+
+    for (const auto& ally : perception->visibleAllies) {
+        float distanceSq = (ally.position - position).lengthSquared();
+        if (distanceSq < safetyRadiusSq) {
+            return true; // Ally too close - unsafe to throw grenade
+        }
+    }
+
+    return false;
+}
+
 } // namespace Combat
 } // namespace BT

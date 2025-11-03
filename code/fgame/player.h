@@ -979,6 +979,12 @@ public:
     void EventGetViewModelAnimFinished(Event *ev);
     void EventGetViewModelAnimValid(Event *ev);
 
+    // Added in OPM - Phase 3 Task 3.1g
+    //  Grenade system interface for bot AI
+    bool HasGrenades() const;
+    void ThrowGrenade(const Vector& target);
+    int  GetGrenadeCount() const;
+
 #ifdef OPM_FEATURES
     void EventEarthquake(Event *ev);
     void SetClientFlag(Event *ev);

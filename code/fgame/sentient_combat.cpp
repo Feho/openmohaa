@@ -78,7 +78,7 @@ void Sentient::EventGiveAmmo(Event *ev)
     GiveAmmo(type, amount, maxamount);
 }
 
-int Sentient::AmmoIndex(str type)
+int Sentient::AmmoIndex(str type) const
 {
     Ammo *ammo;
 
@@ -91,7 +91,7 @@ int Sentient::AmmoIndex(str type)
     }
 }
 
-int Sentient::AmmoCount(str type)
+int Sentient::AmmoCount(str type) const
 {
     Ammo *ammo;
 
@@ -1279,7 +1279,7 @@ void Sentient::UpdateWeapons(void)
     GetActiveWeapon(WEAPON_MAIN);
 }
 
-Ammo *Sentient::FindAmmoByName(str name)
+Ammo *Sentient::FindAmmoByName(str name) const
 {
     int count, i;
 

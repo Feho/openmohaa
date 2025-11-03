@@ -80,6 +80,11 @@ constexpr const char *RELOAD_START_TIME      = "reloadStartTime";       // float
 constexpr const char *LAST_KNOWN_ENEMY_POS   = "lastKnownEnemyPos";     // Vector - Last known enemy position
 constexpr const char *ENEMY_COUNT            = "enemyCount";            // int - Number of enemies in awareness radius
 
+// Added in OPM - Phase 3 Task 3.1g
+//  Grenade system
+constexpr const char *GRENADE_TARGET_POSITION = "grenadeTargetPosition"; // Vector - Target position for grenade throw
+constexpr const char *LAST_GRENADE_TIME       = "lastGrenadeTime";       // float - When last grenade was thrown (level.svsTime)
+
 } // namespace BlackboardKeys
 
 #endif // __BT_BLACKBOARD_KEYS_H__

@@ -13087,3 +13087,39 @@ void Player::VisionSetNaked(Event *ev)
     gi.SendServerCommand(edict - g_entities, "vsn %s %f %f", vision.c_str(), fade_time, phase);
 }
 #endif
+
+// Added in OPM - Phase 3 Task 3.1g
+//  Grenade system implementation for bot AI
+
+bool Player::HasGrenades() const
+{
+    // Check if player has grenade ammo
+    return AmmoCount("grenade") > 0 || AmmoCount("agrenade") > 0;
+}
+
+void Player::ThrowGrenade(const Vector& targetPos)
+{
+    // Get active weapon
+    Weapon *weapon = GetActiveWeapon(WEAPON_MAIN);
+    if (!weapon) {
+        return;
+    }
+
+    // Calculate throw direction toward target
+    Vector start = origin + Vector(0, 0, viewheight);
+    Vector dir = targetPos - start;
+    dir.normalize();
+
+    // Fire grenade (use secondary fire mode which is typically grenades)
+    // The weapon system will handle the actual grenade spawn and physics
+    if (weapon->GetFireType(FIRE_SECONDARY) == FT_PROJECTILE) {
+        // Trigger grenade throw through weapon system
+        FireWeapon(WEAPON_MAIN, FIRE_SECONDARY);
+    }
+}
+
+int Player::GetGrenadeCount() const
+{
+    // Return total grenade count
+    return AmmoCount("grenade") + AmmoCount("agrenade");
+}
