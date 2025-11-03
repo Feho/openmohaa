@@ -26,18 +26,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "bt_actions_weapon.h"
 #include "bt_blackboard_keys.h"
+#include "bt_weapon_helpers.h"
 #include "bot_profile.h"
 #include "g_local.h"
 #include "player.h"
 #include "weapon.h"
-
-// Forward declare helper function
-static float CalculateWeaponScore(
-    Weapon      *weapon,
-    Weapon      *currentWeapon,
-    float        targetDistance,
-    BotProfile  *profile
-);
 
 // ============================================================================
 // Action_SelectBestWeapon_Execute
@@ -82,7 +75,7 @@ BTNode::Status Action_SelectBestWeapon_Execute(Blackboard &blackboard, float del
             continue;
         }
         
-        float score = CalculateWeaponScore(weapon, currentWeapon, targetDistance, profile);
+        float score = BT_CalculateWeaponScore(weapon, currentWeapon, targetDistance, profile);
         
         if (score > bestScore) {
             bestScore = score;
@@ -121,6 +114,20 @@ BTNode::Status Action_SwitchWeapon_Execute(Blackboard &blackboard, float deltaTi
     
     if (!player || !weapon) {
         return BTNode::Status::FAILURE;
+    }
+    
+    // Added in OPM - Phase 3 Task 3.1h (review fix)
+    //  Verify weapon is in player's inventory before attempting switch
+    bool weaponInInventory = false;
+    for (int i = 0; i < MAX_ACTIVE_WEAPONS; i++) {
+        if (player->GetActiveWeapon((weaponhand_t)i) == weapon) {
+            weaponInInventory = true;
+            break;
+        }
+    }
+    
+    if (!weaponInInventory) {
+        return BTNode::Status::FAILURE; // Weapon not in inventory
     }
     
     // Check if already using this weapon

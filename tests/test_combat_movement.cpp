@@ -2,12 +2,12 @@
 // test_combat_movement.cpp: Unit tests for combat movement behavior tree actions
 
 #include "test_utilities.h"
-#include "test_game_stubs.h"
 #include <gtest/gtest.h>
 
-// Forward declarations for the actions we're testing
-#include "../code/fgame/bt_actions_movement.h"
-#include "../code/fgame/bt_conditions_range.h"
+// Define BEHAVIOR_TREE_TESTING before including behavior tree headers
+// This ensures test stubs are used instead of full game context
+#define BEHAVIOR_TREE_TESTING
+#include "test_game_stubs.h"
 #include "../code/fgame/behavior_tree.h"
 #include "../code/fgame/bt_blackboard_keys.h"
 
@@ -39,7 +39,7 @@ public:
 class CombatMovementTest : public ::testing::Test
 {
 protected:
-    BT::Blackboard bb;
+    Blackboard bb;
     MockWeapon weapon;
     MockBotProfile profile;
     
@@ -114,8 +114,9 @@ TEST_F(CombatMovementTest, InOptimalRange_WithinRange)
     bb.Set<float>(BlackboardKeys::TARGET_DISTANCE, 400.0f);
     
     // Calculate optimal range as profile does
-    const float preferredFactor = profile.preferredRange / weapon.maxRange;
-    const float clampedFactor = Q_clamp(preferredFactor, 0.3f, 0.9f);
+    float preferredFactor = profile.preferredRange / weapon.maxRange;
+    float clampedFactor = preferredFactor;
+    Q_clamp(clampedFactor, 0.3f, 0.9f);
     const float optimalMax = weapon.minRange + (weapon.maxRange - weapon.minRange) * clampedFactor;
     
     const float distance = bb.Get<float>(BlackboardKeys::TARGET_DISTANCE);
@@ -132,8 +133,9 @@ TEST_F(CombatMovementTest, InOptimalRange_TooClose)
     profile.preferredRange = 512.0f;
     bb.Set<float>(BlackboardKeys::TARGET_DISTANCE, 50.0f);
     
-    const float preferredFactor = profile.preferredRange / weapon.maxRange;
-    const float clampedFactor = Q_clamp(preferredFactor, 0.3f, 0.9f);
+    float preferredFactor = profile.preferredRange / weapon.maxRange;
+    float clampedFactor = preferredFactor;
+    Q_clamp(clampedFactor, 0.3f, 0.9f);
     const float optimalMax = weapon.minRange + (weapon.maxRange - weapon.minRange) * clampedFactor;
     
     const float distance = bb.Get<float>(BlackboardKeys::TARGET_DISTANCE);
@@ -157,8 +159,9 @@ TEST_F(CombatMovementTest, ApproachEnemy_Logic_NeedsToMoveCloser)
     bb.Set<float>(BlackboardKeys::TARGET_DISTANCE, currentDistance);
     
     // Calculate optimal range
-    const float preferredFactor = profile.preferredRange / weapon.maxRange;
-    const float clampedFactor = Q_clamp(preferredFactor, 0.3f, 0.9f);
+    float preferredFactor = profile.preferredRange / weapon.maxRange;
+    float clampedFactor = preferredFactor;
+    Q_clamp(clampedFactor, 0.3f, 0.9f);
     const float optimalRange = weapon.minRange + (weapon.maxRange - weapon.minRange) * clampedFactor;
     
     // Should move if outside optimal range with tolerance
@@ -178,8 +181,9 @@ TEST_F(CombatMovementTest, ApproachEnemy_Logic_AlreadyInRange)
     bb.Set<float>(BlackboardKeys::TARGET_DISTANCE, currentDistance);
     
     // Calculate optimal range
-    const float preferredFactor = profile.preferredRange / weapon.maxRange;
-    const float clampedFactor = Q_clamp(preferredFactor, 0.3f, 0.9f);
+    float preferredFactor = profile.preferredRange / weapon.maxRange;
+    float clampedFactor = preferredFactor;
+    Q_clamp(clampedFactor, 0.3f, 0.9f);
     const float optimalRange = weapon.minRange + (weapon.maxRange - weapon.minRange) * clampedFactor;
     
     // Should not move if within optimal range with tolerance
@@ -249,8 +253,9 @@ TEST_F(CombatMovementTest, OptimalRangeCalculation_MidRange)
     weapon.maxRange = 1024.0f;
     profile.preferredRange = 512.0f; // 50% of max
     
-    const float preferredFactor = profile.preferredRange / weapon.maxRange;
-    const float clampedFactor = Q_clamp(preferredFactor, 0.3f, 0.9f);
+    float preferredFactor = profile.preferredRange / weapon.maxRange;
+    float clampedFactor = preferredFactor;
+    Q_clamp(clampedFactor, 0.3f, 0.9f);
     const float optimalRange = weapon.minRange + (weapon.maxRange - weapon.minRange) * clampedFactor;
     
     // Should be approximately 544 (64 + 960*0.5)
@@ -264,8 +269,9 @@ TEST_F(CombatMovementTest, OptimalRangeCalculation_LongRange)
     weapon.maxRange = 4096.0f;
     profile.preferredRange = 3000.0f; // ~73% of max
     
-    const float preferredFactor = profile.preferredRange / weapon.maxRange;
-    const float clampedFactor = Q_clamp(preferredFactor, 0.3f, 0.9f);
+    float preferredFactor = profile.preferredRange / weapon.maxRange;
+    float clampedFactor = preferredFactor;
+    Q_clamp(clampedFactor, 0.3f, 0.9f);
     const float optimalRange = weapon.minRange + (weapon.maxRange - weapon.minRange) * clampedFactor;
     
     // Should be approximately 3064 (256 + 3840*0.73)
@@ -280,8 +286,9 @@ TEST_F(CombatMovementTest, OptimalRangeCalculation_CloseRange)
     weapon.maxRange = 384.0f;
     profile.preferredRange = 150.0f; // ~39% of max
     
-    const float preferredFactor = profile.preferredRange / weapon.maxRange;
-    const float clampedFactor = Q_clamp(preferredFactor, 0.3f, 0.9f);
+    float preferredFactor = profile.preferredRange / weapon.maxRange;
+    float clampedFactor = preferredFactor;
+    Q_clamp(clampedFactor, 0.3f, 0.9f);
     const float optimalRange = weapon.minRange + (weapon.maxRange - weapon.minRange) * clampedFactor;
     
     // Should be approximately 169 (32 + 352*0.39)

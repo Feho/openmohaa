@@ -25,12 +25,12 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // Added in OPM - Phase 3 Task 3.1h
 
 #include <gtest/gtest.h>
-#include "bt_actions_weapon.h"
-#include "bt_conditions_weapon.h"
-#include "bt_blackboard_keys.h"
-#include "bot_profile.h"
-#include "behavior_tree.h"
+
+// Define BEHAVIOR_TREE_TESTING before including behavior tree headers
+#define BEHAVIOR_TREE_TESTING
 #include "test_game_stubs.h"
+#include "../code/fgame/behavior_tree.h"
+#include "../code/fgame/bt_blackboard_keys.h"
 
 // ============================================================================
 // Test Fixtures

@@ -8,8 +8,8 @@
 #include <cstdlib>
 #include <cstdarg>
 
-// Error types
-#define ERR_DROP 1
+// Include q_shared.h to get errorParm_t enum and other shared types
+#include "../code/qcommon/q_shared.h"
 
 // Minimal game import interface for testing
 struct game_import_stub_t {
@@ -19,9 +19,18 @@ struct game_import_stub_t {
         vfprintf(stderr, fmt, args);
         va_end(args);
         fprintf(stderr, "\n");
-        if (level == ERR_DROP) {
+        // Exit on any error for testing purposes
+        if (level != 0) {
             exit(1);
         }
+    }
+    
+    void DPrintf(const char *fmt, ...) {
+        // Debug print - can be silent in tests or print for debugging
+        va_list args;
+        va_start(args, fmt);
+        // vfprintf(stderr, fmt, args);  // Uncomment for debug output
+        va_end(args);
     }
 };
 

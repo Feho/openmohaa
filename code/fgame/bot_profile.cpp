@@ -411,23 +411,35 @@ bool BotProfile::ValidateProfile(const BotProfile *profile)
  */
 float BotProfile::GetWeaponPreference(int weaponClass) const
 {
-    // Handle single weapon class
+    // Added in OPM - Phase 3 Task 3.1h (review fix)
+    //  Handle combined weapon class bitmasks by averaging preferences
+    float totalPreference = 0.0f;
+    int classCount = 0;
+    
     if (weaponClass & WEAPON_CLASS_PISTOL) {
-        return weaponPreferences.pistol;
+        totalPreference += weaponPreferences.pistol;
+        classCount++;
     }
     if (weaponClass & WEAPON_CLASS_RIFLE) {
-        return weaponPreferences.rifle;
+        totalPreference += weaponPreferences.rifle;
+        classCount++;
     }
     if (weaponClass & WEAPON_CLASS_SMG) {
-        return weaponPreferences.smg;
+        totalPreference += weaponPreferences.smg;
+        classCount++;
     }
     if (weaponClass & WEAPON_CLASS_MG) {
-        return weaponPreferences.mg;
+        totalPreference += weaponPreferences.mg;
+        classCount++;
+    }
+    
+    // Return average if multiple classes match
+    if (classCount > 0) {
+        return totalPreference / static_cast<float>(classCount);
     }
     
     // Note: shotgun and sniper don't have separate weapon classes in MOHAA
     // They use WEAPON_CLASS_RIFLE with different stats
-    // Could be extended if needed
     
     return 0.5f; // Neutral preference for unknown classes
 }

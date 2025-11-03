@@ -26,19 +26,12 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "bt_conditions_weapon.h"
 #include "bt_blackboard_keys.h"
+#include "bt_weapon_helpers.h"
 #include "bot_profile.h"
 #include "g_local.h"
 #include "player.h"
 #include "weapon.h"
 #include "playerbot.h"
-
-// Forward declare helper (same as in bt_actions_weapon.cpp)
-static float CalculateWeaponScore(
-    Weapon      *weapon,
-    Weapon      *currentWeapon,
-    float        targetDistance,
-    BotProfile  *profile
-);
 
 // ============================================================================
 // Condition_CurrentWeaponEmpty_Check
@@ -101,7 +94,7 @@ bool Condition_BetterWeaponAvailable_Check(Blackboard &blackboard)
         return true; // No weapon = need better weapon
     }
     
-    float currentScore = CalculateWeaponScore(currentWeapon, currentWeapon, targetDistance, profile);
+    float currentScore = BT_CalculateWeaponScore(currentWeapon, currentWeapon, targetDistance, profile);
     
     // Check all weapons for better option
     float bestScore = currentScore;
@@ -114,7 +107,7 @@ bool Condition_BetterWeaponAvailable_Check(Blackboard &blackboard)
             continue;
         }
         
-        float score = CalculateWeaponScore(weapon, currentWeapon, targetDistance, profile);
+        float score = BT_CalculateWeaponScore(weapon, currentWeapon, targetDistance, profile);
         
         if (score > bestScore) {
             bestScore = score;
@@ -142,6 +135,12 @@ bool Condition_WeaponSwitchReady_Check(Blackboard &blackboard)
         return false;
     }
     
+    // Added in OPM - Phase 3 Task 3.1h (review fix)
+    //  Cannot switch weapons while in vehicle, using turret, or on ladder
+    if (player->GetVehicle() || player->GetTurret() || player->GetLadder()) {
+        return false;
+    }
+    
     Weapon *weapon = player->GetActiveWeapon(WEAPON_MAIN);
     if (!weapon) {
         return true; // No weapon = can switch
@@ -156,55 +155,4 @@ bool Condition_WeaponSwitchReady_Check(Blackboard &blackboard)
             && state != WEAPON_FIRING);
 }
 
-// ============================================================================
-// Helper: CalculateWeaponScore (duplicate from bt_actions_weapon.cpp)
-// ============================================================================
 
-/**
- * Calculates score for a weapon based on ammo, range, profile preference
- *
- * Added in OPM - Phase 3 Task 3.1h
- *  Scoring algorithm (same as in bt_actions_weapon.cpp):
- *  - Invalid if no ammo: -1.0
- *  - Range suitability: 0.0 - 0.5
- *  - Profile preference: 0.0 - 0.3
- *  - Current weapon bonus: +0.2
- */
-static float CalculateWeaponScore(
-    Weapon      *weapon,
-    Weapon      *currentWeapon,
-    float        targetDistance,
-    BotProfile  *profile
-)
-{
-    float score = 0.0f;
-    
-    // 1. Ammo check
-    if (!weapon->HasAmmo(FIRE_PRIMARY)) {
-        return -1.0f;
-    }
-    
-    // 2. Range suitability (0.0 - 0.5)
-    float minRange = weapon->GetMinRange();
-    float maxRange = weapon->GetMaxRange();
-    
-    if (targetDistance < minRange || targetDistance > maxRange) {
-        score += 0.0f;
-    } else {
-        float optimalRange = (minRange + maxRange) / 2.0f;
-        float distanceFromOptimal = fabs(targetDistance - optimalRange);
-        float rangeScore = 1.0f - (distanceFromOptimal / maxRange);
-        score += rangeScore * 0.5f;
-    }
-    
-    // 3. Profile preference (0.0 - 0.3)
-    float preference = profile->GetWeaponPreference(weapon->GetWeaponClass());
-    score += preference * 0.3f;
-    
-    // 4. Current weapon bonus
-    if (weapon == currentWeapon) {
-        score += 0.2f;
-    }
-    
-    return score;
-}
