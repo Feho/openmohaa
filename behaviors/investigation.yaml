@@ -8,9 +8,18 @@
 # - Give up after timeout
 
 tree:
-  type: selector
-  name: "Investigation Root"
-  children:
+  name: "Investigation Behavior"
+  description: "Search for enemies or investigate sounds"
+  
+  metadata:
+    version: "1.0"
+    author: "OpenMoHAA"
+    phase: "3.2"
+
+  root:
+    type: selector
+    name: "Investigation Root"
+    children:
     # Priority 1: If enemy spotted during investigation, immediately return to combat
     - type: condition
       name: "Enemy Spotted - Return to Combat"
@@ -45,18 +54,10 @@ tree:
                   name: "Abandon Investigation"
                   action: "AbandonInvestigation"
             
-            # If not yet reached, move to target
-            - type: sequence
-              name: "Move to Target"
-              children:
-                - type: inverter
-                  child:
-                    type: condition
-                    name: "Not Yet Reached"
-                    check: "ReachedInvestigationTarget"
-                - type: action
-                  name: "Move to Investigation Target"
-                  action: "MoveToInvestigationTarget"
+            # Move to target (will fail when reached)
+            - type: action
+              name: "Move to Investigation Target"
+              action: "MoveToInvestigationTarget"
             
             # If reached target, search area
             - type: sequence
@@ -98,18 +99,10 @@ tree:
                   name: "Abandon Investigation"
                   action: "AbandonInvestigation"
             
-            # If not yet reached, move to sound
-            - type: sequence
-              name: "Move to Sound"
-              children:
-                - type: inverter
-                  child:
-                    type: condition
-                    name: "Not Yet Reached Sound"
-                    check: "ReachedSoundLocation"
-                - type: action
-                  name: "Move to Sound Location"
-                  action: "MoveToSoundLocation"
+            # Move to sound (will fail when reached)
+            - type: action
+              name: "Move to Sound Location"
+              action: "MoveToSoundLocation"
             
             # If reached sound, look around
             - type: sequence

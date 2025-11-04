@@ -108,6 +108,10 @@ private:
         } else if (type == "parallel") {
             return LoadParallel(node, filepath);
         }
+        // Subtree node (Added in OPM - Phase 3 Task 3.2)
+        else if (type == "subtree") {
+            return LoadSubtree(node, filepath);
+        }
         // Leaf nodes
         else if (type == "condition") {
             return LoadCondition(node, filepath);
@@ -270,6 +274,55 @@ private:
         }
 
         return std::make_unique<BTAction>(actionName.c_str(), func);
+    }
+
+    // Added in OPM - Phase 3 Task 3.2
+    // Load subtree node that references another YAML file
+    static std::unique_ptr<BTNode> LoadSubtree(const YAML::Node &node, const char *filepath)
+    {
+        if (!node["file"]) {
+            gi.Printf("ERROR: Subtree missing 'file' field in %s\n", filepath);
+            return nullptr;
+        }
+
+        std::string subtreeFile = node["file"].as<std::string>();
+        std::string nodeName = node["name"] ? node["name"].as<std::string>() : subtreeFile;
+
+        // Construct full path relative to behaviors/ directory
+        std::string subtreePath = "behaviors/" + subtreeFile;
+        
+        // Load the subtree file and extract its root node
+        try {
+            void *buffer = nullptr;
+            long  length = gi.FS_ReadFile(subtreePath.c_str(), &buffer, qfalse);
+            
+            if (length < 0 || !buffer) {
+                gi.Printf("ERROR: Could not read subtree file: %s\n", subtreePath.c_str());
+                return nullptr;
+            }
+
+            YAML::Node root = YAML::Load(static_cast<const char *>(buffer));
+            gi.FS_FreeFile(buffer);
+
+            if (!root["tree"] || !root["tree"]["root"]) {
+                gi.Printf("ERROR: Subtree file '%s' missing tree/root\n", subtreePath.c_str());
+                return nullptr;
+            }
+
+            // Load just the root node directly (not wrapped in BehaviorTree)
+            auto rootNode = LoadNode(root["tree"]["root"], subtreePath.c_str());
+            if (!rootNode) {
+                gi.Printf("ERROR: Failed to load root node from subtree '%s'\n", subtreePath.c_str());
+                return nullptr;
+            }
+
+            // Wrap the root node
+            return std::make_unique<BTSubtreeWrapper>(nodeName.c_str(), std::move(rootNode));
+            
+        } catch (const YAML::Exception &e) {
+            gi.Printf("ERROR: YAML parse error loading subtree %s: %s\n", subtreePath.c_str(), e.what());
+            return nullptr;
+        }
     }
 
     static void PrintAvailableConditions()

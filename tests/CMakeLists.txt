@@ -138,6 +138,10 @@ add_bot_test(test_grenade_system)
 # Main bot behavior tree integration tests
 add_bot_test(test_main_bot_integration)
 
+# Added in OPM - Phase 3 Task 3.2 (Subtree Support)
+# Behavior tree subtree composition tests
+add_bot_test(test_subtree_support)
+
 # Added in OPM - Phase 2 Task 2.0
 # yaml-cpp integration test
 add_executable(test_yaml_cpp test_yaml_cpp.cpp)

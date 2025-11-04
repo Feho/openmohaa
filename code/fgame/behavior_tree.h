@@ -18,6 +18,7 @@
 
 // Forward declarations
 class Blackboard;
+class BehaviorTree;
 
 /**
  * Base class for all Behavior Tree nodes.
@@ -280,6 +281,39 @@ public:
 private:
     const char   *name;
     ConditionFunc conditionFunc;
+};
+
+/**
+ * Subtree wrapper: Executes a loaded behavior tree's root node.
+ * Allows tree composition and reuse.
+ * Added in OPM - Phase 3 Task 3.2 (Subtree Support)
+ */
+class BTSubtreeWrapper : public BTNode {
+public:
+    BTSubtreeWrapper(const char *nodeName, std::unique_ptr<BTNode> rootNode) 
+        : name(nodeName), subtreeRoot(std::move(rootNode)) {}
+
+    Status Execute(Blackboard &blackboard, float deltaTime) override
+    {
+        if (!subtreeRoot) {
+            return Status::FAILURE;
+        }
+
+        return subtreeRoot->Execute(blackboard, deltaTime);
+    }
+
+    void Reset() override
+    {
+        if (subtreeRoot) {
+            subtreeRoot->Reset();
+        }
+    }
+
+    const char *GetName() const override { return name; }
+
+private:
+    const char                  *name;
+    std::unique_ptr<BTNode>      subtreeRoot;
 };
 
 /**

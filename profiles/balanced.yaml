@@ -74,4 +74,6 @@ profile:
   #  Updated to use complete combat behavior tree
   # Updated in OPM - Phase 3 Task 3.2
   #  Changed to main_bot tree which includes combat + investigation + patrol
-  behavior_tree: "main_bot"
+  # Updated in OPM - Phase 3 Task 3.2 (Subtree Support)
+  #  Changed to main_bot_v2 which uses subtree composition
+  behavior_tree: "main_bot_v2"

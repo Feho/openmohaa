@@ -1,0 +1,75 @@
+# main_bot_v2.yaml
+# Main bot behavior tree with subtree composition
+# Added in OPM - Phase 3 Task 3.2 (Subtree Support Implementation)
+# 
+# This version uses subtree references instead of inlining entire trees.
+# Much cleaner, easier to maintain, and promotes modular design.
+
+tree:
+  name: "Main Bot Behavior (Modular)"
+  description: "Complete bot AI using subtree composition"
+  
+  metadata:
+    version: "2.0"
+    author: "OpenMoHAA"
+    phase: "3.2"
+    requires:
+      - "Phase 2A: PerceptionSystem with MemorySystem"
+      - "Phase 2B: Behavior Tree Framework"
+      - "Phase 3.1: Combat System"
+      - "Phase 3.2: Investigation System"
+
+  root:
+    type: selector
+    name: "Main Bot Selector"
+    description: "Priority-based behavior selection"
+    children:
+      # ===================================================================
+      # PRIORITY 1: Active Combat (highest priority)
+      # When enemy is VISIBLE, engage immediately
+      # ===================================================================
+      - type: sequence
+        name: "Active Combat Branch"
+        description: "Engage visible enemies"
+        children:
+          # Check if we have a visible enemy
+          - type: condition
+            check: "HasValidTarget"
+          
+          - type: condition
+            check: "TargetVisible"
+          
+          # Execute combat subtree (from combat.yaml)
+          - type: subtree
+            name: "Combat System"
+            file: "combat.yaml"
+
+      # ===================================================================
+      # PRIORITY 2: Investigation Behavior (medium priority)
+      # When NO visible enemy BUT have recent enemy memory or heard sound
+      # ===================================================================
+      - type: sequence
+        name: "Investigation Branch"
+        description: "Search for enemies or investigate sounds"
+        children:
+          # Check if there's something worth investigating
+          - type: selector
+            name: "Investigation Trigger"
+            children:
+              - type: condition
+                check: "HasHighConfidenceMemory"
+              - type: condition
+                check: "HasInterestingSound"
+          
+          # Execute investigation subtree (from investigation.yaml)
+          - type: subtree
+            name: "Investigation System"
+            file: "investigation.yaml"
+
+      # ===================================================================
+      # PRIORITY 3: Patrol Behavior (lowest priority - default)
+      # When NO combat and NO investigation needed
+      # ===================================================================
+      - type: action
+        action: "PatrolWaypoints"
+        name: "Default Patrol"
