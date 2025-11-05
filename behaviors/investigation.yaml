@@ -1,0 +1,124 @@
+# Investigation Behavior Tree
+# Added in OPM - Phase 3 Task 3.2
+#
+# Implements investigation behaviors that allow bots to:
+# - Search for enemies they've lost sight of
+# - Investigate suspicious sounds
+# - Systematically search areas
+# - Give up after timeout
+
+tree:
+  name: "Investigation Behavior"
+  description: "Search for enemies or investigate sounds"
+  
+  metadata:
+    version: "1.0"
+    author: "OpenMoHAA"
+    phase: "3.2"
+
+  root:
+    type: selector
+    name: "Investigation Root"
+    children:
+    # Priority 1: If enemy spotted during investigation, immediately return to combat
+    - type: condition
+      name: "Enemy Spotted - Return to Combat"
+      check: "HasVisibleEnemy"
+
+    # Priority 2: Investigate high-confidence enemy memory
+    - type: sequence
+      name: "Investigate Enemy Memory"
+      children:
+        # Check if we have enemy memory worth investigating
+        - type: condition
+          name: "Has High-Confidence Memory"
+          check: "HasHighConfidenceMemory"
+        
+        # Set investigation target from memory
+        - type: action
+          name: "Set Investigation Target"
+          action: "SetInvestigationTarget"
+        
+        # Investigation sequence
+        - type: selector
+          name: "Investigation Actions"
+          children:
+            # If timeout, abandon
+            - type: sequence
+              name: "Check Timeout"
+              children:
+                - type: condition
+                  name: "Investigation Timed Out"
+                  check: "InvestigationTimedOut"
+                - type: action
+                  name: "Abandon Investigation"
+                  action: "AbandonInvestigation"
+            
+            # Move to target (will fail when reached)
+            - type: action
+              name: "Move to Investigation Target"
+              action: "MoveToInvestigationTarget"
+            
+            # If reached target, search area
+            - type: sequence
+              name: "Search Area"
+              children:
+                - type: condition
+                  name: "Reached Target"
+                  check: "ReachedInvestigationTarget"
+                - type: action
+                  name: "Search Area Pattern"
+                  action: "SearchArea"
+
+    # Priority 3: Investigate interesting sound
+    - type: sequence
+      name: "Investigate Sound"
+      children:
+        # Check if we heard an interesting sound
+        - type: condition
+          name: "Has Interesting Sound"
+          check: "HasInterestingSound"
+        
+        # Set sound as investigation target
+        - type: action
+          name: "Set Sound Investigation Target"
+          action: "SetSoundInvestigationTarget"
+        
+        # Sound investigation sequence
+        - type: selector
+          name: "Sound Investigation Actions"
+          children:
+            # If timeout, abandon
+            - type: sequence
+              name: "Check Timeout"
+              children:
+                - type: condition
+                  name: "Investigation Timed Out"
+                  check: "InvestigationTimedOut"
+                - type: action
+                  name: "Abandon Investigation"
+                  action: "AbandonInvestigation"
+            
+            # Move to sound (will fail when reached)
+            - type: action
+              name: "Move to Sound Location"
+              action: "MoveToSoundLocation"
+            
+            # If reached sound, look around
+            - type: sequence
+              name: "Look Around"
+              children:
+                - type: condition
+                  name: "Reached Sound Location"
+                  check: "ReachedSoundLocation"
+                - type: action
+                  name: "Look Around Area"
+                  action: "LookAround"
+                - type: action
+                  name: "Mark Sound Investigated"
+                  action: "MarkSoundInvestigated"
+
+    # Priority 4: No investigation needed, return to idle
+    - type: action
+      name: "Return to Idle"
+      action: "ReturnToIdle"

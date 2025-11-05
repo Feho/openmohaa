@@ -1,0 +1,24 @@
+# Added in OPM - Phase 2B Task 2B.2
+# behaviors/patrol.yaml
+# Simple patrol behavior
+
+tree:
+  name: "Patrol"
+  description: "Simple patrol behavior with sound investigation"
+
+  root:
+    type: selector
+    children:
+      # Heard sound? Investigate
+      - type: sequence
+        name: "Investigate Sound"
+        children:
+          - type: condition
+            check: "HeardRecentSound"
+
+          - type: action
+            action: "MoveToSound"
+
+      # Default: patrol waypoints
+      - type: action
+        action: "PatrolWaypoints"

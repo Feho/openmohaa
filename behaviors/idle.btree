@@ -1,0 +1,104 @@
+# idle.btree
+# Behavior tree for bot idle behaviors
+# Added in OPM - Phase 3 Task 3.3
+#
+# This tree handles all non-combat behaviors:
+# - Curious investigation (minor ambient sounds)
+# - Attractive node usage (sniper spots, cover points)
+# - Patrol routes
+# - Random wandering
+# - Standing idle
+
+tree:
+  name: "Idle Behaviors"
+  description: "Non-combat bot behaviors for patrol, wander, and curious investigation"
+  root:
+    type: selector
+    name: "Idle Root"
+    children:
+    # Priority 1: Investigate curious sounds (minor ambient sounds like footsteps)
+    - type: sequence
+      name: "Curious Investigation"
+      children:
+        - type: condition
+          check: "HasCuriousSound"  # Footsteps, ambient sounds (not weapon fire)
+        - type: action
+          action: "SetCuriousTarget"
+        - type: action
+          action: "MoveToCuriousLocation"
+        - type: sequence
+          name: "Quick Look"
+          children:
+            - type: condition
+              check: "ReachedCuriousLocation"
+            - type: action
+              action: "QuickLookAround"  # Shorter than full investigation
+            - type: action
+              action: "ClearCuriousState"
+
+    # Priority 2: Use attractive node if available
+    - type: sequence
+      name: "Use Attractive Node"
+      children:
+        - type: condition
+          check: "HasNearbyAttractiveNode"
+        - type: action
+          action: "MoveToAttractiveNode"
+        - type: sequence
+          children:
+            - type: condition
+              check: "ReachedAttractiveNode"
+            - type: action
+              action: "UseAttractiveNode"  # Snipe, guard, look around
+
+    # Priority 3: Follow patrol route
+    - type: sequence
+      name: "Patrol"
+      children:
+        - type: condition
+          check: "HasPatrolRoute"
+        - type: action
+          action: "MoveToNextPatrolWaypoint"
+        - type: selector
+          children:
+            # Reached waypoint
+            - type: sequence
+              children:
+                - type: condition
+                  check: "ReachedPatrolWaypoint"
+                - type: action
+                  action: "PauseAtWaypoint"  # Brief pause
+                - type: action
+                  action: "AdvanceToNextWaypoint"
+
+            # Still moving
+            - type: action
+              action: "ContinuePatrol"
+
+    # Priority 4: Random wander
+    - type: sequence
+      name: "Wander"
+      children:
+        - type: condition
+          check: "ShouldWander"  # No patrol, not recently wandered
+        - type: action
+          action: "PickRandomWanderTarget"
+        - type: action
+          action: "MoveToWanderTarget"
+        - type: sequence
+          children:
+            - type: condition
+              check: "ReachedWanderTarget"
+            - type: action
+              action: "PauseAfterWander"
+            - type: action
+              action: "ClearWanderTarget"
+
+    # Priority 5: Stand idle (fallback)
+    - type: sequence
+      name: "Stand Idle"
+      children:
+        - type: action
+          action: "StandInPlace"
+        - type: action
+          action: "OccasionalLookAround"

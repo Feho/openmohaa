@@ -1,0 +1,40 @@
+# Added in OPM - Phase 2B Task 2B.2
+# behaviors/engage_enemy.yaml
+# Basic combat behavior using perception data
+
+tree:
+  name: "Engage Enemy"
+  description: "Basic combat behavior with emergency retreat, combat, and idle states"
+
+  root:
+    type: selector
+    children:
+      # Low health? Retreat
+      - type: sequence
+        name: "Emergency Retreat"
+        children:
+          - type: condition
+            check: "LowHealth"
+
+          - type: action
+            action: "Retreat"
+
+      # Has visible enemy? Attack
+      - type: sequence
+        name: "Combat"
+        children:
+          - type: condition
+            check: "HasVisibleEnemy"
+
+          - type: condition
+            check: "HasAmmo"
+
+          - type: action
+            action: "AimAtEnemy"
+
+          - type: action
+            action: "ShootEnemy"
+
+      # No enemy? Idle
+      - type: action
+        action: "Idle"
