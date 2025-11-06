@@ -53,30 +53,68 @@ bool Condition_ReachedCuriousLocation_Check(Blackboard& blackboard)
 
 // Patrol System Conditions
 
+/**
+ * Condition_HasPatrolRoute_Check
+ *
+ * Checks if the bot has a valid patrol route with at least one waypoint.
+ */
 bool Condition_HasPatrolRoute_Check(Blackboard& blackboard)
 {
-    // To be implemented in Commit 3
-    return false;
+    auto botOpt = blackboard.TryGet<BotController *>(BlackboardKeys::BOT);
+    if (!botOpt) {
+        return false;
+    }
+
+    BotController *bot = *botOpt;
+    if (!bot) {
+        return false;
+    }
+
+    return bot->m_patrolRoute.NumObjects() > 0;
 }
 
+/**
+ * Condition_ReachedPatrolWaypoint_Check
+ *
+ * Checks if the bot has reached the current patrol waypoint.
+ */
 bool Condition_ReachedPatrolWaypoint_Check(Blackboard& blackboard)
 {
-    // To be implemented in Commit 3
-    return false;
+    auto reachedOpt = blackboard.TryGet<bool>(BlackboardKeys::REACHED_PATROL_WAYPOINT);
+    return reachedOpt && *reachedOpt;
 }
 
 // Wander System Conditions
 
+/**
+ * Condition_ShouldWander_Check
+ *
+ * Checks if the bot should start wandering.
+ * Wander if there's no patrol route and hasn't wandered recently.
+ */
 bool Condition_ShouldWander_Check(Blackboard& blackboard)
 {
-    // To be implemented in Commit 3
-    return false;
+    // Get last wander time
+    float lastWanderTime = 0.0f;
+    auto  timeOpt        = blackboard.TryGet<float>(BlackboardKeys::LAST_WANDER_TIME);
+    if (timeOpt) {
+        lastWanderTime = *timeOpt;
+    }
+
+    // Wander if it's been more than 5 seconds since last wander
+    float elapsed = static_cast<float>(level.svsTime) - lastWanderTime;
+    return elapsed > 5000.0f; // 5 seconds in milliseconds
 }
 
+/**
+ * Condition_ReachedWanderTarget_Check
+ *
+ * Checks if the bot has reached the wander target position.
+ */
 bool Condition_ReachedWanderTarget_Check(Blackboard& blackboard)
 {
-    // To be implemented in Commit 3
-    return false;
+    auto reachedOpt = blackboard.TryGet<bool>(BlackboardKeys::REACHED_WANDER_TARGET);
+    return reachedOpt && *reachedOpt;
 }
 
 // Attractive Node Conditions

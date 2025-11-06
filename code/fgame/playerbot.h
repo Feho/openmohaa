@@ -142,8 +142,8 @@ namespace BotConstants
     constexpr float PERCENT_CONVERSION     = 100.0f;      // Convert ratio to percentage
 
     // Audio Perception Constants (Phase 2 Task 2A.1.4)
-    constexpr int   MAX_AUDIO_EVENTS         = 100;    // Maximum events in queue
-    constexpr int   AUDIO_PRIORITY_MAX       = 2;      // Maximum priority value (high priority)
+    constexpr int   MAX_AUDIO_EVENTS         = 100;     // Maximum events in queue
+    constexpr int   AUDIO_PRIORITY_MAX       = 2;       // Maximum priority value (high priority)
     constexpr float MAX_AUDIO_DISTANCE       = 2000.0f; // Maximum audio detection range (units)
     constexpr float AUDIO_REFERENCE_DISTANCE = 100.0f;  // Reference distance for attenuation
     constexpr float AUDIO_MIN_DISTANCE       = 1.0f;    // Minimum distance for attenuation
@@ -152,7 +152,7 @@ namespace BotConstants
     constexpr float MEMORY_CONFIDENCE_DECAY_RATE = 0.1f;  // 10% per second (full decay in 10s)
     constexpr float MEMORY_MIN_CONFIDENCE        = 0.1f;  // Filters memories older than 9 seconds
     constexpr float MEMORY_MAX_AGE_SECONDS       = 30.0f; // Hard cutoff prevents unbounded memory growth
-    
+
     // Added in OPM - Phase 3 Task 3.1h
     //  Weapon switching thresholds
     constexpr float WEAPON_SWITCH_SCORE_THRESHOLD = 0.3f; // Score advantage needed to switch weapons
@@ -165,19 +165,19 @@ namespace BotConstants
 
     // Added in OPM - Phase 3 Task 3.3
     //  Idle behavior timing constants
-    constexpr int   CURIOUS_INVESTIGATION_TIMEOUT = 5000;  // Curious investigation timeout (milliseconds)
-    constexpr int   WAYPOINT_PAUSE_MIN            = 1000;  // Minimum pause at waypoint (milliseconds)
-    constexpr int   WAYPOINT_PAUSE_MAX            = 3000;  // Maximum pause at waypoint (milliseconds)
-    constexpr int   WANDER_PAUSE_MIN              = 2000;  // Minimum pause after wander (milliseconds)
-    constexpr int   WANDER_PAUSE_MAX              = 5000;  // Maximum pause after wander (milliseconds)
+    constexpr int   CURIOUS_INVESTIGATION_TIMEOUT = 5000;   // Curious investigation timeout (milliseconds)
+    constexpr int   WAYPOINT_PAUSE_MIN            = 1000;   // Minimum pause at waypoint (milliseconds)
+    constexpr int   WAYPOINT_PAUSE_MAX            = 3000;   // Maximum pause at waypoint (milliseconds)
+    constexpr int   WANDER_PAUSE_MIN              = 2000;   // Minimum pause after wander (milliseconds)
+    constexpr int   WANDER_PAUSE_MAX              = 5000;   // Maximum pause after wander (milliseconds)
     constexpr float WANDER_DISTANCE_MIN           = 256.0f; // Minimum wander distance (units)
     constexpr float WANDER_DISTANCE_MAX           = 768.0f; // Maximum wander distance (units)
-    constexpr int   ATTRACTIVE_NODE_USE_MIN       = 10000; // Minimum time at attractive node (milliseconds)
-    constexpr int   ATTRACTIVE_NODE_USE_MAX       = 15000; // Maximum time at attractive node (milliseconds)
-    constexpr int   IDLE_LOOK_INTERVAL_MIN        = 3000;  // Minimum idle look interval (milliseconds)
-    constexpr int   IDLE_LOOK_INTERVAL_MAX        = 6000;  // Maximum idle look interval (milliseconds)
-    constexpr float CURIOUS_LOOK_DURATION         = 0.5f;  // Look duration per direction (seconds)
-    constexpr int   CURIOUS_LOOK_DIRECTIONS       = 2;     // Number of directions to look (left/right)
+    constexpr int   ATTRACTIVE_NODE_USE_MIN       = 10000;  // Minimum time at attractive node (milliseconds)
+    constexpr int   ATTRACTIVE_NODE_USE_MAX       = 15000;  // Maximum time at attractive node (milliseconds)
+    constexpr int   IDLE_LOOK_INTERVAL_MIN        = 3000;   // Minimum idle look interval (milliseconds)
+    constexpr int   IDLE_LOOK_INTERVAL_MAX        = 6000;   // Maximum idle look interval (milliseconds)
+    constexpr float CURIOUS_LOOK_DURATION         = 0.5f;   // Look duration per direction (seconds)
+    constexpr int   CURIOUS_LOOK_DIRECTIONS       = 2;      // Number of directions to look (left/right)
 } // namespace BotConstants
 
 typedef struct nodeAttract_s {
@@ -691,16 +691,21 @@ public:
 
     // Added in OPM - Phase 2B Task 2B.2
     //  Helper methods for behavior tree actions
-    void         SetEnemy(Sentient *enemy) { m_pEnemy = enemy; }
-    void         PressFireButton() { m_botCmd.buttons |= BUTTON_ATTACKLEFT; }
-    usercmd_t   &GetBotCmd() { return m_botCmd; }
+    void SetEnemy(Sentient *enemy) { m_pEnemy = enemy; }
+
+    void PressFireButton() { m_botCmd.buttons |= BUTTON_ATTACKLEFT; }
+
+    usercmd_t& GetBotCmd() { return m_botCmd; }
 
     // Added in OPM - Phase 2B Task 2B.4
     //  Profile and behavior tree integration
     void LoadProfile(const char *profileName);
     void ReloadProfile();
+
     BehaviorTree *GetBehaviorTree() { return behaviorTree.get(); }
-    Blackboard &GetBlackboard() { return blackboard; }
+
+    Blackboard& GetBlackboard() { return blackboard; }
+
     BotProfile *GetProfile() { return profile.get(); }
 
     // Added in OPM
@@ -765,18 +770,18 @@ public:
      */
     Player *getControlledEntity() const;
 
+    // Added in OPM - Phase 3 Task 3.3
+    //  Public access for behavior tree actions
+    Container<PathNode *> m_patrolRoute; // Waypoints for patrol behavior
+
 private:
     SafePtr<Player> controlledEnt;
 
     // Added in OPM - Phase 2B Task 2B.4
     //  Behavior tree system integration
-    std::unique_ptr<BotProfile>    profile;        // Bot personality profile
-    std::unique_ptr<BehaviorTree>  behaviorTree;   // Current behavior tree
-    Blackboard                     blackboard;     // Shared data for BT nodes
-
-    // Added in OPM - Phase 3 Task 3.3
-    //  Idle behavior patrol route
-    Container<PathNode *> m_patrolRoute; // Waypoints for patrol behavior
+    std::unique_ptr<BotProfile>   profile;      // Bot personality profile
+    std::unique_ptr<BehaviorTree> behaviorTree; // Current behavior tree
+    Blackboard                    blackboard;   // Shared data for BT nodes
 };
 
 class BotControllerManager : public Listener
