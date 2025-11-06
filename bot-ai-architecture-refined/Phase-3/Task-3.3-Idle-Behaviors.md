@@ -121,97 +121,106 @@ bool BotController::CheckCondition_Curious() {
 ### Idle Tree Architecture
 
 ```yaml
-# behaviors/idle.btree
+# behaviors/idle.yaml
 tree:
-  type: selector
-  name: "Idle Root"
-  children:
-    # Priority 1: Investigate curious sounds (minor ambient sounds)
-    - type: sequence
-      name: "Curious Investigation"
-      children:
-        - type: condition
-          check: "HasCuriousSound"  # Footsteps, doors, not weapon fire
-        - type: action
-          action: "SetCuriousTarget"
-        - type: action
-          action: "MoveToCuriousLocation"
-        - type: sequence
-          name: "Quick Look"
-          children:
-            - type: condition
-              check: "ReachedCuriousLocation"
-            - type: action
-              action: "QuickLookAround"  # Shorter than investigation
-            - type: action
-              action: "ClearCuriousState"
+  name: "Idle Behavior"
+  description: "Handles idle behaviors"
 
-    # Priority 2: Use attractive node if available
-    - type: sequence
-      name: "Use Attractive Node"
-      children:
-        - type: condition
-          check: "HasNearbyAttractiveNode"
-        - type: action
-          action: "MoveToAttractiveNode"
-        - type: sequence
-          children:
-            - type: condition
-              check: "ReachedAttractiveNode"
-            - type: action
-              action: "UseAttractiveNode"  # Snipe, guard, etc.
+  metadata:
+    version: "1.0"
+    author: "AI Team"
+    phase: "3.3"
 
-    # Priority 3: Follow patrol route
-    - type: sequence
-      name: "Patrol"
-      children:
-        - type: condition
-          check: "HasPatrolRoute"
-        - type: action
-          action: "MoveToNextPatrolWaypoint"
-        - type: selector
-          children:
-            # Reached waypoint
-            - type: sequence
-              children:
-                - type: condition
-                  check: "ReachedPatrolWaypoint"
-                - type: action
-                  action: "PauseAtWaypoint"  # Brief pause
-                - type: action
-                  action: "AdvanceToNextWaypoint"
-            
-            # Still moving
-            - type: action
-              action: "ContinuePatrol"
+  root:
+    type: selector
+    name: "Idle Root"
+    children:
+      # Priority 1: Investigate curious sounds (minor ambient sounds)
+      - type: sequence
+        name: "Curious Investigation"
+        children:
+          - type: condition
+            check: "HasCuriousSound"  # Footsteps, doors, not weapon fire
+          - type: action
+            action: "SetCuriousTarget"
+          - type: action
+            action: "MoveToCuriousLocation"
+          - type: sequence
+            name: "Quick Look"
+            children:
+              - type: condition
+                check: "ReachedCuriousLocation"
+              - type: action
+                action: "QuickLookAround"  # Shorter than investigation
+              - type: action
+                action: "ClearCuriousState"
 
-    # Priority 4: Random wander
-    - type: sequence
-      name: "Wander"
-      children:
-        - type: condition
-          check: "ShouldWander"  # No patrol, not recently moved
-        - type: action
-          action: "PickRandomWanderTarget"
-        - type: action
-          action: "MoveToWanderTarget"
-        - type: sequence
-          children:
-            - type: condition
-              check: "ReachedWanderTarget"
-            - type: action
-              action: "PauseAfterWander"
-            - type: action
-              action: "ClearWanderTarget"
+      # Priority 2: Use attractive node if available
+      - type: sequence
+        name: "Use Attractive Node"
+        children:
+          - type: condition
+            check: "HasNearbyAttractiveNode"
+          - type: action
+            action: "MoveToAttractiveNode"
+          - type: sequence
+            children:
+              - type: condition
+                check: "ReachedAttractiveNode"
+              - type: action
+                action: "UseAttractiveNode"  # Snipe, guard, etc.
 
-    # Priority 5: Stand idle
-    - type: sequence
-      name: "Stand Idle"
-      children:
-        - type: action
-          action: "StandInPlace"
-        - type: action
-          action: "OccasionalLookAround"
+      # Priority 3: Follow patrol route
+      - type: sequence
+        name: "Patrol"
+        children:
+          - type: condition
+            check: "HasPatrolRoute"
+          - type: action
+            action: "MoveToNextPatrolWaypoint"
+          - type: selector
+            children:
+              # Reached waypoint
+              - type: sequence
+                children:
+                  - type: condition
+                    check: "ReachedPatrolWaypoint"
+                  - type: action
+                    action: "PauseAtWaypoint"  # Brief pause
+                  - type: action
+                    action: "AdvanceToNextWaypoint"
+              
+              # Still moving
+              - type: action
+                action: "ContinuePatrol"
+
+      # Priority 4: Random wander
+      - type: sequence
+        name: "Wander"
+        children:
+          - type: condition
+            check: "ShouldWander"  # No patrol, not recently moved
+          - type: action
+            action: "PickRandomWanderTarget"
+          - type: action
+            action: "MoveToWanderTarget"
+          - type: sequence
+            children:
+              - type: condition
+                check: "ReachedWanderTarget"
+              - type: action
+                action: "PauseAfterWander"
+              - type: action
+                action: "ClearWanderTarget"
+
+      # Priority 5: Stand idle
+      - type: sequence
+        name: "Stand Idle"
+        children:
+          - type: action
+            action: "StandInPlace"
+          - type: action
+            action: "OccasionalLookAround"
 ```
 
 ### Actions to Implement
@@ -733,7 +742,7 @@ Vector FindTargetPosition(const std::string& targetName) {
 - [ ] **Write unit tests** (3 tests: node finding, node usage, idle look timing)
 
 ### Day 5: YAML Tree & Integration (6 hours)
-- [ ] Create `behaviors/idle.btree` with complete tree
+- [ ] Create `behaviors/idle.yaml` with complete tree
 - [ ] Register all actions and conditions
 - [ ] Create master behavior selector that chooses between combat/investigation/idle
 - [ ] Test transitions between behaviors
@@ -764,8 +773,8 @@ code/fgame/bt_conditions_idle.cpp        # 8 idle conditions
 code/fgame/bt_conditions_idle.h          # Condition declarations
 code/fgame/idle_helpers.cpp              # Helper functions
 code/fgame/idle_helpers.h                # FindNearbyAttractiveNode, etc.
-behaviors/idle.btree                     # Idle behavior tree YAML
-behaviors/master.btree                   # Master selector (combat/investigate/idle)
+behaviors/idle.yaml                      # Idle behavior tree YAML
+behaviors/master.yaml                    # Master selector (combat/investigate/idle)
 tests/test_idle_actions.cpp              # Unit tests
 tests/test_idle_conditions.cpp           # Unit tests
 tests/integration_test_idle.cpp          # Integration tests
@@ -869,17 +878,6 @@ Attractive nodes should:
 - Timeout after 10-15 seconds
 - Be abandoned if threats appear
 - Favor tactical positions (sniper, cover)
-
-### Master Behavior Selector
-```yaml
-# behaviors/master.btree
-tree:
-  type: selector
-  children:
-    - include: "combat.btree"        # Priority 1
-    - include: "investigation.btree" # Priority 2
-    - include: "idle.btree"          # Priority 3 (fallback)
-```
 
 ---
 

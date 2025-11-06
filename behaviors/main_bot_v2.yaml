@@ -67,9 +67,10 @@ tree:
             file: "investigation.yaml"
 
       # ===================================================================
-      # PRIORITY 3: Patrol Behavior (lowest priority - default)
+      # PRIORITY 3: Idle Behavior (lowest priority - default)
       # When NO combat and NO investigation needed
+      # Includes: curious investigation, attractive nodes, patrol, wander, idle standing
       # ===================================================================
-      - type: action
-        action: "PatrolWaypoints"
-        name: "Default Patrol"
+      - type: subtree
+        name: "Idle System"
+        file: "idle.yaml"

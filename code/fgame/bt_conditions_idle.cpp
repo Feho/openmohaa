@@ -2,11 +2,12 @@
 // Behavior tree conditions for idle behavior system
 // Added in OPM - Phase 3 Task 3.3
 
+#include "g_local.h"
 #include "bt_conditions_idle.h"
 #include "bt_blackboard_keys.h"
 #include "playerbot.h"
 #include "perception.h"
-#include "g_local.h"
+#include "idle_helpers.h"
 
 // Curious Investigation Conditions
 
@@ -119,14 +120,42 @@ bool Condition_ReachedWanderTarget_Check(Blackboard& blackboard)
 
 // Attractive Node Conditions
 
+/**
+ * Condition_HasNearbyAttractiveNode_Check
+ *
+ * Checks if there is an attractive tactical node (sniper, cover, corner)
+ * within 1024 units of the bot's current position.
+ */
 bool Condition_HasNearbyAttractiveNode_Check(Blackboard& blackboard)
 {
-    // To be implemented in Commit 4
-    return false;
+    auto playerOpt = blackboard.TryGet<Player *>(BlackboardKeys::PLAYER);
+    if (!playerOpt) {
+        return false;
+    }
+
+    Player *player = *playerOpt;
+    if (!player) {
+        return false;
+    }
+
+    // Search for attractive node within 1024 units
+    PathNode *attractiveNode = FindNearbyAttractiveNode(player->origin, 1024.0f);
+    if (!attractiveNode) {
+        return false;
+    }
+
+    // Cache the found node in blackboard for use by actions
+    blackboard.Set<PathNode *>(BlackboardKeys::ATTRACTIVE_NODE, attractiveNode);
+    return true;
 }
 
+/**
+ * Condition_ReachedAttractiveNode_Check
+ *
+ * Checks if the bot has reached the attractive node.
+ */
 bool Condition_ReachedAttractiveNode_Check(Blackboard& blackboard)
 {
-    // To be implemented in Commit 4
-    return false;
+    auto reachedOpt = blackboard.TryGet<bool>(BlackboardKeys::REACHED_ATTRACTIVE_NODE);
+    return reachedOpt && *reachedOpt;
 }

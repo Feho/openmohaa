@@ -2,13 +2,13 @@
 // Behavior tree actions for idle behavior system
 // Added in OPM - Phase 3 Task 3.3
 
+#include "g_local.h"
 #include "bt_actions_idle.h"
 #include "bt_blackboard_keys.h"
 #include "playerbot.h"
 #include "perception.h"
 #include "idle_helpers.h"
 #include "investigation_helpers.h"
-#include "g_local.h"
 
 // Constants for curious investigation
 namespace CuriousConstants
@@ -544,28 +544,212 @@ BTNode::Status Action_ClearWanderTarget_Execute(Blackboard& blackboard, float de
 
 // Attractive Node Actions
 
+/**
+ * Action_MoveToAttractiveNode_Execute
+ *
+ * Moves the bot to an attractive tactical node (sniper, cover, corner).
+ * Finds the best attractive node within 1024 units and navigates to it.
+ * Returns SUCCESS when the bot reaches the node (within 64 units).
+ */
 BTNode::Status Action_MoveToAttractiveNode_Execute(Blackboard& blackboard, float deltaTime)
 {
-    // To be implemented in Commit 4
-    return BTNode::Status::FAILURE;
+    auto botOpt    = blackboard.TryGet<BotController *>(BlackboardKeys::BOT);
+    auto playerOpt = blackboard.TryGet<Player *>(BlackboardKeys::PLAYER);
+
+    if (!botOpt || !playerOpt) {
+        return BTNode::Status::FAILURE;
+    }
+
+    BotController *bot    = *botOpt;
+    Player        *player = *playerOpt;
+
+    if (!bot || !player) {
+        return BTNode::Status::FAILURE;
+    }
+
+    // Get or find attractive node
+    PathNode *attractiveNode = nullptr;
+    auto      nodeOpt        = blackboard.TryGet<PathNode *>(BlackboardKeys::ATTRACTIVE_NODE);
+    if (nodeOpt) {
+        attractiveNode = *nodeOpt;
+    }
+
+    if (!attractiveNode) {
+        // Find new attractive node (search radius 1024 units)
+        attractiveNode = FindNearbyAttractiveNode(player->origin, 1024.0f);
+        if (!attractiveNode) {
+            return BTNode::Status::FAILURE; // No attractive nodes nearby
+        }
+        blackboard.Set<PathNode *>(BlackboardKeys::ATTRACTIVE_NODE, attractiveNode);
+    }
+
+    // Move to attractive node
+    bot->GetMovement().MoveTo(attractiveNode->origin, nullptr, 0.0f);
+
+    // Check if reached (within threshold)
+    float distance = (attractiveNode->origin - player->origin).length();
+    if (distance < CuriousConstants::REACHED_DISTANCE) {
+        blackboard.Set<bool>(BlackboardKeys::REACHED_ATTRACTIVE_NODE, true);
+        return BTNode::Status::SUCCESS;
+    }
+
+    return BTNode::Status::RUNNING;
 }
 
+/**
+ * Action_UseAttractiveNode_Execute
+ *
+ * Uses the attractive node for 10-15 seconds, looking around to scan the area.
+ * This makes the bot appear to be using tactical positions meaningfully.
+ */
 BTNode::Status Action_UseAttractiveNode_Execute(Blackboard& blackboard, float deltaTime)
 {
-    // To be implemented in Commit 4
-    return BTNode::Status::FAILURE;
+    auto botOpt    = blackboard.TryGet<BotController *>(BlackboardKeys::BOT);
+    auto playerOpt = blackboard.TryGet<Player *>(BlackboardKeys::PLAYER);
+    auto nodeOpt   = blackboard.TryGet<PathNode *>(BlackboardKeys::ATTRACTIVE_NODE);
+
+    if (!botOpt || !playerOpt || !nodeOpt) {
+        return BTNode::Status::FAILURE;
+    }
+
+    BotController *bot            = *botOpt;
+    Player        *player         = *playerOpt;
+    PathNode      *attractiveNode = *nodeOpt;
+
+    if (!bot || !player || !attractiveNode) {
+        return BTNode::Status::FAILURE;
+    }
+
+    // Get or initialize use timer
+    float useTimer = 0.0f;
+    auto  timerOpt = blackboard.TryGet<float>(BlackboardKeys::ATTRACTIVE_NODE_TIMER);
+    if (timerOpt) {
+        useTimer = *timerOpt;
+    }
+
+    // Increment timer (convert delta from seconds to milliseconds)
+    useTimer += deltaTime * static_cast<float>(BotConstants::SECONDS_TO_MS);
+
+    // Random use duration between min and max (10-15 seconds)
+    int useDuration =
+        BotConstants::ATTRACTIVE_NODE_USE_MIN
+        + static_cast<int>(
+            G_Random(static_cast<float>(BotConstants::ATTRACTIVE_NODE_USE_MAX - BotConstants::ATTRACTIVE_NODE_USE_MIN))
+        );
+
+    // Look around slowly while using node
+    float  lookAngle = (useTimer / 2000.0f) * BotConstants::FULL_CIRCLE_DEGREES; // Full rotation every 2 seconds
+    vec3_t angles    = {0, lookAngle, 0};
+    vec3_t forward, right, up;
+    AngleVectors(angles, forward, right, up);
+
+    Vector lookDir      = Vector(forward);
+    Vector lookTarget   = player->origin + (lookDir * 100.0f);
+    Vector targetAngles = (lookTarget - player->origin).toAngles();
+
+    bot->GetRotation().SetTargetAngles(targetAngles);
+
+    // Check if use duration completed
+    if (useTimer > static_cast<float>(useDuration)) {
+        // Clear state and return to idle
+        blackboard.Set<PathNode *>(BlackboardKeys::ATTRACTIVE_NODE, nullptr);
+        blackboard.Set<bool>(BlackboardKeys::REACHED_ATTRACTIVE_NODE, false);
+        blackboard.Set<float>(BlackboardKeys::ATTRACTIVE_NODE_TIMER, 0.0f);
+        return BTNode::Status::SUCCESS;
+    }
+
+    // Update timer
+    blackboard.Set<float>(BlackboardKeys::ATTRACTIVE_NODE_TIMER, useTimer);
+    return BTNode::Status::RUNNING;
 }
 
 // Idle Standing Actions
 
+/**
+ * Action_StandInPlace_Execute
+ *
+ * Bot stops moving and stands in place.
+ * This is the lowest priority idle behavior.
+ */
 BTNode::Status Action_StandInPlace_Execute(Blackboard& blackboard, float deltaTime)
 {
-    // To be implemented in Commit 4
-    return BTNode::Status::FAILURE;
+    auto botOpt = blackboard.TryGet<BotController *>(BlackboardKeys::BOT);
+    if (!botOpt) {
+        return BTNode::Status::FAILURE;
+    }
+
+    BotController *bot = *botOpt;
+    if (!bot) {
+        return BTNode::Status::FAILURE;
+    }
+
+    // Stop all movement
+    bot->GetMovement().ClearMove();
+
+    return BTNode::Status::SUCCESS;
 }
 
+/**
+ * Action_OccasionalLookAround_Execute
+ *
+ * Bot occasionally looks in random directions while standing idle.
+ * Looks around every 3-6 seconds to appear alert and alive.
+ */
 BTNode::Status Action_OccasionalLookAround_Execute(Blackboard& blackboard, float deltaTime)
 {
-    // To be implemented in Commit 4
-    return BTNode::Status::FAILURE;
+    auto botOpt    = blackboard.TryGet<BotController *>(BlackboardKeys::BOT);
+    auto playerOpt = blackboard.TryGet<Player *>(BlackboardKeys::PLAYER);
+
+    if (!botOpt || !playerOpt) {
+        return BTNode::Status::FAILURE;
+    }
+
+    BotController *bot    = *botOpt;
+    Player        *player = *playerOpt;
+
+    if (!bot || !player) {
+        return BTNode::Status::FAILURE;
+    }
+
+    // Get or initialize look timer
+    float lookTimer = 0.0f;
+    auto  timerOpt  = blackboard.TryGet<float>(BlackboardKeys::IDLE_LOOK_TIMER);
+    if (timerOpt) {
+        lookTimer = *timerOpt;
+    }
+
+    // Increment timer (convert delta from seconds to milliseconds)
+    lookTimer += deltaTime * static_cast<float>(BotConstants::SECONDS_TO_MS);
+
+    // Random look interval between min and max (3-6 seconds)
+    int lookInterval =
+        BotConstants::IDLE_LOOK_INTERVAL_MIN
+        + static_cast<int>(
+            G_Random(static_cast<float>(BotConstants::IDLE_LOOK_INTERVAL_MAX - BotConstants::IDLE_LOOK_INTERVAL_MIN))
+        );
+
+    // Check if it's time to look around
+    if (lookTimer > static_cast<float>(lookInterval)) {
+        // Pick random look direction
+        float lookAngle = G_Random(BotConstants::FULL_CIRCLE_DEGREES);
+
+        // Calculate look direction using angle
+        vec3_t angles = {0, lookAngle, 0};
+        vec3_t forward, right, up;
+        AngleVectors(angles, forward, right, up);
+
+        Vector lookDir      = Vector(forward);
+        Vector lookTarget   = player->origin + (lookDir * 100.0f);
+        Vector targetAngles = (lookTarget - player->origin).toAngles();
+
+        bot->GetRotation().SetTargetAngles(targetAngles);
+
+        // Reset timer
+        lookTimer = 0.0f;
+    }
+
+    // Update blackboard
+    blackboard.Set<float>(BlackboardKeys::IDLE_LOOK_TIMER, lookTimer);
+
+    return BTNode::Status::SUCCESS;
 }
