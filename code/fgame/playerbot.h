@@ -162,6 +162,22 @@ namespace BotConstants
     constexpr float GRENADE_CLUSTER_RADIUS = 256.0f; // Max distance for enemies to be considered clustered
     constexpr float GRENADE_ALLY_SAFETY    = 384.0f; // Min distance from allies to safely throw grenade
     constexpr float GRENADE_COOLDOWN       = 10.0f;  // Seconds between grenade throws
+
+    // Added in OPM - Phase 3 Task 3.3
+    //  Idle behavior timing constants
+    constexpr int   CURIOUS_INVESTIGATION_TIMEOUT = 5000;  // Curious investigation timeout (milliseconds)
+    constexpr int   WAYPOINT_PAUSE_MIN            = 1000;  // Minimum pause at waypoint (milliseconds)
+    constexpr int   WAYPOINT_PAUSE_MAX            = 3000;  // Maximum pause at waypoint (milliseconds)
+    constexpr int   WANDER_PAUSE_MIN              = 2000;  // Minimum pause after wander (milliseconds)
+    constexpr int   WANDER_PAUSE_MAX              = 5000;  // Maximum pause after wander (milliseconds)
+    constexpr float WANDER_DISTANCE_MIN           = 256.0f; // Minimum wander distance (units)
+    constexpr float WANDER_DISTANCE_MAX           = 768.0f; // Maximum wander distance (units)
+    constexpr int   ATTRACTIVE_NODE_USE_MIN       = 10000; // Minimum time at attractive node (milliseconds)
+    constexpr int   ATTRACTIVE_NODE_USE_MAX       = 15000; // Maximum time at attractive node (milliseconds)
+    constexpr int   IDLE_LOOK_INTERVAL_MIN        = 3000;  // Minimum idle look interval (milliseconds)
+    constexpr int   IDLE_LOOK_INTERVAL_MAX        = 6000;  // Maximum idle look interval (milliseconds)
+    constexpr float CURIOUS_LOOK_DURATION         = 0.5f;  // Look duration per direction (seconds)
+    constexpr int   CURIOUS_LOOK_DIRECTIONS       = 2;     // Number of directions to look (left/right)
 } // namespace BotConstants
 
 typedef struct nodeAttract_s {
@@ -757,6 +773,10 @@ private:
     std::unique_ptr<BotProfile>    profile;        // Bot personality profile
     std::unique_ptr<BehaviorTree>  behaviorTree;   // Current behavior tree
     Blackboard                     blackboard;     // Shared data for BT nodes
+
+    // Added in OPM - Phase 3 Task 3.3
+    //  Idle behavior patrol route
+    Container<PathNode *> m_patrolRoute; // Waypoints for patrol behavior
 };
 
 class BotControllerManager : public Listener

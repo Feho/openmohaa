@@ -102,6 +102,37 @@ constexpr const char *LOOK_TIMER                   = "lookTimer";               
 constexpr const char *LOOK_COUNT                   = "lookCount";                  // int - Number of look directions
 constexpr const char *LOOK_COMPLETE                = "lookComplete";               // bool - Whether look-around is complete
 
+// Added in OPM - Phase 3 Task 3.3
+//  Idle behavior system
+//  Curious investigation (ambient sounds)
+constexpr const char *CURIOUS_TARGET          = "curiousTarget";         // Vector - Target position for curious investigation
+constexpr const char *CURIOUS_START_TIME      = "curiousStartTime";      // float - When curious investigation started (level.svsTime)
+constexpr const char *REACHED_CURIOUS_LOCATION = "reachedCuriousLocation"; // bool - Whether reached curious location
+constexpr const char *CURIOUS_LOOK_TIMER      = "curiousLookTimer";      // float - Look-around timer for curious behavior
+constexpr const char *CURIOUS_LOOK_COUNT      = "curiousLookCount";      // int - Number of look directions completed
+
+//  Patrol system
+constexpr const char *PATROL_WAYPOINT_INDEX   = "patrolWaypointIndex";   // int - Current waypoint index in patrol route
+constexpr const char *PATROL_REVERSE          = "patrolReverse";         // bool - Whether patrol is reversing (bounce mode)
+constexpr const char *PATROL_MODE             = "patrolMode";            // int - Patrol mode (0=loop, 1=bounce)
+constexpr const char *REACHED_PATROL_WAYPOINT = "reachedPatrolWaypoint"; // bool - Whether reached current waypoint
+constexpr const char *WAYPOINT_PAUSE_TIMER    = "waypointPauseTimer";    // float - Timer for pausing at waypoint
+
+//  Wander system
+constexpr const char *WANDER_TARGET           = "wanderTarget";          // Vector - Target position for wander
+constexpr const char *WANDER_START_TIME       = "wanderStartTime";       // float - When wander started (level.svsTime)
+constexpr const char *REACHED_WANDER_TARGET   = "reachedWanderTarget";   // bool - Whether reached wander target
+constexpr const char *WANDER_PAUSE_TIMER      = "wanderPauseTimer";      // float - Timer for pausing after wander
+constexpr const char *LAST_WANDER_TIME        = "lastWanderTime";        // float - Last time wander was initiated
+
+//  Attractive nodes
+constexpr const char *ATTRACTIVE_NODE         = "attractiveNode";        // PathNode* - Current attractive node
+constexpr const char *REACHED_ATTRACTIVE_NODE = "reachedAttractiveNode"; // bool - Whether reached attractive node
+constexpr const char *ATTRACTIVE_NODE_TIMER   = "attractiveNodeTimer";   // float - Timer for using attractive node
+
+//  Idle standing
+constexpr const char *IDLE_LOOK_TIMER         = "idleLookTimer";         // float - Timer for occasional look-around when idle
+
 } // namespace BlackboardKeys
 
 #endif // __BT_BLACKBOARD_KEYS_H__
