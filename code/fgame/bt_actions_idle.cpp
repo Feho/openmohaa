@@ -253,7 +253,8 @@ BTNode::Status Action_MoveToNextPatrolWaypoint_Execute(Blackboard& blackboard, f
         blackboard.Set<int>(BlackboardKeys::PATROL_WAYPOINT_INDEX, waypointIndex);
     }
 
-    PathNode *waypoint = bot->m_patrolRoute.ObjectAt(waypointIndex + 1);
+    // Fixed in OPM - Container uses 0-based indexing, remove +1 offset
+    PathNode *waypoint = bot->m_patrolRoute.ObjectAt(waypointIndex);
     if (!waypoint) {
         return BTNode::Status::FAILURE;
     }
@@ -289,15 +290,25 @@ BTNode::Status Action_PauseAtWaypoint_Execute(Blackboard& blackboard, float delt
     // Increment timer
     pauseTimer += deltaTime * static_cast<float>(BotConstants::SECONDS_TO_MS); // Convert to milliseconds
 
-    // Random pause duration between min and max
-    int pauseDuration =
-        BotConstants::WAYPOINT_PAUSE_MIN
-        + static_cast<int>(
-            G_Random(static_cast<float>(BotConstants::WAYPOINT_PAUSE_MAX - BotConstants::WAYPOINT_PAUSE_MIN))
-        );
+    // Fixed in OPM - Calculate random pause duration once and cache it (don't recalculate every frame)
+    int  pauseDuration = BotConstants::WAYPOINT_PAUSE_MIN;
+    auto durationOpt   = blackboard.TryGet<int>(BlackboardKeys::WAYPOINT_PAUSE_DURATION);
+    if (durationOpt) {
+        pauseDuration = *durationOpt;
+    } else {
+        // Calculate random duration on first call only
+        pauseDuration =
+            BotConstants::WAYPOINT_PAUSE_MIN
+            + static_cast<int>(
+                G_Random(static_cast<float>(BotConstants::WAYPOINT_PAUSE_MAX - BotConstants::WAYPOINT_PAUSE_MIN))
+            );
+        blackboard.Set<int>(BlackboardKeys::WAYPOINT_PAUSE_DURATION, pauseDuration);
+    }
 
     if (pauseTimer > static_cast<float>(pauseDuration)) {
+        // Clear cached values for next pause
         blackboard.Set<float>(BlackboardKeys::WAYPOINT_PAUSE_TIMER, 0.0f);
+        blackboard.Remove(BlackboardKeys::WAYPOINT_PAUSE_DURATION);
         return BTNode::Status::SUCCESS;
     }
 
@@ -355,7 +366,8 @@ BTNode::Status Action_AdvanceToNextWaypoint_Execute(Blackboard& blackboard, floa
     if (patrolReverse) {
         waypointIndex--;
         if (waypointIndex < 0) {
-            waypointIndex = 1;
+            // Fixed in OPM - Start at first waypoint (0), not second (1)
+            waypointIndex = 0;
             patrolReverse = false; // Reached start, go forward
         }
     } else {
@@ -476,7 +488,8 @@ BTNode::Status Action_MoveToWanderTarget_Execute(Blackboard& blackboard, float d
 
     // Check if reached
     float distance = (target - player->origin).length();
-    if (distance < CuriousConstants::REACHED_DISTANCE) {
+    // Fixed in OPM - Use appropriate constant instead of CuriousConstants
+    if (distance < BotConstants::WAYPOINT_REACHED_DISTANCE) {
         blackboard.Set<bool>(BlackboardKeys::REACHED_WANDER_TARGET, true);
         return BTNode::Status::SUCCESS;
     }
@@ -486,7 +499,8 @@ BTNode::Status Action_MoveToWanderTarget_Execute(Blackboard& blackboard, float d
     if (startTimeOpt) {
         float startTime = *startTimeOpt;
         float elapsed   = static_cast<float>(level.svsTime) - startTime;
-        if (elapsed > 10000.0f) { // 10 second timeout
+        // Fixed in OPM - Use named constant instead of magic number
+        if (elapsed > static_cast<float>(BotConstants::WANDER_TIMEOUT)) {
             return BTNode::Status::FAILURE;
         }
     }
@@ -512,14 +526,25 @@ BTNode::Status Action_PauseAfterWander_Execute(Blackboard& blackboard, float del
     // Increment timer
     pauseTimer += deltaTime * static_cast<float>(BotConstants::SECONDS_TO_MS); // Convert to milliseconds
 
-    // Random pause duration between min and max
-    int pauseDuration =
-        BotConstants::WANDER_PAUSE_MIN
-        + static_cast<int>(G_Random(static_cast<float>(BotConstants::WANDER_PAUSE_MAX - BotConstants::WANDER_PAUSE_MIN))
-        );
+    // Fixed in OPM - Calculate random pause duration once and cache it (don't recalculate every frame)
+    int  pauseDuration = BotConstants::WANDER_PAUSE_MIN;
+    auto durationOpt   = blackboard.TryGet<int>(BlackboardKeys::WANDER_PAUSE_DURATION);
+    if (durationOpt) {
+        pauseDuration = *durationOpt;
+    } else {
+        // Calculate random duration on first call only (2-5 seconds)
+        pauseDuration =
+            BotConstants::WANDER_PAUSE_MIN
+            + static_cast<int>(
+                G_Random(static_cast<float>(BotConstants::WANDER_PAUSE_MAX - BotConstants::WANDER_PAUSE_MIN))
+            );
+        blackboard.Set<int>(BlackboardKeys::WANDER_PAUSE_DURATION, pauseDuration);
+    }
 
     if (pauseTimer > static_cast<float>(pauseDuration)) {
+        // Clear cached values for next pause
         blackboard.Set<float>(BlackboardKeys::WANDER_PAUSE_TIMER, 0.0f);
+        blackboard.Remove(BlackboardKeys::WANDER_PAUSE_DURATION);
         return BTNode::Status::SUCCESS;
     }
 
@@ -588,7 +613,8 @@ BTNode::Status Action_MoveToAttractiveNode_Execute(Blackboard& blackboard, float
 
     // Check if reached (within threshold)
     float distance = (attractiveNode->origin - player->origin).length();
-    if (distance < CuriousConstants::REACHED_DISTANCE) {
+    // Fixed in OPM - Use appropriate constant instead of CuriousConstants
+    if (distance < BotConstants::WAYPOINT_REACHED_DISTANCE) {
         blackboard.Set<bool>(BlackboardKeys::REACHED_ATTRACTIVE_NODE, true);
         return BTNode::Status::SUCCESS;
     }
@@ -630,12 +656,20 @@ BTNode::Status Action_UseAttractiveNode_Execute(Blackboard& blackboard, float de
     // Increment timer (convert delta from seconds to milliseconds)
     useTimer += deltaTime * static_cast<float>(BotConstants::SECONDS_TO_MS);
 
-    // Random use duration between min and max (10-15 seconds)
-    int useDuration =
-        BotConstants::ATTRACTIVE_NODE_USE_MIN
-        + static_cast<int>(
-            G_Random(static_cast<float>(BotConstants::ATTRACTIVE_NODE_USE_MAX - BotConstants::ATTRACTIVE_NODE_USE_MIN))
-        );
+    // Fixed in OPM - Calculate random use duration once and cache it (don't recalculate every frame)
+    int  useDuration = BotConstants::ATTRACTIVE_NODE_USE_MIN;
+    auto durationOpt = blackboard.TryGet<int>(BlackboardKeys::ATTRACTIVE_NODE_USE_DURATION);
+    if (durationOpt) {
+        useDuration = *durationOpt;
+    } else {
+        // Calculate random duration on first call only (10-15 seconds)
+        useDuration =
+            BotConstants::ATTRACTIVE_NODE_USE_MIN
+            + static_cast<int>(G_Random(
+                static_cast<float>(BotConstants::ATTRACTIVE_NODE_USE_MAX - BotConstants::ATTRACTIVE_NODE_USE_MIN)
+            ));
+        blackboard.Set<int>(BlackboardKeys::ATTRACTIVE_NODE_USE_DURATION, useDuration);
+    }
 
     // Look around slowly while using node
     float  lookAngle = (useTimer / 2000.0f) * BotConstants::FULL_CIRCLE_DEGREES; // Full rotation every 2 seconds
@@ -655,6 +689,7 @@ BTNode::Status Action_UseAttractiveNode_Execute(Blackboard& blackboard, float de
         blackboard.Set<PathNode *>(BlackboardKeys::ATTRACTIVE_NODE, nullptr);
         blackboard.Set<bool>(BlackboardKeys::REACHED_ATTRACTIVE_NODE, false);
         blackboard.Set<float>(BlackboardKeys::ATTRACTIVE_NODE_TIMER, 0.0f);
+        blackboard.Remove(BlackboardKeys::ATTRACTIVE_NODE_USE_DURATION); // Clear cached duration
         return BTNode::Status::SUCCESS;
     }
 
@@ -721,12 +756,19 @@ BTNode::Status Action_OccasionalLookAround_Execute(Blackboard& blackboard, float
     // Increment timer (convert delta from seconds to milliseconds)
     lookTimer += deltaTime * static_cast<float>(BotConstants::SECONDS_TO_MS);
 
-    // Random look interval between min and max (3-6 seconds)
-    int lookInterval =
-        BotConstants::IDLE_LOOK_INTERVAL_MIN
-        + static_cast<int>(
-            G_Random(static_cast<float>(BotConstants::IDLE_LOOK_INTERVAL_MAX - BotConstants::IDLE_LOOK_INTERVAL_MIN))
-        );
+    // Fixed in OPM - Calculate random look interval once and cache it (don't recalculate every frame)
+    int  lookInterval = BotConstants::IDLE_LOOK_INTERVAL_MIN;
+    auto intervalOpt  = blackboard.TryGet<int>(BlackboardKeys::IDLE_LOOK_INTERVAL);
+    if (intervalOpt) {
+        lookInterval = *intervalOpt;
+    } else {
+        // Calculate random interval on first call only (3-6 seconds)
+        lookInterval = BotConstants::IDLE_LOOK_INTERVAL_MIN
+                     + static_cast<int>(G_Random(
+                         static_cast<float>(BotConstants::IDLE_LOOK_INTERVAL_MAX - BotConstants::IDLE_LOOK_INTERVAL_MIN)
+                     ));
+        blackboard.Set<int>(BlackboardKeys::IDLE_LOOK_INTERVAL, lookInterval);
+    }
 
     // Check if it's time to look around
     if (lookTimer > static_cast<float>(lookInterval)) {
@@ -744,8 +786,9 @@ BTNode::Status Action_OccasionalLookAround_Execute(Blackboard& blackboard, float
 
         bot->GetRotation().SetTargetAngles(targetAngles);
 
-        // Reset timer
+        // Reset timer and clear cached interval for next look
         lookTimer = 0.0f;
+        blackboard.Remove(BlackboardKeys::IDLE_LOOK_INTERVAL);
     }
 
     // Update blackboard

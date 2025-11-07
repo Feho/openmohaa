@@ -79,42 +79,58 @@ tree:
                 name: "Use Attractive Node"
                 action: "UseAttractiveNode"
 
-      # Priority 3: Follow patrol route
-      - type: sequence
-        name: "Patrol"
+      # Priority 3: Follow patrol route (with failure handling)
+      # Added in OPM - Wrap patrol in selector for graceful failure handling
+      - type: selector
+        name: "Patrol with Fallback"
         children:
-          # Check if patrol route exists
-          - type: condition
-            name: "Has Patrol Route"
-            check: "HasPatrolRoute"
-
-          # Move to next patrol waypoint
-          - type: action
-            name: "Move to Next Waypoint"
-            action: "MoveToNextPatrolWaypoint"
-
-          # Handle waypoint reached or continue
-          - type: selector
-            name: "Waypoint Actions"
+          # Try normal patrol
+          - type: sequence
+            name: "Patrol"
             children:
-              # Reached waypoint - pause and advance
-              - type: sequence
-                name: "Waypoint Reached"
-                children:
-                  - type: condition
-                    name: "Reached Waypoint"
-                    check: "ReachedPatrolWaypoint"
-                  - type: action
-                    name: "Pause at Waypoint"
-                    action: "PauseAtWaypoint"
-                  - type: action
-                    name: "Advance to Next"
-                    action: "AdvanceToNextWaypoint"
+              # Check if patrol route exists
+              - type: condition
+                name: "Has Patrol Route"
+                check: "HasPatrolRoute"
 
-              # Still moving to waypoint
+              # Move to next patrol waypoint
               - type: action
-                name: "Continue Patrol"
-                action: "ContinuePatrol"
+                name: "Move to Next Waypoint"
+                action: "MoveToNextPatrolWaypoint"
+
+              # Handle waypoint reached or continue
+              - type: selector
+                name: "Waypoint Actions"
+                children:
+                  # Reached waypoint - pause and advance
+                  - type: sequence
+                    name: "Waypoint Reached"
+                    children:
+                      - type: condition
+                        name: "Reached Waypoint"
+                        check: "ReachedPatrolWaypoint"
+                      - type: action
+                        name: "Pause at Waypoint"
+                        action: "PauseAtWaypoint"
+                      - type: action
+                        name: "Advance to Next"
+                        action: "AdvanceToNextWaypoint"
+
+                  # Still moving to waypoint
+                  - type: action
+                    name: "Continue Patrol"
+                    action: "ContinuePatrol"
+
+          # Fallback: If patrol fails (unreachable waypoint), skip to next waypoint
+          - type: sequence
+            name: "Skip Failed Waypoint"
+            children:
+              - type: condition
+                name: "Has Patrol Route"
+                check: "HasPatrolRoute"
+              - type: action
+                name: "Advance to Next Waypoint"
+                action: "AdvanceToNextWaypoint"
 
       # Priority 4: Random wander
       - type: sequence

@@ -138,15 +138,26 @@ bool Condition_HasNearbyAttractiveNode_Check(Blackboard& blackboard)
         return false;
     }
 
-    // Search for attractive node within 1024 units
-    PathNode *attractiveNode = FindNearbyAttractiveNode(player->origin, 1024.0f);
-    if (!attractiveNode) {
-        return false;
+    // Fixed in OPM - Add 1-second cache to avoid O(n) search every frame
+    // Check cache first
+    auto cachedNodeOpt = blackboard.TryGet<PathNode *>(BlackboardKeys::ATTRACTIVE_NODE);
+    auto cacheTimeOpt  = blackboard.TryGet<float>(BlackboardKeys::ATTRACTIVE_NODE_CACHE_TIME);
+
+    if (cachedNodeOpt && cacheTimeOpt) {
+        float elapsed = static_cast<float>(level.svsTime) - *cacheTimeOpt;
+        if (elapsed < 1000.0f) { // 1 second cache
+            return *cachedNodeOpt != nullptr;
+        }
     }
 
-    // Cache the found node in blackboard for use by actions
+    // Cache miss or expired - perform search
+    PathNode *attractiveNode = FindNearbyAttractiveNode(player->origin, 1024.0f);
+
+    // Cache the result (even if null)
     blackboard.Set<PathNode *>(BlackboardKeys::ATTRACTIVE_NODE, attractiveNode);
-    return true;
+    blackboard.Set<float>(BlackboardKeys::ATTRACTIVE_NODE_CACHE_TIME, static_cast<float>(level.svsTime));
+
+    return attractiveNode != nullptr;
 }
 
 /**

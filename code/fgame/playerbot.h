@@ -178,6 +178,7 @@ namespace BotConstants
     constexpr int   IDLE_LOOK_INTERVAL_MAX        = 6000;   // Maximum idle look interval (milliseconds)
     constexpr float CURIOUS_LOOK_DURATION         = 0.5f;   // Look duration per direction (seconds)
     constexpr int   CURIOUS_LOOK_DIRECTIONS       = 2;      // Number of directions to look (left/right)
+    constexpr int   WANDER_TIMEOUT                = 10000;  // Wander movement timeout (milliseconds)
 } // namespace BotConstants
 
 typedef struct nodeAttract_s {
