@@ -439,6 +439,14 @@ extern cvar_t *g_bot_target_lock_time;
  */
 extern cvar_t *g_bot_use_new_ai_system;
 
+// Added in OPM - Phase 3 Task 3.4 Commit 5
+//  Utility AI hysteresis for strategy switching
+/**
+ * @brief Minimum score improvement required to switch strategies (0.0-1.0).
+ *        Higher values make bots more committed to current strategy (default 0.3).
+ */
+extern cvar_t *g_bot_utility_hysteresis;
+
 extern cvar_t *g_rankedserver;
 extern cvar_t *g_spectatefollow_firstperson;
 

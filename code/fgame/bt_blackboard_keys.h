@@ -151,6 +151,13 @@ namespace BlackboardKeys
     constexpr const char *ATTRACTIVE_NODE_CACHE_TIME =
         "attractiveNodeCacheTime"; // float - Last attractive node search time (ms)
 
+    // Added in OPM - Phase 3 Task 3.4
+    //  Utility AI system
+    constexpr const char *CURRENT_STRATEGY = "currentStrategy";           // std::string - Active strategy name
+    constexpr const char *LAST_STRATEGY_SCORE = "lastStrategyScore";      // float - Previous strategy score
+    constexpr const char *STRATEGY_CHANGE_TIME = "strategyChangeTime";    // float - Last re-evaluation time
+    constexpr const char *UTILITY_SCORES = "utilityScores";               // std::shared_ptr<std::vector<ScoredAction>> - All action scores
+
 } // namespace BlackboardKeys
 
 #endif // __BT_BLACKBOARD_KEYS_H__

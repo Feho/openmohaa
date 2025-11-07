@@ -1,0 +1,166 @@
+# Added in OPM - Phase 3 Task 3.4 Commit 4
+# bot_utility.yaml: Utility AI action configuration for bot decision making
+
+actions:
+  - name: "Aggress"
+    tree_file: "behaviors/combat.yaml"
+    considerations:
+      - name: "Health"
+        curve: "exponential"
+        weight: 1.0
+        exponent: 2.0
+        min: 0.0
+        max: 1.0
+
+      - name: "Ammo"
+        curve: "threshold"
+        weight: 1.0
+        threshold: 0.3
+        min: 0.0
+        max: 1.0
+
+      - name: "EnemyDistance"
+        curve: "inverse_linear"
+        weight: 1.2
+        min: 0.0
+        max: 1.0
+
+      - name: "Aggression"
+        curve: "linear"
+        weight: 1.5
+        min: 0.0
+        max: 1.0
+
+  - name: "Defend"
+    tree_file: "behaviors/combat.yaml"
+    considerations:
+      - name: "InCover"
+        curve: "threshold"
+        weight: 1.3
+        threshold: 0.5
+        min: 0.0
+        max: 1.0
+
+      - name: "EnemyCount"
+        curve: "exponential"
+        weight: 1.2
+        exponent: 2.0
+        min: 0.0
+        max: 1.0
+
+      - name: "Health"
+        curve: "inverse_linear"
+        weight: 1.0
+        min: 0.0
+        max: 1.0
+
+      - name: "Caution"
+        curve: "linear"
+        weight: 1.3
+        min: 0.0
+        max: 1.0
+
+  - name: "Retreat"
+    tree_file: "behaviors/patrol.yaml"
+    considerations:
+      - name: "Health"
+        curve: "inverse_linear"
+        weight: 2.0
+        min: 0.0
+        max: 1.0
+
+      - name: "EnemyCount"
+        curve: "exponential"
+        weight: 1.5
+        exponent: 2.5
+        min: 0.0
+        max: 1.0
+
+      - name: "CoverNearby"
+        curve: "linear"
+        weight: 1.0
+        min: 0.0
+        max: 1.0
+
+  - name: "Investigate"
+    tree_file: "behaviors/investigation.yaml"
+    considerations:
+      - name: "EnemyCount"
+        curve: "threshold"
+        weight: 2.0
+        threshold: 0.1
+        min: 0.0
+        max: 0.0
+
+      - name: "Health"
+        curve: "exponential"
+        weight: 0.8
+        exponent: 1.5
+        min: 0.0
+        max: 1.0
+
+      - name: "Creativity"
+        curve: "linear"
+        weight: 1.2
+        min: 0.0
+        max: 1.0
+
+  - name: "Support"
+    tree_file: "behaviors/combat.yaml"
+    considerations:
+      - name: "AlliesNearby"
+        curve: "exponential"
+        weight: 1.5
+        exponent: 2.0
+        min: 0.0
+        max: 1.0
+
+      - name: "EnemyCount"
+        curve: "linear"
+        weight: 1.0
+        min: 0.0
+        max: 1.0
+
+      - name: "Teamwork"
+        curve: "exponential"
+        weight: 1.8
+        exponent: 2.0
+        min: 0.0
+        max: 1.0
+
+      - name: "InCover"
+        curve: "threshold"
+        weight: 0.8
+        threshold: 0.5
+        min: 0.0
+        max: 1.0
+
+  - name: "Flank"
+    tree_file: "behaviors/combat.yaml"
+    considerations:
+      - name: "FlankPath"
+        curve: "threshold"
+        weight: 2.0
+        threshold: 0.5
+        min: 0.0
+        max: 1.0
+
+      - name: "EnemyDistracted"
+        curve: "exponential"
+        weight: 1.5
+        exponent: 2.0
+        min: 0.0
+        max: 1.0
+
+      - name: "Creativity"
+        curve: "linear"
+        weight: 1.3
+        min: 0.0
+        max: 1.0
+
+      - name: "Health"
+        curve: "exponential"
+        weight: 1.0
+        exponent: 1.5
+        min: 0.0
+        max: 1.0

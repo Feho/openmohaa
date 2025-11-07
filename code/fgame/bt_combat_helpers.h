@@ -94,6 +94,34 @@ Vector CalculateClusterCenter(const std::vector<EnemyInfo>& enemies);
  */
 bool HasAlliesNearPosition(Vector position, float safetyRadius, PerceptionSnapshot* perception);
 
+// Added in OPM - Phase 3 Task 3.4
+//  Utility AI system helpers
+
+/**
+ * Calculate flanking position relative to enemy
+ * 
+ * Creates perpendicular offset (90 degrees) from bot→enemy vector
+ * Used for tactical flanking maneuvers
+ * 
+ * @param botPos Bot's current position
+ * @param enemyPos Enemy position to flank
+ * @param radius Distance from enemy for flank position (units)
+ * @return Flank position (perpendicular to bot-enemy line)
+ */
+Vector CalculateFlankPosition(const Vector& botPos, const Vector& enemyPos, float radius);
+
+/**
+ * Test if navigation path exists to target position
+ * 
+ * Uses pathfinding system to validate reachability
+ * Does not actually compute full path, just tests feasibility
+ * 
+ * @param bot Bot entity for pathfinding context
+ * @param targetPos Target position to test
+ * @return true if path exists and is reachable
+ */
+bool PathExistsTo(const Player* bot, const Vector& targetPos);
+
 } // namespace Combat
 } // namespace BT
 

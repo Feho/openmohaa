@@ -394,34 +394,46 @@ float UtilityEvaluator::EvaluateConsideration(
         rawValue = bot->health / bot->max_health;
     }
     else if (consideration.name == "ammo_factor") {
-        Weapon* weapon = bot->GetCurrentWeapon();
+        Weapon* weapon = bot->GetActiveWeapon(WEAPON_MAIN);
         if (weapon) {
-            rawValue = (float)weapon->GetAmmo() / weapon->GetMaxAmmo();
+            int ammo = weapon->AmmoAvailable(PRIMARY_MODE);
+            int clipSize = weapon->GetClipSize(PRIMARY_MODE);
+            rawValue = (clipSize > 0) ? (float)ammo / clipSize : 0.0f;
         }
     }
     else if (consideration.name == "enemy_proximity") {
-        if (perception.closestEnemy) {
-            float distance = perception.closestEnemy->distance;
-            rawValue = distance;  // Will be normalized by curve
+        const EnemyInfo* enemy = perception.GetClosestEnemy();
+        if (enemy) {
+            rawValue = enemy->distance;  // Will be normalized by curve
         }
     }
     else if (consideration.name == "ally_support") {
-        rawValue = std::min((float)perception.nearbyAllies.size(), 3.0f);
+        rawValue = std::min((float)perception.visibleAllies.size(), 3.0f);
     }
     else if (consideration.name == "in_cover") {
-        rawValue = bot->IsInCover() ? 1.0f : 0.0f;
+        // IsInCover requires bot position and enemy position
+        BotController* botCtrl = GetBotController(bot);
+        const EnemyInfo* enemy = perception.GetClosestEnemy();
+        if (botCtrl && enemy && enemy->entity) {
+            rawValue = botCtrl->IsInCover(bot->origin, enemy->position) ? 1.0f : 0.0f;
+        }
     }
     else if (consideration.name == "enemy_count") {
         rawValue = (float)perception.GetEnemyCount();
     }
     else if (consideration.name == "outnumbered") {
         int enemies = perception.GetEnemyCount();
-        int allies = perception.nearbyAllies.size() + 1;  // +1 for self
+        int allies = perception.visibleAllies.size() + 1;  // +1 for self
         rawValue = (float)(enemies - allies);
     }
     else if (consideration.name == "cover_nearby") {
-        CoverPoint* cover = FindNearestCover(bot->origin, Vector::Zero);
-        rawValue = cover ? 1.0f : 0.0f;
+        // FindNearestCover returns PathNode*, not CoverPoint*
+        const EnemyInfo* enemy = perception.GetClosestEnemy();
+        if (enemy && enemy->entity) {
+            Vector botPos = bot->origin;
+            PathNode* coverNode = PathNode::FindNearestCover(bot, botPos, enemy->entity);
+            rawValue = coverNode ? 1.0f : 0.0f;
+        }
     }
     else if (consideration.name == "memory_confidence") {
         // Highest confidence memory
@@ -435,41 +447,46 @@ float UtilityEvaluator::EvaluateConsideration(
         rawValue = perception.HasVisibleEnemy() ? 0.0f : 1.0f;
     }
     else if (consideration.name == "personality_curiosity") {
-        rawValue = profile->GetPersonalityTrait("curiosity");
+        rawValue = profile->GetCreativity();  // Use Creativity for curiosity
     }
     else if (consideration.name == "ally_in_trouble") {
-        // Check if any ally has low health and enemies nearby
+        // Check if any ally has low health
         float maxTrouble = 0.0f;
-        for (const auto& ally : perception.nearbyAllies) {
-            if (ally.entity->health / ally.entity->max_health < 0.5f) {
-                maxTrouble = std::max(maxTrouble, 1.0f);
+        for (const auto& ally : perception.visibleAllies) {
+            if (ally.entity && ally.entity->health / ally.entity->max_health < 0.5f) {
+                maxTrouble = 1.0f;
+                break;
             }
         }
         rawValue = maxTrouble;
     }
     else if (consideration.name == "distance_to_ally") {
-        if (!perception.nearbyAllies.empty()) {
-            rawValue = perception.nearbyAllies[0].distance;
+        const AllyInfo* ally = perception.GetClosestAlly();
+        if (ally) {
+            rawValue = ally->distance;
         }
     }
     else if (consideration.name == "personality_teamwork") {
-        rawValue = profile->GetPersonalityTrait("teamwork");
+        rawValue = profile->GetTeamwork();
     }
     else if (consideration.name == "enemy_distracted") {
-        // Check if enemy is engaged with someone else
-        if (perception.closestEnemy && perception.closestEnemy->entity->GetEnemy() != bot) {
-            rawValue = 1.0f;
+        // Check if enemy is engaged with someone else (m_Enemy is public member)
+        const EnemyInfo* enemy = perception.GetClosestEnemy();
+        if (enemy && enemy->entity) {
+            Sentient* enemyTarget = enemy->entity->m_Enemy;
+            rawValue = (enemyTarget != bot) ? 1.0f : 0.0f;
         }
     }
     else if (consideration.name == "flank_path_available") {
-        // Check if flank route exists
-        if (perception.closestEnemy) {
-            Vector flankPos = CalculateFlankPosition(bot->origin, perception.closestEnemy->position);
-            rawValue = bot->PathExists(flankPos) ? 1.0f : 0.0f;
+        // Check if flank route exists (requires helper function)
+        const EnemyInfo* enemy = perception.GetClosestEnemy();
+        if (enemy && enemy->entity) {
+            Vector flankPos = BT::Combat::CalculateFlankPosition(bot->origin, enemy->position);
+            rawValue = BT::Combat::PathExistsTo(bot, flankPos) ? 1.0f : 0.0f;
         }
     }
     else if (consideration.name == "personality_creativity") {
-        rawValue = profile->GetPersonalityTrait("creativity");
+        rawValue = profile->GetCreativity();
     }
     
     // Apply curve to transform raw value
@@ -702,8 +719,12 @@ public:
 ```
 code/fgame/utility_evaluator.h           # UtilityEvaluator class
 code/fgame/utility_evaluator.cpp         # Implementation
-code/fgame/utility_helpers.cpp           # Helper functions
-code/fgame/utility_helpers.h             # CalculateFlankPosition, etc.
+code/fgame/utility_curves.h              # Curve type enum and functions
+code/fgame/utility_curves.cpp            # Curve implementations
+code/fgame/utility_considerations.h      # Consideration extraction functions
+code/fgame/utility_considerations.cpp    # Consideration extractors
+code/fgame/bt_combat_helpers.h           # Combat helper functions (CalculateFlankPosition, etc.)
+code/fgame/bt_combat_helpers.cpp         # Combat helper implementations
 utility/bot_utility.yaml                 # Utility configuration
 behaviors/combat_aggressive.btree        # Aggressive combat variant
 behaviors/combat_defensive.btree         # Defensive combat variant
@@ -717,11 +738,12 @@ tests/integration_test_utility.cpp       # Integration tests
 
 ### Modified Files
 ```
-code/fgame/playerbot.h                # Add UtilityEvaluator member
-code/fgame/playerbot.cpp              # Integrate utility AI
-code/fgame/bot_profile.h              # Add personality trait getters
-code/fgame/bot_profile.cpp            # Implement trait getters
-profiles/*.yaml                       # Add personality traits
+code/fgame/playerbot.h                # Add UtilityEvaluator member, strategy switching
+code/fgame/playerbot.cpp              # Integrate utility AI, GetBotController helper
+code/fgame/bt_blackboard_keys.h       # Add utility-related blackboard keys
+code/fgame/bot_profile.h              # Personality trait accessors (already exist)
+code/fgame/bot_profile.cpp            # No changes needed (traits already implemented)
+code/fgame/CMakeLists.txt             # Add new source files to build
 ```
 
 ---

@@ -32,8 +32,8 @@ qboolean G_ProcessClientCommand(gentity_t *ent);
 
 //===============
 // Added in OPM
-void G_CreateMaster(const char* prefix, class Listener* master);
-Listener* G_FindMaster(const char* command);
+void      G_CreateMaster(const char *prefix, class Listener *master);
+Listener *G_FindMaster(const char *command);
 //===============
 
 void     G_Say(gentity_t *ent, qboolean team, qboolean arg0);
@@ -52,9 +52,9 @@ qboolean G_ClassTreeCmd(gentity_t *ent);
 qboolean G_ShowVarCmd(gentity_t *ent);
 qboolean G_RestartCmd(gentity_t *ent);
 qboolean G_LevelVarsCmd(gentity_t *ent);
-qboolean G_GameVarsCmd(gentity_t* ent);
-qboolean G_ScriptCmd(gentity_t* ent);
-qboolean G_ReloadMap(gentity_t* ent);
+qboolean G_GameVarsCmd(gentity_t *ent);
+qboolean G_ScriptCmd(gentity_t *ent);
+qboolean G_ReloadMap(gentity_t *ent);
 qboolean G_CompileScript(gentity_t *ent);
 qboolean G_AddBotCommand(gentity_t *ent);
 qboolean G_AddBotNamedCommand(gentity_t *ent);
@@ -68,6 +68,10 @@ qboolean G_BotCommand(gentity_t *ent);
 qboolean G_BotDebugInfoCmd(gentity_t *ent);
 qboolean G_BotForceStateCmd(gentity_t *ent);
 qboolean G_BotShowPerceptionCmd(gentity_t *ent);
+
+// Added in OPM - Phase 3 Task 3.4 Commit 6
+//  Utility AI debug commands
+qboolean G_BotUtilityScoresCmd(gentity_t *ent);
 
 // Added in OPM - Phase 2B Task 2B.2
 //  Behavior tree YAML loading console commands

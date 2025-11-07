@@ -30,6 +30,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // Added in OPM - Phase 3 Task 3.1f
 //  Include blackboard keys for combat tree assembly
 #include "bt_blackboard_keys.h"
+// Added in OPM - Phase 3 Task 3.4 Commit 5 Fix
+//  Include perception for minimal snapshot creation
+#include "perception.h"
 
 // We assume that we have limited access to the server-side
 // and that most logic come from the playerstate_s structure
@@ -113,7 +116,11 @@ void BotController::LoadProfile(const char *profileName)
     // Load profile
     profile = BotProfile::LoadFromFile(profilePath);
     if (!profile) {
-        gi.Printf("ERROR: Failed to load profile '%s' for bot %d, using default\n", profileName, controlledEnt ? controlledEnt->entnum : -1);
+        gi.Printf(
+            "ERROR: Failed to load profile '%s' for bot %d, using default\n",
+            profileName,
+            controlledEnt ? controlledEnt->entnum : -1
+        );
         // Try to load default balanced profile
         profile = BotProfile::LoadFromFile("profiles/balanced.yaml");
         if (!profile) {
@@ -124,17 +131,30 @@ void BotController::LoadProfile(const char *profileName)
 
     // Load behavior tree if BT system is enabled
     if (g_bot_use_new_ai_system->integer) {
-        const std::string &treeName = profile->GetBehaviorTree();
+        const std::string& treeName = profile->GetBehaviorTree();
         char               treePath[256];
         Com_sprintf(treePath, sizeof(treePath), "behaviors/%s.yaml", treeName.c_str());
 
         behaviorTree = BTYamlLoader::LoadFromFile(treePath);
         if (!behaviorTree) {
-            gi.Printf("ERROR: Failed to load behavior tree '%s' for bot %d\n", treeName.c_str(), controlledEnt ? controlledEnt->entnum : -1);
+            gi.Printf(
+                "ERROR: Failed to load behavior tree '%s' for bot %d\n",
+                treeName.c_str(),
+                controlledEnt ? controlledEnt->entnum : -1
+            );
         } else {
-            gi.DPrintf("Bot %d loaded profile '%s' with tree '%s'\n", controlledEnt ? controlledEnt->entnum : -1, profileName, treeName.c_str());
+            gi.DPrintf(
+                "Bot %d loaded profile '%s' with tree '%s'\n",
+                controlledEnt ? controlledEnt->entnum : -1,
+                profileName,
+                treeName.c_str()
+            );
         }
     }
+
+    // Added in OPM - Phase 3 Task 3.4 Commit 5
+    //  Load utility AI configuration
+    utilityEvaluator.LoadFromFile("utility/bot_utility.yaml");
 }
 
 // Added in OPM - Phase 2B Task 2B.4
@@ -146,7 +166,7 @@ void BotController::ReloadProfile()
         return;
     }
 
-    const std::string &profileName = profile->GetName();
+    const std::string& profileName = profile->GetName();
     LoadProfile(profileName.c_str());
 }
 
@@ -161,24 +181,37 @@ void BotController::PopulateBlackboard()
     blackboard.Set<Player *>(BlackboardKeys::PLAYER, static_cast<Player *>(controlledEnt.Pointer()));
     blackboard.Set<BotProfile *>(BlackboardKeys::PROFILE, profile.get());
 
-    // TODO: Add PerceptionSystem integration in future task
-    //  For now, perception snapshot will be created on-demand by actions
-    //  or we'll use legacy enemy tracking from m_pEnemy
-    // PerceptionSnapshot *snapshot = &perceptionSystem.GetSnapshot();
-    // blackboard.Set<PerceptionSnapshot *>(BlackboardKeys::PERCEPTION, snapshot);
+    // Added in OPM - Phase 3 Task 3.4 Commit 5 Fix
+    //  Create minimal perception snapshot for utility AI
+    //  Full PerceptionSystem integration will be added in future task
+    static PerceptionSnapshot minimalPerception;
+    minimalPerception = PerceptionSnapshot(); // Reset
+
+    if (controlledEnt && m_pEnemy) {
+        // Populate with current enemy data
+        EnemyInfo enemy;
+        enemy.entity = m_pEnemy;
+        enemy.position = m_pEnemy->origin;
+        enemy.distance = (m_pEnemy->origin - controlledEnt->origin).length();
+        enemy.visibilityFactor = 1.0f; // Assume visible if we have them as enemy
+        minimalPerception.visibleEnemies.push_back(enemy);
+        minimalPerception.closestEnemyIndex = 0;
+    }
+
+    blackboard.Set<const PerceptionSnapshot *>(BlackboardKeys::PERCEPTION, &minimalPerception);
 
     // Health state
     if (controlledEnt) {
         blackboard.Set<float>("health", controlledEnt->health);
         blackboard.Set<float>("maxHealth", controlledEnt->max_health);
-        
+
         // Weapon and ammo state
         Weapon *weapon = controlledEnt->GetActiveWeapon(WEAPON_MAIN);
         if (weapon) {
             blackboard.Set<bool>("hasAmmo", weapon->HasAmmo(FIRE_PRIMARY) != qfalse);
             // Calculate ammo percent manually
-            int clipAmmo = controlledEnt->client->ps.stats[STAT_CLIPAMMO];
-            int clipSize = weapon->GetClipSize(FIRE_PRIMARY);
+            int   clipAmmo    = controlledEnt->client->ps.stats[STAT_CLIPAMMO];
+            int   clipSize    = weapon->GetClipSize(FIRE_PRIMARY);
             float ammoPercent = clipSize > 0 ? (float)clipAmmo / (float)clipSize : 0.0f;
             blackboard.Set<float>("ammoPercent", ammoPercent);
         }
@@ -187,7 +220,7 @@ void BotController::PopulateBlackboard()
     // Current enemy (for legacy compatibility with existing actions)
     if (m_pEnemy) {
         blackboard.Set<Sentient *>(BlackboardKeys::SELECTED_TARGET, static_cast<Sentient *>(m_pEnemy.Pointer()));
-        
+
         // Calculate distance to enemy
         if (controlledEnt && m_pEnemy) {
             float distance = (m_pEnemy->origin - controlledEnt->origin).length();
@@ -208,9 +241,9 @@ void BotController::ExecuteBehaviorTree(float deltaTime)
 
     // Debug output
     if (g_bot_debug->integer && controlledEnt && g_bot_debug->integer == controlledEnt->entnum) {
-        const char *statusStr = (status == BTNode::Status::SUCCESS)   ? "SUCCESS"
-                                : (status == BTNode::Status::FAILURE) ? "FAILURE"
-                                                                        : "RUNNING";
+        const char *statusStr = (status == BTNode::Status::SUCCESS) ? "SUCCESS"
+                              : (status == BTNode::Status::FAILURE) ? "FAILURE"
+                                                                    : "RUNNING";
         gi.Printf("Bot %d BT status: %s\n", controlledEnt->entnum, statusStr);
     }
 }
@@ -266,6 +299,15 @@ void BotController::Think()
             float deltaTime = level.frametime;
 
             PopulateBlackboard();
+
+            // Added in OPM - Phase 3 Task 3.4 Commit 5
+            //  Re-evaluate strategy every 0.5 seconds
+            strategyChangeTimer += deltaTime;
+            if (strategyChangeTimer > 0.5f) {
+                EvaluateStrategy(deltaTime);
+                strategyChangeTimer = 0.0f;
+            }
+
             ExecuteBehaviorTree(deltaTime);
 
             movement.MoveThink(m_botCmd);
@@ -287,5 +329,76 @@ void BotController::Think()
     //  Draw debug visualization if enabled
     if (m_bShowPerception || m_bShowPath || m_bShowEnemy || m_bShowState) {
         DrawDebugVisualization();
+    }
+}
+
+// Added in OPM - Phase 3 Task 3.4 Commit 5
+//  Strategy evaluation for utility-based AI
+void BotController::EvaluateStrategy(float deltaTime)
+{
+    if (!profile || !behaviorTree) {
+        return;
+    }
+
+    // Get perception snapshot from blackboard
+    auto perceptionPtr = blackboard.TryGet<const PerceptionSnapshot *>(BlackboardKeys::PERCEPTION);
+    if (!perceptionPtr || !*perceptionPtr) {
+        return;
+    }
+
+    const PerceptionSnapshot *perception = *perceptionPtr;
+    Player                   *player     = getControlledEntity();
+
+    if (!player) {
+        return;
+    }
+
+    // Select best action using utility AI
+    auto bestAction = utilityEvaluator.SelectBestAction(*perception, player, profile.get());
+
+    // Apply hysteresis: require improvement threshold to switch strategies
+    float hysteresisThreshold = g_bot_utility_hysteresis->value;
+
+    if (bestAction.name != currentStrategy) {
+        // Require X% improvement to switch (prevents oscillation)
+        if (bestAction.score > lastStrategyScore * (1.0f + hysteresisThreshold)) {
+            SwitchStrategy(bestAction.name, bestAction.treeFile);
+            lastStrategyScore = bestAction.score;
+        }
+    } else {
+        // Update score for current strategy
+        lastStrategyScore = bestAction.score;
+    }
+
+    // Store all scores for debugging
+    auto allScores = utilityEvaluator.ScoreAllActions(*perception, player, profile.get());
+    blackboard.Set(
+        BlackboardKeys::UTILITY_SCORES, std::make_shared<std::vector<UtilityEvaluator::ScoredAction>>(allScores)
+    );
+}
+
+// Added in OPM - Phase 3 Task 3.4 Commit 5
+//  Switch to a new behavior tree strategy
+void BotController::SwitchStrategy(const std::string& strategyName, const std::string& treeFile)
+{
+    currentStrategy = strategyName;
+
+    // Load new behavior tree
+    auto newTree = BTYamlLoader::LoadFromFile(treeFile.c_str());
+    if (newTree) {
+        behaviorTree = std::move(newTree);
+        behaviorTree->Reset();
+
+        if (g_bot_debug && g_bot_debug->integer) {
+            Player *player = getControlledEntity();
+            if (player) {
+                gi.DPrintf(
+                    "Bot %d switching to strategy: %s (score: %.2f)\n",
+                    player->entnum,
+                    strategyName.c_str(),
+                    lastStrategyScore
+                );
+            }
+        }
     }
 }

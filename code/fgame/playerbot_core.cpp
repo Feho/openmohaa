@@ -88,6 +88,12 @@ BotController::BotController()
     m_bShowPath       = false;
     m_bShowEnemy      = false;
     m_bShowState      = false;
+
+    // Added in OPM - Phase 3 Task 3.4 Commit 5
+    //  Initialize utility AI system
+    currentStrategy       = "";
+    strategyChangeTimer   = 0.0f;
+    lastStrategyScore     = 0.0f;
 }
 
 BotController::~BotController()

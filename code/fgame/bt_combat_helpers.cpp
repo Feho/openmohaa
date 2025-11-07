@@ -189,5 +189,62 @@ bool HasAlliesNearPosition(Vector position, float safetyRadius, PerceptionSnapsh
     return false;
 }
 
+// Added in OPM - Phase 3 Task 3.4
+//  Calculate flanking position using perpendicular vector method
+//  Based on logic from playerbot_squad.cpp ExecuteFlankingManeuver()
+Vector CalculateFlankPosition(const Vector& botPos, const Vector& enemyPos, float radius)
+{
+    // Calculate vector from bot to enemy
+    Vector toEnemy = enemyPos - botPos;
+    toEnemy[2] = 0; // Ignore vertical component for flanking
+    toEnemy.normalize();
+
+    // Create perpendicular vectors (90 degrees left and right)
+    // Rotate 2D vector: (x, y) → (-y, x) for left, (y, -x) for right
+    Vector flankLeft(-toEnemy[1], toEnemy[0], 0);
+    Vector flankRight(toEnemy[1], -toEnemy[0], 0);
+
+    // Calculate both flank positions
+    Vector leftFlank  = enemyPos + (flankLeft * radius);
+    Vector rightFlank = enemyPos + (flankRight * radius);
+
+    // Choose side closer to bot's current position
+    // This provides more natural flanking behavior
+    float leftDistSq  = (leftFlank - botPos).lengthSquared();
+    float rightDistSq = (rightFlank - botPos).lengthSquared();
+
+    return (leftDistSq <= rightDistSq) ? leftFlank : rightFlank;
+}
+
+// Added in OPM - Phase 3 Task 3.4
+//  Test if navigation path exists using pathfinding system
+bool PathExistsTo(const Player* bot, const Vector& targetPos)
+{
+    if (!bot) {
+        return false;
+    }
+
+    // Create temporary pather for test
+    IPather* testPather = IPather::CreatePather();
+    if (!testPather) {
+        return false;
+    }
+
+    // Set up path search parameters
+    PathSearchParameter params;
+    params.leashHome = bot->origin;
+    params.leashDist = 0.0f; // No leash for test
+    params.fallHeight = 400; // Standard fall height
+    params.entity = const_cast<Player*>(bot);
+
+    // Test path existence
+    bool pathExists = testPather->TestPath(bot->origin, targetPos, params);
+
+    // Clean up
+    delete testPather;
+
+    return pathExists;
+}
+
 } // namespace Combat
 } // namespace BT

@@ -47,6 +47,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "behavior_tree.h"
 #include "bot_profile.h"
 
+// Added in OPM - Phase 3 Task 3.4 Commit 5
+//  Include utility AI system for strategy selection
+#include "utility_evaluator.h"
+
 #define MAX_BOT_FUNCTIONS 5
 
 // Added in OPM
@@ -573,6 +577,11 @@ private:
     void PopulateBlackboard(void);
     void ExecuteBehaviorTree(float deltaTime);
 
+    // Added in OPM - Phase 3 Task 3.4 Commit 5
+    //  Utility AI strategy evaluation
+    void EvaluateStrategy(float deltaTime);
+    void SwitchStrategy(const std::string& strategyName, const std::string& treeFile);
+
     static void InitState_Grenade(botfunc_t *func);
     bool        CheckCondition_Grenade(void);
     void        State_Grenade(void);
@@ -756,6 +765,18 @@ public:
     bool m_bShowEnemy;
     bool m_bShowState;
 
+    // Added in OPM - Phase 3 Task 3.4 Commit 3
+    //  Public accessors for utility AI system
+
+    /**
+     * @brief Check if given position provides cover from enemy position
+     *
+     * @param pos Position to check for cover
+     * @param enemyPos Enemy position to check cover against
+     * @return true if position is in cover from enemy
+     */
+    bool CheckCover(Vector pos, Vector enemyPos) { return IsInCover(pos, enemyPos); }
+
 public:
     /**
      * @brief Set the player entity controlled by this bot
@@ -775,6 +796,10 @@ public:
     //  Public access for behavior tree actions
     Container<PathNode *> m_patrolRoute; // Waypoints for patrol behavior
 
+    // Added in OPM - Phase 3 Task 3.4 Commit 6
+    //  Public accessors for utility AI debug command
+    const std::string& GetCurrentStrategy() const { return currentStrategy; }
+
 private:
     SafePtr<Player> controlledEnt;
 
@@ -783,6 +808,13 @@ private:
     std::unique_ptr<BotProfile>   profile;      // Bot personality profile
     std::unique_ptr<BehaviorTree> behaviorTree; // Current behavior tree
     Blackboard                    blackboard;   // Shared data for BT nodes
+
+    // Added in OPM - Phase 3 Task 3.4 Commit 5
+    //  Utility AI system integration
+    UtilityEvaluator utilityEvaluator;    // Utility-based action selection
+    std::string      currentStrategy;     // Currently selected strategy name
+    float            strategyChangeTimer; // Time until next strategy evaluation
+    float            lastStrategyScore;   // Score of current strategy (for hysteresis)
 };
 
 class BotControllerManager : public Listener

@@ -40,6 +40,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "bt_yaml_loader.h"
 #include "bt_action_registry.h"
 #include "bt_manager.h"
+// Added in OPM - Phase 3 Task 3.4 Commit 6
+//  Include blackboard keys and utility evaluator for utility scores command
+#include "bt_blackboard_keys.h"
+#include "utility_evaluator.h"
 
 typedef struct {
     const char *command;
@@ -68,52 +72,53 @@ qboolean G_BotReloadProfilesCmd(gentity_t *ent);
 
 consolecmd_t G_ConsoleCmds[] = {
     //   command name       function             available in multiplayer?
-    {"say",             G_SayCmd,             qtrue },
-    {"eventlist",       G_EventListCmd,       qfalse},
-    {"pendingevents",   G_PendingEventsCmd,   qfalse},
-    {"eventhelp",       G_EventHelpCmd,       qfalse},
-    {"dumpevents",      G_DumpEventsCmd,      qfalse},
-    {"classevents",     G_ClassEventsCmd,     qfalse},
-    {"dumpclassevents", G_DumpClassEventsCmd, qfalse},
-    {"dumpallclasses",  G_DumpAllClassesCmd,  qtrue },
-    {"classlist",       G_ClassListCmd,       qfalse},
-    {"classtree",       G_ClassTreeCmd,       qfalse},
-    {"cam",             G_CameraCmd,          qfalse},
-    {"snd",             G_SoundCmd,           qfalse},
-    {"showvar",         G_ShowVarCmd,         qfalse},
-    {"levelvars",       G_LevelVarsCmd,       qfalse},
-    {"gamevars",        G_GameVarsCmd,        qfalse},
-    {"script",          G_ScriptCmd,          qfalse},
+    {"say",                 G_SayCmd,               qtrue },
+    {"eventlist",           G_EventListCmd,         qfalse},
+    {"pendingevents",       G_PendingEventsCmd,     qfalse},
+    {"eventhelp",           G_EventHelpCmd,         qfalse},
+    {"dumpevents",          G_DumpEventsCmd,        qfalse},
+    {"classevents",         G_ClassEventsCmd,       qfalse},
+    {"dumpclassevents",     G_DumpClassEventsCmd,   qfalse},
+    {"dumpallclasses",      G_DumpAllClassesCmd,    qtrue },
+    {"classlist",           G_ClassListCmd,         qfalse},
+    {"classtree",           G_ClassTreeCmd,         qfalse},
+    {"cam",                 G_CameraCmd,            qfalse},
+    {"snd",                 G_SoundCmd,             qfalse},
+    {"showvar",             G_ShowVarCmd,           qfalse},
+    {"levelvars",           G_LevelVarsCmd,         qfalse},
+    {"gamevars",            G_GameVarsCmd,          qfalse},
+    {"script",              G_ScriptCmd,            qfalse},
     // Added in 2.0
-    {"reloadmap",       G_ReloadMap,          qfalse},
+    {"reloadmap",           G_ReloadMap,            qfalse},
     // Added in OPM
     //====
-    {"compilescript",       G_CompileScript,         qfalse},
-    {"addbot",              G_AddBotCommand,         qfalse},
-    {"addbotnamed",         G_AddBotNamedCommand,    qfalse},
-    {"removebot",           G_RemoveBotCommand,      qfalse},
-    {"bot_debug_info",      G_BotDebugInfoCmd,       qfalse},
-    {"bot_force_state",     G_BotForceStateCmd,      qfalse},
-    {"bot_show_perception", G_BotShowPerceptionCmd,  qfalse},
+    {"compilescript",       G_CompileScript,        qfalse},
+    {"addbot",              G_AddBotCommand,        qfalse},
+    {"addbotnamed",         G_AddBotNamedCommand,   qfalse},
+    {"removebot",           G_RemoveBotCommand,     qfalse},
+    {"bot_debug_info",      G_BotDebugInfoCmd,      qfalse},
+    {"bot_force_state",     G_BotForceStateCmd,     qfalse},
+    {"bot_show_perception", G_BotShowPerceptionCmd, qfalse},
+    {"bot_utility_scores",  G_BotUtilityScoresCmd,  qfalse},
 #ifdef _DEBUG
-    {"bot",                 G_BotCommand,            qfalse},
+    {"bot",                 G_BotCommand,           qfalse},
 #endif
     // Added in OPM - Phase 2B Task 2B.4
     //  Bot profile management commands
-    {"bot_setprofile",      G_BotSetProfileCmd,      qfalse},
-    {"bot_listprofiles",    G_BotListProfilesCmd,    qfalse},
-    {"bot_blackboard",      G_BotBlackboardCmd,      qfalse},
-    {"bot_reload_profiles", G_BotReloadProfilesCmd,  qfalse},
+    {"bot_setprofile",      G_BotSetProfileCmd,     qfalse},
+    {"bot_listprofiles",    G_BotListProfilesCmd,   qfalse},
+    {"bot_blackboard",      G_BotBlackboardCmd,     qfalse},
+    {"bot_reload_profiles", G_BotReloadProfilesCmd, qfalse},
     // Added in OPM - Phase 2B Task 2B.2
     //  Behavior tree YAML loading commands
-    {"bt_load",             G_BT_LoadCmd,            qfalse},
-    {"bt_reload",           G_BT_ReloadCmd,          qfalse},
-    {"bt_unload",           G_BT_UnloadCmd,          qfalse},
-    {"bt_list",             G_BT_ListTreesCmd,       qfalse},
-    {"bt_list_actions",     G_BT_ListActionsCmd,     qfalse},
-    {"bt_list_conditions",  G_BT_ListConditionsCmd,  qfalse},
+    {"bt_load",             G_BT_LoadCmd,           qfalse},
+    {"bt_reload",           G_BT_ReloadCmd,         qfalse},
+    {"bt_unload",           G_BT_UnloadCmd,         qfalse},
+    {"bt_list",             G_BT_ListTreesCmd,      qfalse},
+    {"bt_list_actions",     G_BT_ListActionsCmd,    qfalse},
+    {"bt_list_conditions",  G_BT_ListConditionsCmd, qfalse},
     //====
-    {NULL,                  NULL,                    qfalse}
+    {NULL,                  NULL,                   qfalse}
 };
 
 Container<commandmaster_t> commandMasters;
@@ -697,8 +702,8 @@ qboolean G_AddBotNamedCommand(gentity_t *ent)
 {
     unsigned int numbots;
     unsigned int totalnumbots;
-    const char* name;
-    gentity_t *e;
+    const char  *name;
+    gentity_t   *e;
 
     if (gi.Argc() <= 1) {
         gi.Printf("Usage: addbotnamed [botname]\n");
@@ -929,6 +934,65 @@ qboolean G_BotShowPerceptionCmd(gentity_t *ent)
     return qtrue;
 }
 
+/*
+====================
+G_BotUtilityScoresCmd
+
+Display utility AI scores for all actions for a specific bot
+Usage: bot_utility_scores <botIndex>
+====================
+*/
+qboolean G_BotUtilityScoresCmd(gentity_t *ent)
+{
+    const Container<BotController *>& controllers = botManager.getControllerManager().getControllers();
+
+    if (controllers.NumObjects() < 1) {
+        gi.Printf("No bots spawned\n");
+        return qfalse;
+    }
+
+    if (gi.Argc() < 2) {
+        gi.Printf("Usage: bot_utility_scores <botIndex>\n");
+        return qfalse;
+    }
+
+    int botIndex = atoi(gi.Argv(1));
+
+    // Validate bot index (Container uses 1-based indexing)
+    if (botIndex < 1 || botIndex > controllers.NumObjects()) {
+        gi.Printf("Invalid bot index %d (valid range: 1-%d)\n", botIndex, controllers.NumObjects());
+        return qfalse;
+    }
+
+    // Get the controller
+    BotController *bot = controllers.ObjectAt(botIndex);
+    if (!bot) {
+        gi.Printf("Failed to get bot %d controller\n", botIndex);
+        return qfalse;
+    }
+
+    // Get utility scores from blackboard
+    auto scores = bot->GetBlackboard().TryGet<std::shared_ptr<std::vector<UtilityEvaluator::ScoredAction>>>(
+        BlackboardKeys::UTILITY_SCORES
+    );
+
+    if (!scores || !(*scores)) {
+        gi.Printf("No utility scores available for bot %d\n", botIndex);
+        return qfalse;
+    }
+
+    gi.Printf("=== Utility Scores for Bot %d ===\n", botIndex);
+    gi.Printf("Current Strategy: %s\n", bot->GetCurrentStrategy().c_str());
+    gi.Printf("\nAction Scores:\n");
+
+    for (const auto& action : **scores) {
+        const char *marker = (action.name == bot->GetCurrentStrategy()) ? " [ACTIVE]" : "";
+        gi.Printf("  %-12s: %.3f%s\n", action.name.c_str(), action.score, marker);
+    }
+
+    return qtrue;
+}
+
 // Added in OPM - Phase 2B Task 2B.2
 //  Console commands for behavior tree YAML loading
 qboolean G_BT_LoadCmd(gentity_t *ent)
@@ -1009,7 +1073,7 @@ qboolean G_BT_ListActionsCmd(gentity_t *ent)
     auto actions = BTActionRegistry::Instance().GetActionNames();
 
     gi.Printf("=== Registered BT Actions (%d) ===\n", static_cast<int>(actions.size()));
-    for (const auto &name : actions) {
+    for (const auto& name : actions) {
         gi.Printf("  - %s\n", name.c_str());
     }
 
@@ -1021,7 +1085,7 @@ qboolean G_BT_ListConditionsCmd(gentity_t *ent)
     auto conditions = BTActionRegistry::Instance().GetConditionNames();
 
     gi.Printf("=== Registered BT Conditions (%d) ===\n", static_cast<int>(conditions.size()));
-    for (const auto &name : conditions) {
+    for (const auto& name : conditions) {
         gi.Printf("  - %s\n", name.c_str());
     }
 
@@ -1038,7 +1102,7 @@ qboolean G_BT_ListTreesCmd(gentity_t *ent)
     if (treeNames.empty()) {
         gi.Printf("  (none loaded - use 'bt_load' to load trees)\n");
     } else {
-        for (const auto &name : treeNames) {
+        for (const auto& name : treeNames) {
             gi.Printf("  - %s\n", name.c_str());
         }
     }
@@ -1182,7 +1246,7 @@ qboolean G_BotBlackboardCmd(gentity_t *ent)
     }
 
     // Get blackboard reference
-    Blackboard &bb = bot->GetBlackboard();
+    Blackboard& bb = bot->GetBlackboard();
 
     gi.Printf("=== Bot %d Blackboard ===\n", botIndex);
 
