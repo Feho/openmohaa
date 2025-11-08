@@ -39,6 +39,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 extern cvar_t *bot_manualmove;
 
+// Added in OPM - Phase 3 Task 3.4 Fix
+//  Static members for shared utility evaluator
+UtilityEvaluator *BotController::s_sharedUtilityEvaluator = nullptr;
+bool              BotController::s_utilityConfigLoaded    = false;
+
 void BotController::UpdateBotStates(void)
 {
     if (bot_manualmove->integer) {
@@ -153,8 +158,20 @@ void BotController::LoadProfile(const char *profileName)
     }
 
     // Added in OPM - Phase 3 Task 3.4 Commit 5
-    //  Load utility AI configuration
-    utilityEvaluator.LoadFromFile("utility/bot_utility.yaml");
+    //  Load utility AI configuration once globally
+    // Changed in OPM
+    //  Moved to shared static evaluator to avoid redundant YAML parsing
+    if (!s_utilityConfigLoaded) {
+        if (!s_sharedUtilityEvaluator) {
+            s_sharedUtilityEvaluator = new UtilityEvaluator();
+        }
+        s_sharedUtilityEvaluator->LoadFromFile("utility/bot_utility.yaml");
+        s_utilityConfigLoaded = true;
+        gi.DPrintf("Loaded shared utility AI configuration\n");
+    }
+
+    // Reference the shared evaluator (no copying)
+    utilityEvaluator = s_sharedUtilityEvaluator;
 }
 
 // Added in OPM - Phase 2B Task 2B.4
@@ -190,9 +207,9 @@ void BotController::PopulateBlackboard()
     if (controlledEnt && m_pEnemy) {
         // Populate with current enemy data
         EnemyInfo enemy;
-        enemy.entity = m_pEnemy;
-        enemy.position = m_pEnemy->origin;
-        enemy.distance = (m_pEnemy->origin - controlledEnt->origin).length();
+        enemy.entity           = m_pEnemy;
+        enemy.position         = m_pEnemy->origin;
+        enemy.distance         = (m_pEnemy->origin - controlledEnt->origin).length();
         enemy.visibilityFactor = 1.0f; // Assume visible if we have them as enemy
         minimalPerception.visibleEnemies.push_back(enemy);
         minimalPerception.closestEnemyIndex = 0;
@@ -354,7 +371,7 @@ void BotController::EvaluateStrategy(float deltaTime)
     }
 
     // Select best action using utility AI
-    auto bestAction = utilityEvaluator.SelectBestAction(*perception, player, profile.get());
+    auto bestAction = utilityEvaluator->SelectBestAction(*perception, player, profile.get());
 
     // Apply hysteresis: require improvement threshold to switch strategies
     float hysteresisThreshold = g_bot_utility_hysteresis->value;
@@ -371,10 +388,8 @@ void BotController::EvaluateStrategy(float deltaTime)
     }
 
     // Store all scores for debugging
-    auto allScores = utilityEvaluator.ScoreAllActions(*perception, player, profile.get());
-    blackboard.Set(
-        BlackboardKeys::UTILITY_SCORES, std::make_shared<std::vector<UtilityEvaluator::ScoredAction>>(allScores)
-    );
+    auto allScores = utilityEvaluator->ScoreAllActions(*perception, player, profile.get());
+    blackboard.Set(BlackboardKeys::UTILITY_SCORES, allScores);
 }
 
 // Added in OPM - Phase 3 Task 3.4 Commit 5

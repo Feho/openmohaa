@@ -44,34 +44,26 @@ public:
     ~UtilityEvaluator();
 
     // Main API
-    ScoredAction SelectBestAction(
-        const PerceptionSnapshot& perception,
-        const Player* bot,
-        const BotProfile* profile
-    );
+    ScoredAction SelectBestAction(const PerceptionSnapshot& perception, const Player *bot, const BotProfile *profile);
 
-    std::vector<ScoredAction> ScoreAllActions(
-        const PerceptionSnapshot& perception,
-        const Player* bot,
-        const BotProfile* profile
-    );
+    // Changed in OPM
+    //  Return shared_ptr to avoid unnecessary copy
+    std::shared_ptr<std::vector<ScoredAction>>
+    ScoreAllActions(const PerceptionSnapshot& perception, const Player *bot, const BotProfile *profile);
 
-    void LoadFromFile(const char* filename);
+    void LoadFromFile(const char *filename);
 
 private:
     std::vector<ActionConfig> actions;
 
     float ScoreAction(
-        const ActionConfig& action,
-        const PerceptionSnapshot& perception,
-        const Player* bot,
-        const BotProfile* profile
+        const ActionConfig& action, const PerceptionSnapshot& perception, const Player *bot, const BotProfile *profile
     );
 
     float EvaluateConsideration(
-        const Consideration& consideration,
+        const Consideration&      consideration,
         const PerceptionSnapshot& perception,
-        const Player* bot,
-        const BotProfile* profile
+        const Player             *bot,
+        const BotProfile         *profile
     );
 };

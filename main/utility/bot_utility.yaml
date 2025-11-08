@@ -31,6 +31,13 @@ actions:
         min: 0.0
         max: 1.0
 
+      - name: "UnderFire"
+        curve: "exponential"
+        weight: 1.8
+        exponent: 2.0
+        min: 0.0
+        max: 1.0
+
   - name: "Defend"
     tree_file: "behaviors/combat.yaml"
     considerations:
@@ -86,11 +93,10 @@ actions:
     tree_file: "behaviors/investigation.yaml"
     considerations:
       - name: "EnemyCount"
-        curve: "threshold"
+        curve: "inverse_linear"
         weight: 2.0
-        threshold: 0.1
         min: 0.0
-        max: 0.0
+        max: 5.0
 
       - name: "Health"
         curve: "exponential"
@@ -102,6 +108,13 @@ actions:
       - name: "Creativity"
         curve: "linear"
         weight: 1.2
+        min: 0.0
+        max: 1.0
+
+      - name: "RecentGunfire"
+        curve: "exponential"
+        weight: 2.5
+        exponent: 2.0
         min: 0.0
         max: 1.0
 

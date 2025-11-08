@@ -30,32 +30,34 @@ UtilityEvaluator::ScoredAction
 UtilityEvaluator::SelectBestAction(const PerceptionSnapshot& perception, const Player *bot, const BotProfile *profile)
 {
     // Score all actions and find the best one
-    std::vector<ScoredAction> scoredActions = ScoreAllActions(perception, bot, profile);
+    auto scoredActions = ScoreAllActions(perception, bot, profile);
 
-    if (scoredActions.empty()) {
+    if (scoredActions->empty()) {
         // Fallback to idle if no actions configured
         return {"idle", 0.0f, "behaviors/idle.yaml"};
     }
 
     // Find action with highest score
     auto bestAction = std::max_element(
-        scoredActions.begin(),
-        scoredActions.end(),
+        scoredActions->begin(),
+        scoredActions->end(),
         [](const ScoredAction& a, const ScoredAction& b) { return a.score < b.score; }
     );
 
     return *bestAction;
 }
 
-std::vector<UtilityEvaluator::ScoredAction>
+// Changed in OPM
+//  Return shared_ptr to avoid unnecessary copy
+std::shared_ptr<std::vector<UtilityEvaluator::ScoredAction>>
 UtilityEvaluator::ScoreAllActions(const PerceptionSnapshot& perception, const Player *bot, const BotProfile *profile)
 {
-    std::vector<ScoredAction> scoredActions;
-    scoredActions.reserve(actions.size());
+    auto scoredActions = std::make_shared<std::vector<ScoredAction>>();
+    scoredActions->reserve(actions.size());
 
     for (const ActionConfig& action : actions) {
         float score = ScoreAction(action, perception, bot, profile);
-        scoredActions.push_back({action.name, score, action.treeFile});
+        scoredActions->push_back({action.name, score, action.treeFile});
     }
 
     return scoredActions;
@@ -67,18 +69,25 @@ void UtilityEvaluator::LoadFromFile(const char *filename)
     //  Load utility AI configuration from YAML file
 
     try {
-        // Load YAML file using game filesystem
+        // Fixed in OPM
+        //  Added null termination and RAII for exception safety
         void *buffer = nullptr;
         long  length = gi.FS_ReadFile(filename, &buffer, qfalse);
 
-        if (length < 0 || !buffer) {
+        if (length <= 0 || !buffer) {
             gi.Printf("ERROR: Could not read utility config file: %s\n", filename);
+            if (buffer) {
+                gi.FS_FreeFile(buffer);
+            }
             return;
         }
 
-        // Parse YAML from buffer
-        YAML::Node root = YAML::Load(static_cast<const char *>(buffer));
+        // Create string from buffer to ensure null termination
+        std::string yaml_content(static_cast<const char *>(buffer), static_cast<size_t>(length));
         gi.FS_FreeFile(buffer);
+
+        // Parse YAML from string (exception-safe now)
+        YAML::Node root = YAML::Load(yaml_content);
 
         // Validate root structure
         if (!root["actions"]) {
@@ -169,6 +178,19 @@ void UtilityEvaluator::LoadFromFile(const char *filename)
                         consideration.maxValue = considNode["max"].as<float>();
                     }
 
+                    // Fixed in OPM
+                    //  Validate min < max to prevent division by zero
+                    if (consideration.minValue >= consideration.maxValue) {
+                        gi.Printf(
+                            "WARNING: Consideration '%s' has invalid range [%.2f, %.2f], using [0.0, 1.0]\n",
+                            consideration.name.c_str(),
+                            consideration.minValue,
+                            consideration.maxValue
+                        );
+                        consideration.minValue = 0.0f;
+                        consideration.maxValue = 1.0f;
+                    }
+
                     action.considerations.push_back(consideration);
                 }
             }
@@ -218,6 +240,8 @@ float UtilityEvaluator::ScoreAction(
         validConsiderations++;
     }
 
+    // Fixed in OPM
+    //  Check for zero considerations to prevent division by zero
     if (validConsiderations == 0) {
         return 0.0f;
     }

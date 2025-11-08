@@ -811,10 +811,14 @@ private:
 
     // Added in OPM - Phase 3 Task 3.4 Commit 5
     //  Utility AI system integration
-    UtilityEvaluator utilityEvaluator;    // Utility-based action selection
-    std::string      currentStrategy;     // Currently selected strategy name
-    float            strategyChangeTimer; // Time until next strategy evaluation
-    float            lastStrategyScore;   // Score of current strategy (for hysteresis)
+    // Changed in OPM
+    //  Moved to shared static evaluator to avoid loading YAML for every bot
+    static UtilityEvaluator *s_sharedUtilityEvaluator; // Shared across all bots
+    static bool              s_utilityConfigLoaded;
+    UtilityEvaluator        *utilityEvaluator;    // Pointer to shared instance
+    std::string              currentStrategy;     // Currently selected strategy name
+    float                    strategyChangeTimer; // Time until next strategy evaluation
+    float                    lastStrategyScore;   // Score of current strategy (for hysteresis)
 };
 
 class BotControllerManager : public Listener

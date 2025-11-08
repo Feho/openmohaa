@@ -52,7 +52,7 @@ The project requires the following external libraries:
 - **OpenAL** - Audio
 - **Flex/Bison** - Script parser generation
 - **GoogleTest** 1.15.2+ - Unit testing (automatically fetched via CMake)
-- **yaml-cpp** 0.7.0+ - YAML configuration parsing for bot profiles and behavior trees (Phase 2+, automatically fetched via CMake)
+- **yaml-cpp** 0.7.0+ - YAML configuration parsing for bot profiles and behavior trees (automatically fetched via CMake)
 
 yaml-cpp is automatically fetched via CMake FetchContent. To use system yaml-cpp instead:
 ```bash
@@ -225,44 +225,181 @@ CLASS_DECLARATION(SimpleEntity, ExampleObject, "info_exampleobject")
 
 ### Overview
 
-OpenMoHAA includes an advanced bot AI system for single-player and multiplayer matches. The bot system is built on an event-driven architecture and includes:
+OpenMoHAA includes an advanced bot AI system for single-player and multiplayer matches. The bot system uses a modern, data-driven architecture built on behavior trees and utility AI:
 
-- **State-based behavior**: Attack, Investigate, Curious, Grenade, Idle states
-- **Squad coordination**: Bots can work in squads with shared targets
-- **Cover system**: Dynamic cover evaluation and usage
+- **Behavior Trees**: Hierarchical decision-making with selectors, sequences, and parallel nodes
+- **Utility AI**: Context-aware strategy selection based on health, ammo, enemies, and personality
+- **Perception System**: Vision, audio, and memory tracking for situational awareness
+- **Bot Profiles**: YAML-configured personality traits (aggression, caution, teamwork, creativity)
+- **Squad Coordination**: Bots can work in squads with shared targets and roles
+- **Cover System**: Dynamic cover evaluation and usage with tactical positioning
 - **Pathfinding**: Integration with Recast/Detour navigation
-- **Debug tools**: Console commands and visualization for development
+- **Debug Tools**: Console commands and visualization for development
 
 ### Architecture
 
 The bot system consists of:
+
+**Core Components:**
 - `BotController` - Main bot AI controller (in `code/fgame/playerbot.h`)
 - `BotMovement` - Movement and pathfinding logic
 - `BotRotation` - Aiming and rotation control
-- State implementations in `playerbot_*.cpp` files
+
+**Perception System**:
+- `PerceptionSystem` - Integrates vision, audio, and memory sensors
+- `VisionSensor` - Tracks visible enemies and allies with FOV and line-of-sight
+- `AudioSensor` - Processes sound events (gunfire, footsteps, etc.)
+- `MemorySystem` - Maintains enemy memories with confidence decay
+
+**Behavior Trees**:
+- `BehaviorTree` - Hierarchical decision tree execution
+- `BTNode` - Base class for all behavior tree nodes (Selector, Sequence, Parallel, Action, Condition)
+- `Blackboard` - Type-safe shared data storage for behavior tree nodes
+- `BTYamlLoader` - Loads behavior trees from YAML configuration files
+
+**Utility AI**:
+- `UtilityEvaluator` - Scores actions based on context and selects best strategy
+- `UtilityConsiderations` - Extracts game state (health, ammo, enemies, etc.)
+- Curve transformations (linear, exponential, inverse, threshold, logistic)
+- Configuration: `main/utility/bot_utility.yaml`
+
+**Bot Profiles**:
+- `BotProfile` - YAML-configured personality and behavior parameters
+- Personality traits: aggression, caution, teamwork, creativity
+- Combat parameters: fire discipline, burst timing, aim tolerance
+- Movement preferences: speed, crouch frequency, path deviation
+- Tactics: cover usage, retreat threshold, grenade frequency
+
+### Behavior Tree System
+
+Bots execute behavior trees loaded from YAML files:
+
+**Behavior Tree Structure:**
+```yaml
+tree:
+  name: "Combat"
+  root:
+    type: selector
+    children:
+      - type: sequence  # Emergency retreat
+        children:
+          - type: condition
+            check: "LowHealth"
+          - type: action
+            action: "Retreat"
+
+      - type: sequence  # Engage enemy
+        children:
+          - type: condition
+            check: "HasVisibleEnemy"
+          - type: action
+            action: "AttackEnemy"
+```
+
+**Available Actions** (in `code/fgame/bt_actions_*.cpp`):
+- Target selection, aiming, firing
+- Movement (strafe, advance, retreat, cover)
+- Weapon switching and reloading
+- Grenade throwing
+- Investigation and patrol
+
+**Available Conditions** (in `code/fgame/bt_conditions_*.cpp`):
+- Enemy checks (visible, in range, distracted)
+- Cover checks (in cover, cover nearby, cover compromised)
+- Weapon checks (ammo, optimal range, needs reload)
+- Tactical checks (outnumbered, low health, grenade opportunity)
+
+### Utility AI System
+
+Bots dynamically select strategies using utility-based scoring:
+
+**Available Strategies:**
+1. **Aggressive** - Push forward when healthy, well-armed, and supported
+2. **Defensive** - Hold position in cover when outnumbered or low on ammo
+3. **Retreat** - Fall back to safety when critically injured
+4. **Patrol** - Explore and search when no threats present
+5. **Investigate** - Search for lost enemies based on memory
+6. **Support** - Help allies in trouble (based on teamwork personality)
+
+**Strategy Selection:**
+- Evaluated every 0.5 seconds
+- Uses 13+ considerations (health, ammo, enemy proximity, cover, personality, etc.)
+- Hysteresis prevents rapid oscillation (default 30% improvement required to switch)
+- Console variable: `g_bot_utility_hysteresis` (range: 0.0-1.0)
+
+**Configuration:**
+- YAML file: `main/utility/bot_utility.yaml`
+- Each strategy has weighted considerations with curve transformations
+- Curve types: linear, exponential, inverse_linear, threshold, logistic
+- No recompilation needed for tuning
 
 ### Debug Commands
 
+**Bot Control:**
 - `bot_debug_info <botIndex>` - Print detailed bot state information
-- `bot_force_state <botIndex> <stateIndex>` - Force bot into specific state for testing
 - `bot_show_perception <botIndex>` - Toggle debug visualization (paths, enemies, perception)
 
-Bot indices are 1-based (first bot = 1, second bot = 2, etc.)
+**Utility AI:**
+- `bot_utility_scores <botIndex>` - Display all utility action scores and active strategy
 
-State indices for `bot_force_state`:
-- 0 = Attack state
-- 1 = Investigate state
-- 2 = Curious state
-- 3 = Grenade state (placeholder)
-- 4 = Idle state
+**Console Variables:**
+- `g_bot_use_new_ai_system` - Enable behavior tree and utility AI (0/1, default 1)
+- `g_bot_debug` - Enable debug output in console (0/1, default 0)
+- `g_bot_utility_hysteresis` - Strategy switch threshold (0.0-1.0, default 0.3)
+
+**Bot indices are 1-based** (first bot = 1, second bot = 2, etc.)
+
+### Configuration Files
+
+**Bot Profiles** (`profiles/*.yaml`):
+```yaml
+profile:
+  metadata:
+    name: "Aggressive Soldier"
+    difficulty: "hard"
+
+  personality:
+    aggression: 0.8
+    caution: 0.3
+    teamwork: 0.5
+    creativity: 0.6
+
+  combat:
+    preferredRange: 512.0
+    fireDiscipline: 0.7
+    ammoConservation: 0.4
+```
+
+**Behavior Trees** (`behaviors/*.yaml`):
+```yaml
+tree:
+  name: "Combat"
+  root:
+    type: selector
+    children: [...]
+```
+
+**Utility Configuration** (`main/utility/bot_utility.yaml`):
+```yaml
+utility:
+  - action:
+      name: "Aggressive"
+      tree: "behaviors/combat.yaml"
+      considerations:
+        - name: "health_factor"
+          curve: "linear"
+          weight: 0.3
+```
 
 ### Code Quality
 
 Bot code follows strict quality standards:
 - Zero compiler warnings (strict checking enabled)
 - Const-correctness enforced
-- Named constants (no magic numbers)
-- Formatted with clang-format
+- Named constants (no magic numbers) - see `BotConstants` namespace
+- Blackboard keys use `BlackboardKeys` namespace constants
+- All code formatted with clang-format
+- Comprehensive unit tests for movement, rotation, perception, and behavior trees
 
 See `code/fgame/playerbot.h` for `BotConstants` namespace with all configuration values.
 

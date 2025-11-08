@@ -751,7 +751,7 @@ void CVAR_Init(void)
 
     // Added in OPM - Phase 3 Task 3.4 Commit 5
     //  Utility AI hysteresis for strategy switching (default 0.3 = require 30% improvement)
-    g_bot_utility_hysteresis                   = gi.Cvar_Get("g_bot_utility_hysteresis", "0.3", 0);
+    g_bot_utility_hysteresis                   = gi.Cvar_Get("g_bot_utility_hysteresis", "0.5", 0);
 
     g_rankedserver               = gi.Cvar_Get("g_rankedserver", "0", 0);
     g_spectatefollow_firstperson = gi.Cvar_Get("g_spectatefollow_firstperson", "0", 0);
