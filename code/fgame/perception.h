@@ -24,13 +24,13 @@ enum ThreatLevel {
 // Changed in OPM - Phase 2 Task 2A.1.1 Code Review
 //  Fixed: Replaced raw pointer with SafePtr for entity safety
 struct EnemyInfo {
-    SafePtr<Sentient> entity;        // Pointer to enemy entity (auto-nullifies on destruction)
-    Vector            position;      // Current position
-    Vector            velocity;      // Current velocity
-    float             distance;      // Distance to bot
+    SafePtr<Sentient> entity;           // Pointer to enemy entity (auto-nullifies on destruction)
+    Vector            position;         // Current position
+    Vector            velocity;         // Current velocity
+    float             distance;         // Distance to bot
     float             visibilityFactor; // 0.0 (barely visible) - 1.0 (clear view)
     float             angleFromForward; // Degrees off center of view
-    bool              isInPeripheral; // True if in peripheral vision
+    bool              isInPeripheral;   // True if in peripheral vision
 
     EnemyInfo()
         : entity(nullptr)
@@ -40,11 +40,13 @@ struct EnemyInfo {
         , visibilityFactor(0.0f)
         , angleFromForward(0.0f)
         , isInPeripheral(false)
-    {
-    }
+    {}
 
     // Helper methods
-    bool IsVisible() const { return visibilityFactor > BotConstants::VISIBILITY_THRESHOLD; }
+    // Changed in OPM - Code review fixes
+    //  Use literal value to avoid include order dependency
+    bool IsVisible() const { return visibilityFactor > 0.1f; }
+
     bool IsInPeripheral() const { return isInPeripheral; }
 };
 
@@ -69,20 +71,19 @@ struct AllyInfo {
         , distance(0.0f)
         , angleFromForward(0.0f)
         , canSeeMe(false)
-    {
-    }
+    {}
 };
 
 // Added in OPM - Phase 2 Task 2A.1.1
 //  Audio event information for sound-based perception
 struct AudioEvent {
-    int    type;                // Event type (AI_EVENT_*)
-    Vector position;            // Position of sound source
-    Vector estimatedDirection;  // Estimated direction to source
-    float  loudness;            // 0.0 - 1.0
-    float  priority;            // 0.0 - 1.0 (importance)
-    float  timestamp;           // When event occurred
-    float  confidence;          // How confident about direction (0.0 - 1.0)
+    int    type;               // Event type (AI_EVENT_*)
+    Vector position;           // Position of sound source
+    Vector estimatedDirection; // Estimated direction to source
+    float  loudness;           // 0.0 - 1.0
+    float  priority;           // 0.0 - 1.0 (importance)
+    float  timestamp;          // When event occurred
+    float  confidence;         // How confident about direction (0.0 - 1.0)
 
     AudioEvent()
         : type(0)
@@ -92,8 +93,7 @@ struct AudioEvent {
         , priority(0.0f)
         , timestamp(0.0f)
         , confidence(0.0f)
-    {
-    }
+    {}
 };
 
 // Added in OPM - Phase 2 Task 2A.1.1
@@ -119,8 +119,7 @@ struct EnemyMemory {
         , confidenceLevel(0.0f)
         , timesSpotted(0)
         , investigationStarted(false)
-    {
-    }
+    {}
 };
 
 // Added in OPM - Phase 2 Task 2A.1.1
@@ -129,9 +128,9 @@ struct EnemyMemory {
 //  Fixed: Replaced optional pointers with indices to prevent dangling pointer bugs
 struct PerceptionSnapshot {
     // Enemies
-    std::vector<EnemyInfo>   visibleEnemies;         // Currently visible enemies
-    std::vector<EnemyMemory> knownEnemies;           // Enemies from memory
-    size_t                   closestEnemyIndex;      // Index to closest visible enemy (SIZE_MAX = none)
+    std::vector<EnemyInfo>   visibleEnemies;          // Currently visible enemies
+    std::vector<EnemyMemory> knownEnemies;            // Enemies from memory
+    size_t                   closestEnemyIndex;       // Index to closest visible enemy (SIZE_MAX = none)
     size_t                   mostDangerousEnemyIndex; // Index to most threatening enemy (SIZE_MAX = none)
 
     // Allies
@@ -153,14 +152,16 @@ struct PerceptionSnapshot {
         , closestAllyIndex(SIZE_MAX)
         , loudestSoundIndex(SIZE_MAX)
         , threatLevel(THREAT_NONE)
-    {
-    }
+    {}
 
     // Helper methods for vector membership
     bool HasVisibleEnemy() const { return !visibleEnemies.empty(); }
+
     bool HasKnownEnemy() const { return !knownEnemies.empty(); }
-    int  GetEnemyCount() const { return visibleEnemies.size(); }
-    int  GetTotalKnownEnemies() const { return visibleEnemies.size() + knownEnemies.size(); }
+
+    int GetEnemyCount() const { return visibleEnemies.size(); }
+
+    int GetTotalKnownEnemies() const { return visibleEnemies.size() + knownEnemies.size(); }
 
     // Safe accessors for optional indices
     EnemyInfo *GetClosestEnemy()
@@ -195,7 +196,10 @@ struct PerceptionSnapshot {
 
     // Added in OPM - Phase 2 Task 2A.1.7
     //  Accessor for closest ally
-    AllyInfo *GetClosestAlly() { return closestAllyIndex < visibleAllies.size() ? &visibleAllies[closestAllyIndex] : nullptr; }
+    AllyInfo *GetClosestAlly()
+    {
+        return closestAllyIndex < visibleAllies.size() ? &visibleAllies[closestAllyIndex] : nullptr;
+    }
 
     const AllyInfo *GetClosestAlly() const
     {
@@ -219,29 +223,33 @@ class MemorySystem;
 class PerceptionSystem
 {
 public:
-    PerceptionSystem() = default;
+    PerceptionSystem()  = default;
     ~PerceptionSystem() = default;
 
     // Delete copy operations (resource-owning class)
-    PerceptionSystem(const PerceptionSystem &)            = delete;
-    PerceptionSystem &operator=(const PerceptionSystem &) = delete;
+    PerceptionSystem(const PerceptionSystem&)            = delete;
+    PerceptionSystem& operator=(const PerceptionSystem&) = delete;
 
     // Default move operations
-    PerceptionSystem(PerceptionSystem &&)            = default;
-    PerceptionSystem &operator=(PerceptionSystem &&) = default;
+    PerceptionSystem(PerceptionSystem&&)            = default;
+    PerceptionSystem& operator=(PerceptionSystem&&) = default;
 
     // Main update method - returns snapshot of current perception state
     PerceptionSnapshot Update(Player *bot, float deltaTime);
 
     // Accessor methods for individual sensors
-    VisionSensor &GetVision() { return *visionSensor; }
-    AudioSensor  &GetHearing() { return *audioSensor; }
-    MemorySystem &GetMemory() { return *memory; }
+    VisionSensor& GetVision() { return *visionSensor; }
+
+    AudioSensor& GetHearing() { return *audioSensor; }
+
+    MemorySystem& GetMemory() { return *memory; }
 
     // Const overloads for accessors
-    const VisionSensor &GetVision() const { return *visionSensor; }
-    const AudioSensor  &GetHearing() const { return *audioSensor; }
-    const MemorySystem &GetMemory() const { return *memory; }
+    const VisionSensor& GetVision() const { return *visionSensor; }
+
+    const AudioSensor& GetHearing() const { return *audioSensor; }
+
+    const MemorySystem& GetMemory() const { return *memory; }
 
 private:
     std::unique_ptr<VisionSensor> visionSensor = std::make_unique<VisionSensor>();
@@ -277,10 +285,10 @@ private:
     // Added in OPM - Phase 2 Task 2A.1.7 Code Review
     //  Entity relationship classification for unified scanning logic
     enum class EntityRelation {
-        SELF,    // Sentient is the bot itself
-        ENEMY,   // Sentient is an enemy (different team or FFA)
-        ALLY,    // Sentient is an ally (same team, not FFA)
-        NEUTRAL  // Sentient is neither enemy nor ally (spectator, invalid team, etc.)
+        SELF,   // Sentient is the bot itself
+        ENEMY,  // Sentient is an enemy (different team or FFA)
+        ALLY,   // Sentient is an ally (same team, not FFA)
+        NEUTRAL // Sentient is neither enemy nor ally (spectator, invalid team, etc.)
     };
 
     // Added in OPM - Phase 2 Task 2A.1.7 Code Review
@@ -293,11 +301,11 @@ private:
     // Added in OPM - Phase 2 Task 2A.1.2
     //  Helper method to check if target is within field of view
     bool CheckFOV(
-        const Vector &botPos,
-        const Vector &botAngles,
-        const Vector &targetPos,
+        const Vector& botPos,
+        const Vector& botAngles,
+        const Vector& targetPos,
         float         fovDegrees,
-        float        &angleFromForward
+        float&        angleFromForward
     );
 
     // Added in OPM - Phase 2 Task 2A.1.2
@@ -318,7 +326,7 @@ public:
     ~AudioSensor();
 
     // Process audio events
-    void ProcessEvent(int eventType, const Vector &position, float loudness);
+    void ProcessEvent(int eventType, const Vector& position, float loudness);
 
     // Changed in OPM - Phase 2 Task 2A.1.4 Code Review
     //  Added const qualifiers to method signature and bot parameter
@@ -329,8 +337,10 @@ public:
     void CleanupOldEvents(float currentTime, float maxAge);
 
 #ifdef UNIT_TESTING
+
 public:
 #else
+
 private:
 #endif
     // Changed in OPM - Phase 2 Task 2A.1.4 Code Review
@@ -347,7 +357,7 @@ public:
     ~MemorySystem();
 
     // Update memory with newly seen enemy
-    void UpdateMemory(const EnemyInfo &enemyInfo, float currentTime);
+    void UpdateMemory(const EnemyInfo& enemyInfo, float currentTime);
 
     // Get all remembered enemies
     std::vector<EnemyMemory> GetKnownEnemies(float currentTime) const;

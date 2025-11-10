@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "g_local.h"
 #include "playerbot.h"
+#include "bot_debug_viz.h"
 
 cvar_t *bot_manualmove;
 
@@ -94,6 +95,10 @@ BotController::BotController()
     currentStrategy       = "";
     strategyChangeTimer   = 0.0f;
     lastStrategyScore     = 0.0f;
+
+    // Added in OPM - Phase 3 Task 3.5
+    //  Initialize debug visualization system
+    debugViz = std::make_unique<BotDebugViz>();
 }
 
 BotController::~BotController()

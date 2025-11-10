@@ -44,6 +44,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 //  Include blackboard keys and utility evaluator for utility scores command
 #include "bt_blackboard_keys.h"
 #include "utility_evaluator.h"
+// Added in OPM - Phase 3 Task 3.5
+//  Include debug visualization for bot_debug command
+#include "bot_debug_viz.h"
 
 typedef struct {
     const char *command;
@@ -69,6 +72,10 @@ qboolean G_BotSetProfileCmd(gentity_t *ent);
 qboolean G_BotListProfilesCmd(gentity_t *ent);
 qboolean G_BotBlackboardCmd(gentity_t *ent);
 qboolean G_BotReloadProfilesCmd(gentity_t *ent);
+
+// Added in OPM - Phase 3 Task 3.5
+//  Forward declaration for bot debug visualization command
+qboolean G_BotDebugCmd(gentity_t *ent);
 
 consolecmd_t G_ConsoleCmds[] = {
     //   command name       function             available in multiplayer?
@@ -100,6 +107,7 @@ consolecmd_t G_ConsoleCmds[] = {
     {"bot_force_state",     G_BotForceStateCmd,     qfalse},
     {"bot_show_perception", G_BotShowPerceptionCmd, qfalse},
     {"bot_utility_scores",  G_BotUtilityScoresCmd,  qfalse},
+    {"bot_debug",           G_BotDebugCmd,          qfalse},
 #ifdef _DEBUG
     {"bot",                 G_BotCommand,           qfalse},
 #endif
@@ -990,6 +998,79 @@ qboolean G_BotUtilityScoresCmd(gentity_t *ent)
         gi.Printf("  %-12s: %.3f%s\n", action.name.c_str(), action.score, marker);
     }
 
+    return qtrue;
+}
+
+/*
+====================
+G_BotDebugCmd
+
+Set debug visualization mode for a specific bot
+Usage: bot_debug <botIndex> <mode>
+Modes: none, perception, behavior, utility, tactical, all
+====================
+*/
+qboolean G_BotDebugCmd(gentity_t *ent)
+{
+    const Container<BotController *>& controllers = botManager.getControllerManager().getControllers();
+
+    if (controllers.NumObjects() < 1) {
+        gi.Printf("No bots spawned\n");
+        return qfalse;
+    }
+
+    if (gi.Argc() < 3) {
+        gi.Printf("Usage: bot_debug <botIndex> <mode>\n");
+        gi.Printf("Modes: none, perception, behavior, utility, tactical, all\n");
+        gi.Printf("Example: bot_debug 1 perception\n");
+        return qfalse;
+    }
+
+    int botIndex = atoi(gi.Argv(1));
+
+    // Validate bot index (Container uses 1-based indexing)
+    if (botIndex < 1 || botIndex > controllers.NumObjects()) {
+        gi.Printf("Invalid bot index %d (valid range: 1-%d)\n", botIndex, controllers.NumObjects());
+        return qfalse;
+    }
+
+    // Get the controller
+    BotController *bot = controllers.ObjectAt(botIndex);
+    if (!bot) {
+        gi.Printf("Failed to get bot %d controller\n", botIndex);
+        return qfalse;
+    }
+
+    BotDebugViz *debugViz = bot->GetDebugViz();
+    if (!debugViz) {
+        gi.Printf("Bot %d has no debug visualizer\n", botIndex);
+        return qfalse;
+    }
+
+    // Parse mode
+    const char *modeStr = gi.Argv(2);
+    int         mode    = DEBUG_NONE;
+
+    if (Q_stricmp(modeStr, "none") == 0) {
+        mode = DEBUG_NONE;
+    } else if (Q_stricmp(modeStr, "perception") == 0) {
+        mode = DEBUG_PERCEPTION;
+    } else if (Q_stricmp(modeStr, "behavior") == 0) {
+        mode = DEBUG_BEHAVIOR;
+    } else if (Q_stricmp(modeStr, "utility") == 0) {
+        mode = DEBUG_UTILITY;
+    } else if (Q_stricmp(modeStr, "tactical") == 0) {
+        mode = DEBUG_TACTICAL;
+    } else if (Q_stricmp(modeStr, "all") == 0) {
+        mode = DEBUG_ALL;
+    } else {
+        gi.Printf("Unknown mode: %s\n", modeStr);
+        gi.Printf("Valid modes: none, perception, behavior, utility, tactical, all\n");
+        return qfalse;
+    }
+
+    debugViz->SetMode(mode);
+    gi.Printf("Bot %d debug mode set to: %s\n", botIndex, modeStr);
     return qtrue;
 }
 

@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "g_local.h"
 #include "playerbot.h"
+#include "bot_debug_viz.h"
 
 // Added in OPM - Phase 2B Task 2B.4
 //  Include behavior tree loader for LoadProfile
@@ -346,6 +347,12 @@ void BotController::Think()
     //  Draw debug visualization if enabled
     if (m_bShowPerception || m_bShowPath || m_bShowEnemy || m_bShowState) {
         DrawDebugVisualization();
+    }
+
+    // Added in OPM - Phase 3 Task 3.5
+    //  Draw enhanced debug visualization if enabled
+    if (debugViz) {
+        debugViz->Draw(this);
     }
 }
 

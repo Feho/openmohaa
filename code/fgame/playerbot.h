@@ -51,6 +51,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 //  Include utility AI system for strategy selection
 #include "utility_evaluator.h"
 
+// Added in OPM - Phase 3 Task 3.5
+//  Forward declaration for debug visualization system (avoid circular dependency)
+class BotDebugViz;
+
 #define MAX_BOT_FUNCTIONS 5
 
 // Added in OPM
@@ -800,6 +804,10 @@ public:
     //  Public accessors for utility AI debug command
     const std::string& GetCurrentStrategy() const { return currentStrategy; }
 
+    // Added in OPM - Phase 3 Task 3.5
+    //  Debug visualization system accessors
+    BotDebugViz *GetDebugViz() { return debugViz.get(); }
+
 private:
     SafePtr<Player> controlledEnt;
 
@@ -819,6 +827,10 @@ private:
     std::string              currentStrategy;     // Currently selected strategy name
     float                    strategyChangeTimer; // Time until next strategy evaluation
     float                    lastStrategyScore;   // Score of current strategy (for hysteresis)
+
+    // Added in OPM - Phase 3 Task 3.5
+    //  Debug visualization system
+    std::unique_ptr<BotDebugViz> debugViz; // Debug visualization manager
 };
 
 class BotControllerManager : public Listener

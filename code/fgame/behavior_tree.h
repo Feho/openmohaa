@@ -2,9 +2,9 @@
 #define __BEHAVIOR_TREE_H__
 
 #ifndef BEHAVIOR_TREE_TESTING
-#include "g_local.h"
+#    include "g_local.h"
 #else
-#include "test_game_stubs.h"
+#    include "test_game_stubs.h"
 #endif
 
 #include <memory>
@@ -24,7 +24,8 @@ class BehaviorTree;
  * Base class for all Behavior Tree nodes.
  * Each node returns a Status when executed.
  */
-class BTNode {
+class BTNode
+{
 public:
     enum class Status {
         SUCCESS, // Node completed successfully
@@ -40,7 +41,7 @@ public:
      * @param deltaTime Time since last frame
      * @return Status of execution
      */
-    virtual Status Execute(Blackboard &blackboard, float deltaTime) = 0;
+    virtual Status Execute(Blackboard& blackboard, float deltaTime) = 0;
 
     /**
      * Reset node to initial state.
@@ -53,6 +54,27 @@ public:
      */
     virtual const char *GetName() const = 0;
 
+    // Added in OPM - Code review fixes (Fix #2)
+    //  Virtual methods for type checking without RTTI overhead
+    /**
+     * Check if this node is a composite (has children).
+     * @return true if this is a composite node, false otherwise
+     */
+    virtual bool IsComposite() const { return false; }
+
+    /**
+     * Get the number of children (0 for non-composite nodes).
+     * @return Child count
+     */
+    virtual size_t GetChildCount() const { return 0; }
+
+    /**
+     * Get a child node by index (nullptr for non-composite nodes).
+     * @param index Child index
+     * @return Child node pointer or nullptr
+     */
+    virtual const BTNode *GetChild(size_t) const { return nullptr; }
+
 protected:
     Status lastStatus = Status::FAILURE;
 };
@@ -60,7 +82,8 @@ protected:
 /**
  * Base class for composite nodes (have children).
  */
-class BTComposite : public BTNode {
+class BTComposite : public BTNode
+{
 public:
     void AddChild(std::unique_ptr<BTNode> child)
     {
@@ -72,10 +95,35 @@ public:
 
     void Reset() override
     {
-        for (auto &child : children) {
+        for (auto& child : children) {
             child->Reset();
         }
         currentChildIndex = 0;
+    }
+
+    // Added in OPM - Phase 3 Task 3.5
+    //  Accessors for debug visualization
+    // Changed in OPM - Code review fixes (Fix #2)
+    //  Override virtual methods for RTTI-free type checking
+    bool IsComposite() const override { return true; }
+
+    size_t GetChildCount() const override { return children.size(); }
+
+    const BTNode *GetChild(size_t index) const override
+    {
+        if (index >= children.size()) {
+            return nullptr;
+        }
+        return children[index].get();
+    }
+
+    // Non-const version for internal use
+    BTNode *GetChildMutable(size_t index) const
+    {
+        if (index >= children.size()) {
+            return nullptr;
+        }
+        return children[index].get();
     }
 
 protected:
@@ -88,9 +136,10 @@ protected:
  * Tries children left-to-right until one succeeds or all fail.
  * Usage: Pick first viable option (emergency OR combat OR patrol)
  */
-class BTSelector : public BTComposite {
+class BTSelector : public BTComposite
+{
 public:
-    Status Execute(Blackboard &blackboard, float deltaTime) override
+    Status Execute(Blackboard& blackboard, float deltaTime) override
     {
         while (currentChildIndex < children.size()) {
             Status status = children[currentChildIndex]->Execute(blackboard, deltaTime);
@@ -118,9 +167,10 @@ public:
  * Executes children left-to-right until one fails or all succeed.
  * Usage: Do multiple steps in order (find cover AND move to cover AND heal)
  */
-class BTSequence : public BTComposite {
+class BTSequence : public BTComposite
+{
 public:
-    Status Execute(Blackboard &blackboard, float deltaTime) override
+    Status Execute(Blackboard& blackboard, float deltaTime) override
     {
         while (currentChildIndex < children.size()) {
             Status status = children[currentChildIndex]->Execute(blackboard, deltaTime);
@@ -151,7 +201,8 @@ public:
  * - Empty parallel node returns FAILURE
  * - RequireN with N > children count returns FAILURE immediately
  */
-class BTParallel : public BTComposite {
+class BTParallel : public BTComposite
+{
 public:
     enum class Policy {
         RequireAll, // All children must succeed
@@ -160,7 +211,8 @@ public:
     };
 
     BTParallel(Policy policyType = Policy::RequireAll, int requiredCount = 0)
-        : policy(policyType), requiredSuccessCount(requiredCount)
+        : policy(policyType)
+        , requiredSuccessCount(requiredCount)
     {
         // Validate parameters
         if (policy == Policy::RequireN && requiredCount < 0) {
@@ -168,7 +220,7 @@ public:
         }
     }
 
-    Status Execute(Blackboard &blackboard, float deltaTime) override
+    Status Execute(Blackboard& blackboard, float deltaTime) override
     {
         // Empty parallel node is a failure
         if (children.empty()) {
@@ -185,7 +237,7 @@ public:
         int runningCount = 0;
 
         // Execute all children
-        for (auto &child : children) {
+        for (auto& child : children) {
             Status status = child->Execute(blackboard, deltaTime);
 
             switch (status) {
@@ -204,22 +256,27 @@ public:
         // Check policy
         switch (policy) {
         case Policy::RequireAll:
-            if (failureCount > 0)
+            if (failureCount > 0) {
                 return Status::FAILURE;
-            if (runningCount > 0)
+            }
+            if (runningCount > 0) {
                 return Status::RUNNING;
+            }
             return Status::SUCCESS;
 
         case Policy::RequireOne:
-            if (successCount > 0)
+            if (successCount > 0) {
                 return Status::SUCCESS;
-            if (runningCount > 0)
+            }
+            if (runningCount > 0) {
                 return Status::RUNNING;
+            }
             return Status::FAILURE;
 
         case Policy::RequireN:
-            if (successCount >= requiredSuccessCount)
+            if (successCount >= requiredSuccessCount) {
                 return Status::SUCCESS;
+            }
             if (failureCount > static_cast<int>(children.size()) - requiredSuccessCount) {
                 return Status::FAILURE;
             }
@@ -246,19 +303,23 @@ private:
  * Condition node: Boolean check that returns SUCCESS/FAILURE.
  * Does not modify state, only reads blackboard.
  */
-class BTCondition : public BTNode {
+class BTCondition : public BTNode
+{
 public:
-    using ConditionFunc = std::function<bool(Blackboard &)>;
+    using ConditionFunc = std::function<bool(Blackboard&)>;
 
-    BTCondition(const char *nodeName, ConditionFunc func) : name(nodeName), conditionFunc(func) {}
+    BTCondition(const char *nodeName, ConditionFunc func)
+        : name(nodeName)
+        , conditionFunc(func)
+    {}
 
-    Status Execute(Blackboard &blackboard, float deltaTime) override
+    Status Execute(Blackboard& blackboard, float deltaTime) override
     {
         try {
             bool result = conditionFunc(blackboard);
             lastStatus  = result ? Status::SUCCESS : Status::FAILURE;
             return lastStatus;
-        } catch (const std::exception &e) {
+        } catch (const std::exception& e) {
 #ifndef BEHAVIOR_TREE_TESTING
             gi.DPrintf("BTCondition '%s' threw exception: %s\n", name, e.what());
 #endif
@@ -288,12 +349,15 @@ private:
  * Allows tree composition and reuse.
  * Added in OPM - Phase 3 Task 3.2 (Subtree Support)
  */
-class BTSubtreeWrapper : public BTNode {
+class BTSubtreeWrapper : public BTNode
+{
 public:
-    BTSubtreeWrapper(const char *nodeName, std::unique_ptr<BTNode> rootNode) 
-        : name(nodeName), subtreeRoot(std::move(rootNode)) {}
+    BTSubtreeWrapper(const char *nodeName, std::unique_ptr<BTNode> rootNode)
+        : name(nodeName)
+        , subtreeRoot(std::move(rootNode))
+    {}
 
-    Status Execute(Blackboard &blackboard, float deltaTime) override
+    Status Execute(Blackboard& blackboard, float deltaTime) override
     {
         if (!subtreeRoot) {
             return Status::FAILURE;
@@ -312,26 +376,30 @@ public:
     const char *GetName() const override { return name; }
 
 private:
-    const char                  *name;
-    std::unique_ptr<BTNode>      subtreeRoot;
+    const char             *name;
+    std::unique_ptr<BTNode> subtreeRoot;
 };
 
 /**
  * Action node: Performs actual behavior.
  * Can return RUNNING to indicate multi-frame execution.
  */
-class BTAction : public BTNode {
+class BTAction : public BTNode
+{
 public:
-    using ActionFunc = std::function<Status(Blackboard &, float)>;
+    using ActionFunc = std::function<Status(Blackboard&, float)>;
 
-    BTAction(const char *nodeName, ActionFunc func) : name(nodeName), actionFunc(func) {}
+    BTAction(const char *nodeName, ActionFunc func)
+        : name(nodeName)
+        , actionFunc(func)
+    {}
 
-    Status Execute(Blackboard &blackboard, float deltaTime) override
+    Status Execute(Blackboard& blackboard, float deltaTime) override
     {
         try {
             lastStatus = actionFunc(blackboard, deltaTime);
             return lastStatus;
-        } catch (const std::exception &e) {
+        } catch (const std::exception& e) {
 #ifndef BEHAVIOR_TREE_TESTING
             gi.DPrintf("BTAction '%s' threw exception: %s\n", name, e.what());
 #endif
@@ -359,13 +427,14 @@ private:
  *
  * Thread Safety: NOT thread-safe. Each bot must have its own Blackboard instance.
  */
-class Blackboard {
+class Blackboard
+{
 public:
     /**
      * Set a value in the blackboard (copy version).
      */
     template<typename T>
-    void Set(const std::string &key, const T &value)
+    void Set(const std::string& key, const T& value)
     {
         data[key] = value;
     }
@@ -375,7 +444,7 @@ public:
      * Prefer this for large objects to avoid copying.
      */
     template<typename T>
-    void Set(const std::string &key, T &&value)
+    void Set(const std::string& key, T&& value)
     {
         data[key] = std::forward<T>(value);
     }
@@ -385,7 +454,7 @@ public:
      * @return std::optional<T> containing value if found and type matches, std::nullopt otherwise
      */
     template<typename T>
-    [[nodiscard]] std::optional<T> TryGet(const std::string &key) const
+    [[nodiscard]] std::optional<T> TryGet(const std::string& key) const
     {
         auto it = data.find(key);
         if (it == data.end()) {
@@ -394,7 +463,7 @@ public:
 
         try {
             return std::any_cast<T>(it->second);
-        } catch (const std::bad_any_cast &) {
+        } catch (const std::bad_any_cast&) {
             return std::nullopt;
         }
     }
@@ -408,7 +477,7 @@ public:
      * @return The value (program terminates if not found)
      */
     template<typename T>
-    [[nodiscard]] T Get(const std::string &key) const
+    [[nodiscard]] T Get(const std::string& key) const
     {
         auto result = TryGet<T>(key);
         if (!result) {
@@ -421,7 +490,7 @@ public:
      * Get a value with default if not found.
      */
     template<typename T>
-    [[nodiscard]] T GetOrDefault(const std::string &key, const T &defaultValue) const
+    [[nodiscard]] T GetOrDefault(const std::string& key, const T& defaultValue) const
     {
         return TryGet<T>(key).value_or(defaultValue);
     }
@@ -429,17 +498,40 @@ public:
     /**
      * Check if key exists.
      */
-    [[nodiscard]] bool Has(const std::string &key) const noexcept { return data.find(key) != data.end(); }
+    [[nodiscard]] bool Has(const std::string& key) const noexcept { return data.find(key) != data.end(); }
 
     /**
      * Remove a key.
      */
-    void Remove(const std::string &key) { data.erase(key); }
+    void Remove(const std::string& key) { data.erase(key); }
 
     /**
      * Clear all data.
      */
     void Clear() noexcept { data.clear(); }
+
+    // Added in OPM - Phase 3 Task 3.5
+    //  Introspection methods for debug visualization
+    /**
+     * Get all keys in the blackboard.
+     * Useful for debug visualization and introspection.
+     */
+    [[nodiscard]] std::vector<std::string> GetAllKeys() const
+    {
+        std::vector<std::string> keys;
+        keys.reserve(data.size());
+        for (const auto& pair : data) {
+            keys.push_back(pair.first);
+        }
+        return keys;
+    }
+
+    /**
+     * Convert a blackboard value to string for debugging.
+     * Supports common types used in bot AI.
+     * Returns "<unsupported type>" for types that can't be converted.
+     */
+    [[nodiscard]] std::string GetAsString(const std::string& key) const;
 
 private:
     std::unordered_map<std::string, std::any> data;
@@ -452,7 +544,8 @@ private:
  * Trees may share structure in the future via shared_ptr<const BTNode> optimization,
  * but execution state must remain per-bot.
  */
-class BehaviorTree {
+class BehaviorTree
+{
 public:
     BehaviorTree() = default;
 
@@ -464,7 +557,7 @@ public:
      * @param deltaTime Time since last frame (seconds)
      * @return Status of root node execution
      */
-    [[nodiscard]] BTNode::Status Execute(Blackboard &blackboard, float deltaTime)
+    [[nodiscard]] BTNode::Status Execute(Blackboard& blackboard, float deltaTime)
     {
         if (!rootNode) {
             return BTNode::Status::FAILURE;

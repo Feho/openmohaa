@@ -1,8 +1,7 @@
 ---
 name: cpp-game-implementer
 description: Use this agent when the user requests implementation of a specific game feature, mechanic, system, or bug fix in the OpenMoHAA C++ codebase. This agent should be triggered for tasks like: implementing new gameplay mechanics, adding new entity types, creating event handlers, fixing bugs in game logic, modifying AI behavior, implementing scripting system features, or any other C++ development task in the game engine. Examples:\n\n<example>\nuser: "Please implement a new weapon pickup entity that spawns at random locations"\nassistant: "I'll use the Task tool to launch the cpp-game-implementer agent to implement this feature."\n</example>\n\n<example>\nuser: "Fix the bug where players can't reload while sprinting"\nassistant: "Let me use the Task tool to launch the cpp-game-implementer agent to investigate and fix this issue."\n</example>\n\n<example>\nuser: "Add a new event subscription for when a player changes teams"\nassistant: "I'm going to use the Task tool to launch the cpp-game-implementer agent to implement this event system feature."\n</example>
-tools: Bash, Glob, Grep, Read, Edit, Write, NotebookEdit, WebFetch, TodoWrite, WebSearch, BashOutput, KillShell, AskUserQuestion, Skill, SlashCommand, mcp__gemini__consult_gemini, mcp__gemini__gemini_status, mcp__gemini__toggle_gemini_auto_consult
-model: inherit
+model: sonnet
 color: green
 ---
 
