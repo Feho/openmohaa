@@ -232,8 +232,12 @@ float UtilityEvaluator::ScoreAction(
     for (const Consideration& consideration : action.considerations) {
         float value = EvaluateConsideration(consideration, perception, bot, profile);
 
-        // Apply consideration weight
-        float weightedValue = value * consideration.weight;
+        // Changed in OPM
+        //  Fixed weight application - use exponentiation instead of multiplication
+        //  Weight as exponent properly scales influence: value^weight
+        //  weight > 1.0 increases influence, weight < 1.0 decreases influence
+        //  This keeps values in [0,1] range and respects utility theory
+        float weightedValue = std::pow(value, consideration.weight);
 
         // Accumulate product
         product *= std::max(weightedValue, EPSILON);
