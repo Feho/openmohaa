@@ -57,6 +57,9 @@ class BotDebugViz;
 
 #define MAX_BOT_FUNCTIONS 5
 
+// Forward declaration to avoid circular include with perception.h
+struct PerceptionSnapshot;
+
 // Added in OPM
 //  Bot AI Configuration Constants for improved code readability
 namespace BotConstants
@@ -823,14 +826,26 @@ private:
     //  Moved to shared static evaluator to avoid loading YAML for every bot
     static UtilityEvaluator *s_sharedUtilityEvaluator; // Shared across all bots
     static bool              s_utilityConfigLoaded;
-    UtilityEvaluator        *utilityEvaluator;    // Pointer to shared instance
-    std::string              currentStrategy;     // Currently selected strategy name
-    float                    strategyChangeTimer; // Time until next strategy evaluation
-    float                    lastStrategyScore;   // Score of current strategy (for hysteresis)
+    UtilityEvaluator        *utilityEvaluator;         // Pointer to shared instance
+    std::string              currentStrategy;          // Currently selected strategy name
+    float                    strategyChangeTimer;      // Time until next strategy evaluation
+    
+    // Changed in OPM - Gemini review suggestion
+    //  Renamed for clarity and added confidence/thrashing tracking
+    float        debug_lastStrategyScore;     // Last recorded score (for debug/logging only)
+    float        strategyConfidence;          // Moving average of strategy score (0.0-1.0)
+    std::string  previousStrategy;            // Previous strategy name (for thrashing detection)
+    int          strategyChangeTime;          // Timestamp of last strategy change
+    int          rapidSwitchCount;            // Number of rapid switches (thrashing detection)
 
     // Added in OPM - Phase 3 Task 3.5
     //  Debug visualization system
     std::unique_ptr<BotDebugViz> debugViz; // Debug visualization manager
+
+    // Fixed in OPM
+    //  Replace static shared perception snapshot with per-bot storage
+    //  to prevent cross-bot data contamination in the blackboard.
+    std::unique_ptr<PerceptionSnapshot> m_minimalPerception;
 };
 
 class BotControllerManager : public Listener

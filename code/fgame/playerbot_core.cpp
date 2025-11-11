@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "g_local.h"
 #include "playerbot.h"
+#include "perception.h"
 #include "bot_debug_viz.h"
 
 cvar_t *bot_manualmove;
@@ -92,13 +93,21 @@ BotController::BotController()
 
     // Added in OPM - Phase 3 Task 3.4 Commit 5
     //  Initialize utility AI system
-    currentStrategy       = "";
-    strategyChangeTimer   = 0.0f;
-    lastStrategyScore     = 0.0f;
+    currentStrategy          = "";
+    strategyChangeTimer      = 0.0f;
+    debug_lastStrategyScore  = 0.0f;
+    strategyConfidence       = 1.0f;
+    previousStrategy         = "";
+    strategyChangeTime       = 0;
+    rapidSwitchCount         = 0;
 
     // Added in OPM - Phase 3 Task 3.5
     //  Initialize debug visualization system
     debugViz = std::make_unique<BotDebugViz>();
+
+    // Fixed in OPM
+    //  Initialize per-bot minimal perception snapshot storage
+    m_minimalPerception = std::make_unique<PerceptionSnapshot>();
 }
 
 BotController::~BotController()

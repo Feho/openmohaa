@@ -199,24 +199,26 @@ void BotController::PopulateBlackboard()
     blackboard.Set<Player *>(BlackboardKeys::PLAYER, static_cast<Player *>(controlledEnt.Pointer()));
     blackboard.Set<BotProfile *>(BlackboardKeys::PROFILE, profile.get());
 
-    // Added in OPM - Phase 3 Task 3.4 Commit 5 Fix
-    //  Create minimal perception snapshot for utility AI
-    //  Full PerceptionSystem integration will be added in future task
-    static PerceptionSnapshot minimalPerception;
-    minimalPerception = PerceptionSnapshot(); // Reset
+    // Fixed in OPM
+    //  Replaced static shared snapshot with per-bot instance to prevent
+    //  cross-bot data corruption.
+    if (!m_minimalPerception) {
+        m_minimalPerception = std::make_unique<PerceptionSnapshot>();
+    }
+    // Reset contents for this frame
+    *m_minimalPerception = PerceptionSnapshot();
 
     if (controlledEnt && m_pEnemy) {
-        // Populate with current enemy data
         EnemyInfo enemy;
         enemy.entity           = m_pEnemy;
         enemy.position         = m_pEnemy->origin;
         enemy.distance         = (m_pEnemy->origin - controlledEnt->origin).length();
-        enemy.visibilityFactor = 1.0f; // Assume visible if we have them as enemy
-        minimalPerception.visibleEnemies.push_back(enemy);
-        minimalPerception.closestEnemyIndex = 0;
+        enemy.visibilityFactor = 1.0f;
+        m_minimalPerception->visibleEnemies.push_back(enemy);
+        m_minimalPerception->closestEnemyIndex = 0;
     }
 
-    blackboard.Set<const PerceptionSnapshot *>(BlackboardKeys::PERCEPTION, &minimalPerception);
+    blackboard.Set<PerceptionSnapshot *>(BlackboardKeys::PERCEPTION, m_minimalPerception.get());
 
     // Health state
     if (controlledEnt) {
@@ -365,7 +367,7 @@ void BotController::EvaluateStrategy(float deltaTime)
     }
 
     // Get perception snapshot from blackboard
-    auto perceptionPtr = blackboard.TryGet<const PerceptionSnapshot *>(BlackboardKeys::PERCEPTION);
+    auto perceptionPtr = blackboard.TryGet<PerceptionSnapshot *>(BlackboardKeys::PERCEPTION);
     if (!perceptionPtr || !*perceptionPtr) {
         return;
     }
@@ -426,7 +428,7 @@ void BotController::EvaluateStrategy(float deltaTime)
         
         // First evaluation or invalid strategy - switch immediately without hysteresis
         SwitchStrategy(bestAction.name, bestAction.treeFile);
-        lastStrategyScore = bestAction.score;
+        debug_lastStrategyScore = bestAction.score;
         return;
     }
 
@@ -444,15 +446,15 @@ void BotController::EvaluateStrategy(float deltaTime)
         if ((isCurrentStrategyUseless && bestAction.score > 0.0f) ||
             (bestAction.score > currentStrategyScore * (1.0f + hysteresisThreshold))) {
             SwitchStrategy(bestAction.name, bestAction.treeFile);
-            lastStrategyScore = bestAction.score;
+            debug_lastStrategyScore = bestAction.score;
         } else {
-            // Changed in OPM - Gemini bug hunt: Update lastStrategyScore even when switch prevented
+            // Changed in OPM - Gemini bug hunt: Update debug_lastStrategyScore even when switch prevented
             //  Keeps score fresh for debugging/logging, prevents stale data
-            lastStrategyScore = currentStrategyScore;
+            debug_lastStrategyScore = currentStrategyScore;
         }
     } else {
         // Update score for current strategy
-        lastStrategyScore = bestAction.score;
+        debug_lastStrategyScore = bestAction.score;
     }
 }
 
@@ -475,7 +477,7 @@ void BotController::SwitchStrategy(const std::string& strategyName, const std::s
                     "Bot %d switching to strategy: %s (score: %.2f)\n",
                     player->entnum,
                     strategyName.c_str(),
-                    lastStrategyScore
+                    debug_lastStrategyScore
                 );
             }
         }
