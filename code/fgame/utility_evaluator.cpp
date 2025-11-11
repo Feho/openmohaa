@@ -228,11 +228,12 @@ float UtilityEvaluator::ScoreAction(
     }
 
     // Added in OPM - Phase 3 Task 3.4 Commit 3
-    //  Multiplicative utility scoring with compensation factor
-    //  Using formula: score = (product of considerations) ^ (1 / N)
-    //  This prevents scores from dropping too quickly with many considerations
+    //  Multiplicative utility scoring with geometric mean
+    // Changed in OPM - Gemini bug hunt: Use logarithmic summation to prevent underflow
+    //  When multiplying many values < 1.0, product can underflow to 0.0 prematurely
+    //  Using log space prevents this: score = exp((1/N) * sum(log(values)))
 
-    float product             = 1.0f;
+    float sumOfLogs           = 0.0f;
     int   validConsiderations = 0;
 
     for (const Consideration& consideration : action.considerations) {
@@ -249,8 +250,9 @@ float UtilityEvaluator::ScoreAction(
         //  This keeps values in [0,1] range and respects utility theory
         float weightedValue = std::pow(value, consideration.weight);
 
-        // Accumulate product
-        product *= std::max(weightedValue, EPSILON);
+        // Changed in OPM - Gemini bug hunt: Sum logarithms instead of multiplying
+        //  Prevents underflow with many considerations
+        sumOfLogs += std::log(std::max(weightedValue, EPSILON));
         validConsiderations++;
     }
 
@@ -260,10 +262,10 @@ float UtilityEvaluator::ScoreAction(
         return 0.0f;
     }
 
-    // Apply compensation factor to prevent excessive penalization
-    // Uses geometric mean: score = (product)^(1/N)
-    float compensation = 1.0f / static_cast<float>(validConsiderations);
-    float finalScore   = std::pow(product, compensation);
+    // Changed in OPM - Gemini bug hunt: Calculate geometric mean using logarithms
+    //  More numerically stable: exp((1/N) * sum(log(values)))
+    float logScore   = sumOfLogs / static_cast<float>(validConsiderations);
+    float finalScore = std::exp(logScore);
 
     return std::clamp(finalScore, 0.0f, 1.0f);
 }

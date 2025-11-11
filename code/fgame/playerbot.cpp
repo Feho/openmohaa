@@ -431,15 +431,24 @@ void BotController::EvaluateStrategy(float deltaTime)
     }
 
     // Apply hysteresis: require improvement threshold to switch strategies
-    float hysteresisThreshold = g_bot_utility_hysteresis->value;
+    // Changed in OPM - Gemini bug hunt: Validate hysteresis is non-negative
+    //  Negative values invert the logic, making switches easier instead of harder
+    float hysteresisThreshold = std::max(0.0f, g_bot_utility_hysteresis->value);
 
     if (bestAction.name != currentStrategy) {
-        // Changed in OPM
-        //  Fixed hysteresis to compare against current score, not stale lastStrategyScore
-        //  Require X% improvement over current strategy to switch (prevents oscillation)
-        if (bestAction.score > currentStrategyScore * (1.0f + hysteresisThreshold)) {
+        // Changed in OPM - Gemini bug hunt: Handle zero-score strategies specially
+        //  If current strategy has zero score, allow switching to any non-zero alternative
+        //  This prevents bots getting stuck in useless strategies
+        bool isCurrentStrategyUseless = (currentStrategyScore <= 0.0f);
+        
+        if ((isCurrentStrategyUseless && bestAction.score > 0.0f) ||
+            (bestAction.score > currentStrategyScore * (1.0f + hysteresisThreshold))) {
             SwitchStrategy(bestAction.name, bestAction.treeFile);
             lastStrategyScore = bestAction.score;
+        } else {
+            // Changed in OPM - Gemini bug hunt: Update lastStrategyScore even when switch prevented
+            //  Keeps score fresh for debugging/logging, prevents stale data
+            lastStrategyScore = currentStrategyScore;
         }
     } else {
         // Update score for current strategy
