@@ -138,13 +138,13 @@ private:
 class TacticalVisualizer
 {
 public:
-    void DrawTacticalOverlay(Player *bot) const;
+    void DrawTacticalOverlay(BotController *controller, const PerceptionSnapshot& perception) const;
 
 private:
-    void DrawCoverPoints(Player *bot) const;
+    void DrawCoverPoints(BotController *controller) const;
     void DrawDangerZones(Player *bot, const PerceptionSnapshot& perception) const;
-    void DrawCurrentPath(Player *bot) const;
-    void DrawSquadCoordination(Player *bot, const PerceptionSnapshot& perception) const;
+    void DrawCurrentPath(BotController *controller) const;
+    void DrawSquadCoordination(BotController *controller, const PerceptionSnapshot& perception) const;
 };
 
 /**
