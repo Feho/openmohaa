@@ -387,6 +387,7 @@ void BotController::EvaluateStrategy(float deltaTime)
     UtilityEvaluator::ScoredAction bestAction;
     float currentStrategyScore = 0.0f;
     float bestScore = -1.0f;
+    bool currentStrategyFound = false;
     
     for (const auto& action : *allScores) {
         if (action.score > bestScore) {
@@ -395,7 +396,18 @@ void BotController::EvaluateStrategy(float deltaTime)
         }
         if (action.name == currentStrategy) {
             currentStrategyScore = action.score;
+            currentStrategyFound = true;
         }
+    }
+
+    // Changed in OPM
+    //  Handle uninitialized or invalid currentStrategy (first evaluation or invalid name)
+    //  If current strategy not found, treat as 0.0 score and switch immediately
+    if (currentStrategy.empty() || !currentStrategyFound) {
+        // First evaluation or invalid strategy - switch immediately without hysteresis
+        SwitchStrategy(bestAction.name, bestAction.treeFile);
+        lastStrategyScore = bestAction.score;
+        return;
     }
 
     // Apply hysteresis: require improvement threshold to switch strategies
