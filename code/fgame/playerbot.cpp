@@ -378,14 +378,34 @@ void BotController::EvaluateStrategy(float deltaTime)
     }
 
     // Select best action using utility AI
-    auto bestAction = utilityEvaluator->SelectBestAction(*perception, player, profile.get());
+    auto allScores = utilityEvaluator->ScoreAllActions(*perception, player, profile.get());
+    
+    // Store all scores for debugging
+    blackboard.Set(BlackboardKeys::UTILITY_SCORES, allScores);
+    
+    // Find best action and current strategy score
+    UtilityEvaluator::ScoredAction bestAction;
+    float currentStrategyScore = 0.0f;
+    float bestScore = -1.0f;
+    
+    for (const auto& action : *allScores) {
+        if (action.score > bestScore) {
+            bestScore = action.score;
+            bestAction = action;
+        }
+        if (action.name == currentStrategy) {
+            currentStrategyScore = action.score;
+        }
+    }
 
     // Apply hysteresis: require improvement threshold to switch strategies
     float hysteresisThreshold = g_bot_utility_hysteresis->value;
 
     if (bestAction.name != currentStrategy) {
-        // Require X% improvement to switch (prevents oscillation)
-        if (bestAction.score > lastStrategyScore * (1.0f + hysteresisThreshold)) {
+        // Changed in OPM
+        //  Fixed hysteresis to compare against current score, not stale lastStrategyScore
+        //  Require X% improvement over current strategy to switch (prevents oscillation)
+        if (bestAction.score > currentStrategyScore * (1.0f + hysteresisThreshold)) {
             SwitchStrategy(bestAction.name, bestAction.treeFile);
             lastStrategyScore = bestAction.score;
         }
@@ -393,10 +413,6 @@ void BotController::EvaluateStrategy(float deltaTime)
         // Update score for current strategy
         lastStrategyScore = bestAction.score;
     }
-
-    // Store all scores for debugging
-    auto allScores = utilityEvaluator->ScoreAllActions(*perception, player, profile.get());
-    blackboard.Set(BlackboardKeys::UTILITY_SCORES, allScores);
 }
 
 // Added in OPM - Phase 3 Task 3.4 Commit 5
