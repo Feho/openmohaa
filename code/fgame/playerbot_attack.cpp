@@ -617,10 +617,25 @@ void BotController::UpdateAttackMovement(bool noMove, bool melee, bool canSee, f
                 movement.MoveTo(m_vLastEnemyPos);
             }
 
+            // Fixed in OPM
+            //  Don't immediately clear enemy when out of sight during retreat
+            //  Use TARGET_UNSEEN_THRESHOLD (2 seconds) to allow temporary loss of sight
+            //  This prevents bots from forgetting close enemies while backing up
             if (!canSee && movement.MoveDone()) {
-                // Lost track of the enemy
-                ClearEnemy();
-                return;
+                // Check if we've lost sight for too long
+                if (level.inttime > m_iLastSeenTime + BotConstants::TARGET_UNSEEN_THRESHOLD) {
+                    // Lost track of the enemy for too long
+                    if (g_bot_debug->integer >= 2) {
+                        gi.Printf(
+                            "[BOT] %s: Clearing enemy after %.1fs out of sight\n",
+                            controlledEnt->client->pers.netname,
+                            (level.inttime - m_iLastSeenTime) / 1000.0f
+                        );
+                    }
+                    ClearEnemy();
+                    return;
+                }
+                // Still within threshold - continue tracking using last known position
             }
         } else {
             movement.MoveTo(m_vLastEnemyPos);
