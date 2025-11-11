@@ -3,6 +3,7 @@
 #include "test_utilities.h"
 #include <gtest/gtest.h>
 #include <deque>
+#include <algorithm>
 
 // Mock AudioEvent for testing (mirrors production struct)
 struct MockAudioEvent {

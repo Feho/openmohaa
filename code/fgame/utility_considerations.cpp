@@ -132,7 +132,7 @@ float UtilityConsiderations::ExtractConsideration(
         }
         // Check if enemy is targeting this bot
         Sentient *enemySentient = enemy->entity;
-        if (enemySentient->m_Enemy == bot) {
+        if (enemySentient->m_Enemy.Pointer() == bot) {
             return 0.0f; // Enemy is focused on us
         }
         return 1.0f; // Enemy is distracted
