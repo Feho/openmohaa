@@ -3,6 +3,7 @@
 #include "utility_curves.h"
 #include "utility_considerations.h"
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <yaml-cpp/yaml.h>
 
@@ -217,6 +218,11 @@ float UtilityEvaluator::ScoreAction(
     const ActionConfig& action, const PerceptionSnapshot& perception, const Player *bot, const BotProfile *profile
 )
 {
+    // Added in OPM - Gemini review suggestion
+    //  Assertions for null checks in debug builds
+    assert(bot && "Bot entity is null");
+    assert(profile && "Bot profile is null");
+    
     if (action.considerations.empty()) {
         return 0.0f;
     }
@@ -230,6 +236,10 @@ float UtilityEvaluator::ScoreAction(
     int   validConsiderations = 0;
 
     for (const Consideration& consideration : action.considerations) {
+        // Added in OPM - Gemini review suggestion
+        //  Validate weight is non-negative to catch config errors
+        assert(consideration.weight >= 0.0f && "Consideration weights cannot be negative");
+        
         float value = EvaluateConsideration(consideration, perception, bot, profile);
 
         // Changed in OPM

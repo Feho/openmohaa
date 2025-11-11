@@ -414,6 +414,16 @@ void BotController::EvaluateStrategy(float deltaTime)
     //  Handle uninitialized or invalid currentStrategy (first evaluation or invalid name)
     //  If current strategy not found, treat as 0.0 score and switch immediately
     if (currentStrategy.empty() || !currentStrategyFound) {
+        // Added in OPM - Gemini review suggestion
+        //  Log warning if strategy was removed from config
+        if (!currentStrategy.empty() && !currentStrategyFound) {
+            gi.Printf(
+                "WARNING: Bot %d: Current strategy '%s' is no longer a valid utility action.\n",
+                player ? player->entnum : -1,
+                currentStrategy.c_str()
+            );
+        }
+        
         // First evaluation or invalid strategy - switch immediately without hysteresis
         SwitchStrategy(bestAction.name, bestAction.treeFile);
         lastStrategyScore = bestAction.score;
