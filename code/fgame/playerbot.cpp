@@ -383,6 +383,16 @@ void BotController::EvaluateStrategy(float deltaTime)
     // Store all scores for debugging
     blackboard.Set(BlackboardKeys::UTILITY_SCORES, allScores);
     
+    // Changed in OPM
+    //  Check for empty actions list - safety check for malformed config
+    if (!allScores || allScores->empty()) {
+        gi.Printf(
+            "ERROR: Bot %d has no utility actions configured!\n",
+            player ? player->entnum : -1
+        );
+        return;
+    }
+    
     // Find best action and current strategy score
     UtilityEvaluator::ScoredAction bestAction;
     float currentStrategyScore = 0.0f;
