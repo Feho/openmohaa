@@ -52,7 +52,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #ifdef WITH_SCRIPT_ENGINE
 
-#    include "../fgame/scriptmaster.h"
+#    include "../fgame/scripting/scriptmaster.h"
 
 #endif
 

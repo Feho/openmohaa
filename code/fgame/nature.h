@@ -23,7 +23,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // nature.h:
 
 #include "g_local.h"
-#include "trigger.h"
+#include "world/trigger.h"
 
 class Emitter : public Entity
 {

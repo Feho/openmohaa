@@ -22,8 +22,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #pragma once
 
-#include "inventoryitem.h"
-#include "weapturret.h"
+#include "world/inventoryitem.h"
+#include "weapons/weapturret.h"
 
 class CarryableTurret : public InventoryItem
 {

@@ -30,7 +30,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../corepp/str.h"
 
 #if defined(ARCHIVE_SUPPORTED)
-#    include "../fgame/archive.h"
+#    include "../fgame/core/archive.h"
 #endif
 
 #define TOKENCOMMENT  (';')

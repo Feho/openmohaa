@@ -25,7 +25,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // cg_servercmds.c -- text commands sent by the server
 
 #include "cg_local.h"
-#include "../fgame/bg_voteoptions.h"
+#include "../fgame/core/bg_voteoptions.h"
 #include "cg_servercmds_filter.h"
 
 /*

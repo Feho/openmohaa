@@ -25,11 +25,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "g_local.h"
 #include "g_spawn.h"
 #include "../script/scriptvariable.h"
-#include "object.h"
+#include "core/object.h"
 #include "../corepp/tiki.h"
 
-#include "../fgame/entity.h"
-#include "../fgame/actor.h"
+#include "core/entity.h"
+#include "ai/actor.h"
 
 extern Event EV_Entity_Start;
 CLASS_DECLARATION(Class, SpawnArgs, NULL) {

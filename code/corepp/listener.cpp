@@ -27,17 +27,17 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "Linklist.h"
 
 #ifdef WITH_SCRIPT_ENGINE
-#    include "../fgame/archive.h"
-#    include "../fgame/scriptmaster.h"
-#    include "../fgame/scriptthread.h"
+#    include "../fgame/core/archive.h"
+#    include "../fgame/scripting/scriptmaster.h"
+#    include "../fgame/scripting/scriptthread.h"
 #    include "../script/scriptclass.h"
 #endif
 
 #if defined(GAME_DLL)
 
-#    include "../fgame/player.h"
-#    include "../fgame/consoleevent.h"
-#    include "../fgame/animationevent.h"
+#    include "../fgame/player/player.h"
+#    include "../fgame/world/consoleevent.h"
+#    include "../fgame/world/animationevent.h"
 
 #    define LISTENER_Cvar_Get gi.Cvar_Get
 

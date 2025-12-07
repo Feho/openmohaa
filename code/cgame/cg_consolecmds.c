@@ -25,7 +25,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // text commands typed in at the local console, or executed by a key binding
 
 #include "cg_local.h"
-#include "../fgame/bg_voteoptions.h"
+#include "../fgame/core/bg_voteoptions.h"
 
 void CG_TargetCommand_f(void);
 

@@ -25,7 +25,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #pragma once
 
 #include "../qcommon/q_shared.h"
-#include "bg_public.h"
+#include "core/bg_public.h"
 #include "g_public.h"
 
 //==================================================================

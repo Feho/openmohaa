@@ -28,15 +28,15 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../corepp/con_set.h"
 
 #ifdef GAME_DLL
-#    include "../fgame/archive.h"
+#    include "../fgame/core/archive.h"
 #    include "../fgame/g_local.h"
-#    include "../fgame/navigate.h"
+#    include "../fgame/navigation/navigate.h"
 #endif
 
 #ifdef WITH_SCRIPT_ENGINE
-#    include "../fgame/worldspawn.h"
-#    include "../fgame/scriptmaster.h"
-#    include "../fgame/simpleentity.h"
+#    include "../fgame/world/worldspawn.h"
+#    include "../fgame/scripting/scriptmaster.h"
+#    include "../fgame/core/simpleentity.h"
 #endif
 
 #include <utility>

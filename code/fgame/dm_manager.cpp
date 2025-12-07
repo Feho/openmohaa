@@ -21,9 +21,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 // dm_manager.cpp: Deathmatch Manager.
 
-#include "player.h"
+#include "player/player.h"
 #include "dm_manager.h"
-#include "playerstart.h"
+#include "player/playerstart.h"
 #include "scriptexception.h"
 
 cvar_t *g_tempaxisscore;

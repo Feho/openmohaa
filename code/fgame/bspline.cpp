@@ -27,7 +27,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "bspline.h"
 #include "game.h"
 #include "debuglines.h"
-#include "g_phys.h"
+#include "core/g_phys.h"
 #include "scriptexception.h"
 
 void BSpline::Set(Vector *control_points_, int num_control_points_, splinetype_t type)

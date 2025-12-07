@@ -1,7 +1,7 @@
 #include "con_timer.h"
 
 #if defined(ARCHIVE_SUPPORTED)
-#    include "../fgame/archive.h"
+#    include "../fgame/core/archive.h"
 #endif
 
 con_timer::con_timer(void)

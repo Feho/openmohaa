@@ -23,16 +23,16 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // scriptvm.cpp : Script virtual machine, interprets and execute scripts
 
 #include "../fgame/g_local.h"
-#include "../fgame/scriptmaster.h"
-#include "../fgame/scriptthread.h"
+#include "../fgame/scripting/scriptmaster.h"
+#include "../fgame/scripting/scriptthread.h"
 #include "scriptclass.h"
 #include "scriptvm.h"
 #include "scriptcompiler.h"
 #include "scriptexception.h"
 #include "../fgame/game.h"
-#include "../fgame/level.h"
-#include "../fgame/parm.h"
-#include "../fgame/worldspawn.h"
+#include "../fgame/core/level.h"
+#include "../fgame/scripting/parm.h"
+#include "../fgame/world/worldspawn.h"
 
 #include <utility>
 

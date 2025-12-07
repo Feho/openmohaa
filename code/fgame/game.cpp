@@ -23,12 +23,12 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // game.cpp : General Game Info.
 
 #include "game.h"
-#include "scriptmaster.h"
-#include "worldspawn.h"
+#include "scripting/scriptmaster.h"
+#include "world/worldspawn.h"
 
-#include "camera.h"
-#include "entity.h"
-#include "player.h"
+#include "world/camera.h"
+#include "core/entity.h"
+#include "player/player.h"
 #include "dm_manager.h"
 
 Event EV_Game_Detail

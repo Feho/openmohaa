@@ -21,10 +21,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
 #include "fixedturret.h"
-#include "g_phys.h"
-#include "weapturret.h"
+#include "core/g_phys.h"
+#include "weapons/weapturret.h"
 #include "dm_manager.h"
-#include "player.h"
+#include "player/player.h"
 
 CLASS_DECLARATION(VehicleTank, FixedTurret, NULL) {
     {NULL, NULL}

@@ -22,8 +22,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "portableturret.h"
 #include "g_spawn.h"
-#include "g_phys.h"
-#include "player.h"
+#include "core/g_phys.h"
+#include "player/player.h"
 
 Event EV_CarryableTurret_Drop
 (

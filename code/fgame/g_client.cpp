@@ -21,10 +21,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 //
 #include "g_local.h"
-#include "player.h"
-#include "playerbot.h"
-#include "playerstart.h"
-#include "scriptmaster.h"
+#include "player/player.h"
+#include "ai/playerbot.h"
+#include "player/playerstart.h"
+#include "scripting/scriptmaster.h"
 #include "g_spawn.h"
 #include "g_bot.h"
 

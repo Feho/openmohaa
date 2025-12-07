@@ -23,8 +23,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // scriptclass.h: Script class.
 
 #include "scriptclass.h"
-#include "../fgame/scriptmaster.h"
-#include "../fgame/scriptthread.h"
+#include "../fgame/scripting/scriptmaster.h"
+#include "../fgame/scripting/scriptthread.h"
 #include "scriptexception.h"
 
 //====================

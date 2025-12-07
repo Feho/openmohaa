@@ -22,8 +22,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // g_bot.cpp
 
 #include "g_local.h"
-#include "entity.h"
-#include "playerbot.h"
+#include "core/entity.h"
+#include "ai/playerbot.h"
 #include "g_bot.h"
 
 static saved_bot_t *saved_bots     = NULL;

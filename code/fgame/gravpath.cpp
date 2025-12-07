@@ -23,13 +23,13 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // gravpath.cpp: Gravity path - Used for underwater currents and wells.
 
 #include "g_local.h"
-#include "entity.h"
+#include "core/entity.h"
 #include "gravpath.h"
 #include "../corepp/container.h"
-#include "navigate.h"
-#include "misc.h"
-#include "player.h"
-#include "g_phys.h"
+#include "navigation/navigate.h"
+#include "world/misc.h"
+#include "player/player.h"
+#include "core/g_phys.h"
 #include "debuglines.h"
 
 GravPathManager gravPathManager;

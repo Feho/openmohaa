@@ -23,7 +23,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // lodthing.cpp : Level of detail manager
 
 #include "lodthing.h"
-#include "player.h"
+#include "player/player.h"
 #include "scriptexception.h"
 
 Event EV_LODTool_Spawn

@@ -26,7 +26,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "../corepp/listener.h"
 
-#include "../fgame/gamescript.h"
+#include "../fgame/scripting/gamescript.h"
 
 #include "scriptvariable.h"
 #include "scriptopcodes.h"
