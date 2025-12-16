@@ -12,9 +12,12 @@ Welcome to the [OpenMoHAA](https://www.openmohaa.org/) documentation. Here you'l
 
 ## 🛠️ Coding & Scripting
 
+- 🏗️ [Architecture Overview](markdown/04-coding/00-architecture.md)
 - 💻 [Building from source](markdown/04-coding/01-compiling.md)
 - 📝 [Code & Scripting reference](markdown/04-coding/02-coding.md)
+- 🔧 [Developer FAQ & Troubleshooting](markdown/04-coding/03-developer-faq.md)
 - 📜 [Contributing guidelines](https://github.com/openmoh/openmohaa/blob/main/CONTRIBUTING.md)
+- 🔄 [Development Workflow](markdown/05-contributing/02-development-workflow.md)
 
 ## 📚 Resources
 
