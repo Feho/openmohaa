@@ -1179,6 +1179,19 @@ Event EV_ScriptThread_RegisterCommand
     EV_NORMAL
 );
 
+// Added in OPM
+Event EV_ScriptThread_RegisterServerCommand
+(
+    "register_server_command",
+    EV_DEFAULT,
+    "sssss",
+    "mod_name command_name script_label description param_types",
+    "Registers a server command.\n"
+    "Usage: register_server_command \"ModName\" \"cmd\" path.scr::Label \"Desc\" \"si\"\n"
+    "Types: s=string, i=integer, f=float. Console: sc ModName cmd args",
+    EV_NORMAL
+);
+
 //
 // Added in OPM
 //
@@ -2254,6 +2267,7 @@ CLASS_DECLARATION(Listener, ScriptThread, NULL) {
     {&EV_ScriptThread_DrawHud,                 &ScriptThread::EventDrawHud            },
 
     {&EV_ScriptThread_RegisterCommand,         &ScriptThread::EventRegisterCommand    },
+    {&EV_ScriptThread_RegisterServerCommand,   &ScriptThread::RegisterServerCommand   },
     {&EV_ScriptThread_Info_ValueForKey,        &ScriptThread::EventInfo_ValueForKey   },
     {&EV_ScriptThread_IsArray,                 &ScriptThread::EventIsArray            },
     {&EV_ScriptThread_IsDefined,               &ScriptThread::EventIsDefined          },
@@ -4814,6 +4828,31 @@ void ScriptThread::EventRegisterCommand(Event *ev)
     scriptLabel.SetThread(ev->GetValue(2));
 
     m_scriptCmds.addKeyValue(ev->GetString(1)) = scriptLabel;
+}
+
+void ScriptThread::RegisterServerCommand(Event *ev)
+{
+    str modName     = ev->GetString(1);
+    str commandName = ev->GetString(2);
+    str description = ev->GetString(4);
+    str paramTypes  = ev->GetString(5);
+
+    for (int i = 0; i < paramTypes.length(); i++) {
+        char c = paramTypes[i];
+        if (c != 's' && c != 'i' && c != 'f') {
+            throw ScriptException("register_server_command: Invalid param type '%c'. Use s/i/f.\n", c);
+        }
+    }
+
+    ScriptServerCommand cmd;
+    cmd.label.SetThread(ev->GetValue(3));
+    cmd.description = description;
+    cmd.paramTypes  = paramTypes;
+
+    ScriptServerCommandMap& modCommands = m_serverCommands[modName];
+    modCommands.addKeyValue(commandName) = cmd;
+
+    gi.DPrintf("Registered server command: sc %s %s\n", modName.c_str(), commandName.c_str());
 }
 
 void ScriptThread::CreateHUD(Event *ev)

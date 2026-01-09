@@ -66,6 +66,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #endif
 
 con_set<str, ScriptThreadLabel> m_scriptCmds;
+con_map<str, ScriptServerCommandMap> m_serverCommands;
 
 str      vision_current;
 qboolean disable_team_change;
@@ -762,6 +763,7 @@ void ScriptMaster::Reset(qboolean samemap)
 
         CloseGameScript();
         StringDict.clear();
+        m_serverCommands.clear();
         InitConstStrings();
     }
 

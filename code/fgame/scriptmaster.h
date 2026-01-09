@@ -154,6 +154,17 @@ extern Event EV_ScriptThread_VisionSetNaked;
 extern Event EV_ScriptThread_CancelWaiting;
 
 extern con_set<str, ScriptThreadLabel> m_scriptCmds;
+
+struct ScriptServerCommand
+{
+    ScriptThreadLabel label;
+    str               description;
+    str               paramTypes;  // s=string, i=int, f=float
+};
+
+typedef con_set<str, ScriptServerCommand> ScriptServerCommandMap;
+extern con_map<str, ScriptServerCommandMap> m_serverCommands;
+
 extern ScriptMaster                    Director;
 
 typedef enum scriptedEvType_e {

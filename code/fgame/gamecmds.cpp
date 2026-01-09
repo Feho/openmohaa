@@ -35,6 +35,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "playerbot.h"
 #include "consoleevent.h"
 #include "g_bot.h"
+#include "scriptmaster.h"
+#include "scriptexception.h"
 
 typedef struct {
     const char *command;
@@ -73,6 +75,7 @@ consolecmd_t G_ConsoleCmds[] = {
     {"addbot",          G_AddBotCommand,      qfalse},
     {"addbotnamed",     G_AddBotNamedCommand, qfalse},
     {"removebot",       G_RemoveBotCommand,   qfalse},
+    {"sc",              G_ScriptServerCmd,    qfalse},
 #ifdef _DEBUG
     {"bot",             G_BotCommand,         qfalse},
 #endif
@@ -626,6 +629,92 @@ qboolean G_CompileScript(gentity_t *ent)
     }
 
     CompileAssemble(gi.Argv(1), gi.Argv(2));
+    return qtrue;
+}
+
+// Added in OPM
+qboolean G_ScriptServerCmd(gentity_t *ent)
+{
+    int numArgs = gi.Argc();
+
+    if (numArgs < 3) {
+        gi.Printf("Usage: sc <mod> <command> [args...]\n");
+        gi.Printf("Execute a script-defined server command.\n");
+        return qtrue;
+    }
+
+    const char *modName    = gi.Argv(1);
+    const char *commandName = gi.Argv(2);
+
+    ScriptServerCommandMap *modCommands = m_serverCommands.find(str(modName));
+    if (!modCommands) {
+        gi.Printf("sc: Unknown mod '%s'\n", modName);
+        return qtrue;
+    }
+
+    ScriptServerCommand *cmd = modCommands->findKeyValue(str(commandName));
+    if (!cmd) {
+        gi.Printf("sc: Unknown command '%s' in mod '%s'\n", commandName, modName);
+        return qtrue;
+    }
+
+    int expectedParams = cmd->paramTypes.length();
+    int providedParams = numArgs - 3;
+
+    if (providedParams != expectedParams) {
+        gi.Printf("sc %s %s: Expected %d param(s), got %d\n",
+                  modName, commandName, expectedParams, providedParams);
+        return qtrue;
+    }
+
+    Event ev;
+    for (int i = 0; i < expectedParams; i++) {
+        const char *arg       = gi.Argv(3 + i);
+        char        paramType = cmd->paramTypes[i];
+
+        switch (paramType) {
+        case 's':
+            ev.AddString(arg);
+            break;
+        case 'i':
+            {
+                char *endptr;
+                long  val = strtol(arg, &endptr, 10);
+                if (*endptr != '\0') {
+                    gi.Printf("sc: Param %d must be integer, got '%s'\n", i + 1, arg);
+                    return qtrue;
+                }
+                ev.AddInteger((int)val);
+            }
+            break;
+        case 'f':
+            {
+                char *endptr;
+                float val = strtof(arg, &endptr);
+                if (*endptr != '\0') {
+                    gi.Printf("sc: Param %d must be float, got '%s'\n", i + 1, arg);
+                    return qtrue;
+                }
+                ev.AddFloat(val);
+            }
+            break;
+        default:
+            gi.Printf("sc %s %s: Unknown param type '%c' at position %d\n",
+                      modName, commandName, paramType, i + 1);
+            return qtrue;
+        }
+    }
+
+    try {
+        if (cmd->label.IsSet()) {
+            cmd->label.Execute(NULL, ev);
+        } else {
+            gi.Printf("sc %s %s: Script label not set\n", modName, commandName);
+        }
+    } catch (const ScriptException& exc) {
+        gi.Printf("sc %s %s: Script error: %s\n", modName, commandName, exc.string.c_str());
+    }
+
     return qtrue;
 }
 

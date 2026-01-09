@@ -252,6 +252,7 @@ public:
 
     void CancelWaiting(Event *ev);
     void EventRegisterCommand(Event *ev);
+    void RegisterServerCommand(Event *ev);
 
     void EventHudDraw3d(Event *ev);
     void EventHudDrawTimer(Event *ev);
