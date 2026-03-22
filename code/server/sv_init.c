@@ -1248,13 +1248,35 @@ int SV_PVSSoundIndex( const char *name, qboolean streamed )
 	int		i;
 	int		max = MAX_SOUNDS;
 	char	*s;
+	char	precachedName[ 1024 ];
 
 	if( !name || !name[ 0 ] ) {
 		return 0;
 	}
 
-	for( i = 1; i<max; i++ ) {
-		s = sv.configstrings[CS_SOUNDS + i ];
+	// Changed in OPM
+	//  Check if this sound is already precached via SV_SoundIndex.
+	//  SV_SoundIndex stores names with the streamed flag appended (e.g. "sound/file.wav0"),
+	//  so we must match that format to avoid creating duplicate temporary configstrings.
+	//  Reusing precached indices avoids configstring churn that causes command overflow.
+	Q_strncpyz( precachedName, name, sizeof(precachedName) );
+	Q_strcat( precachedName, sizeof(precachedName), va( "%d", streamed ) );
+
+	for( i = 1; i < max; i++ ) {
+		s = sv.configstrings[CS_SOUNDS + i];
+
+		if( !s || !s[ 0 ] ) {
+			continue;
+		}
+		if( !strcmp( s, precachedName ) ) {
+			// Found an existing precached sound, reuse it without creating a temporary entry
+			return i;
+		}
+	}
+
+	// Not precached, search for an existing temporary entry or allocate a new one
+	for( i = 1; i < max; i++ ) {
+		s = sv.configstrings[CS_SOUNDS + i];
 
 		if( !s || !s[ 0 ] ) {
 			SV_SetConfigstring(CS_SOUNDS + i, name);
@@ -1266,17 +1288,28 @@ int SV_PVSSoundIndex( const char *name, qboolean streamed )
 	}
 
 	if( i == max ) {
+		// Changed in OPM
+		//  When all sound slots are full, only free a single expired non-PVS entry
+		//  instead of bulk-clearing all entries at once.
+		//  Bulk-clearing sent hundreds of reliable commands in one frame, causing overflow.
 		int found = 0;
 
-		// Remove existing sound indexes
 		for (i = 1; i < max; i++) {
-			if (svs.nonpvs_sound_cache[i].inUse) {
-				if (!found) {
-					found = i;
-				}
-
+			if (svs.nonpvs_sound_cache[i].inUse && svs.time >= svs.nonpvs_sound_cache[i].deleteTime) {
+				found = i;
 				svs.nonpvs_sound_cache[i].inUse = qfalse;
-				SV_SetConfigstring(CS_SOUNDS + i, NULL);
+				break;
+			}
+		}
+
+		if (!found) {
+			// No expired entry available, try any non-PVS entry
+			for (i = 1; i < max; i++) {
+				if (svs.nonpvs_sound_cache[i].inUse) {
+					found = i;
+					svs.nonpvs_sound_cache[i].inUse = qfalse;
+					break;
+				}
 			}
 		}
 
@@ -1287,6 +1320,7 @@ int SV_PVSSoundIndex( const char *name, qboolean streamed )
 		i = found;
 	}
 
+	SV_SetConfigstring(CS_SOUNDS + i, name);
 	svs.nonpvs_sound_cache[i].inUse = qtrue;
 	svs.nonpvs_sound_cache[i].deleteTime = svs.time + 200;
 
@@ -1309,8 +1343,12 @@ void SV_CacheNonPVSSound(void)
 
 		for (j = 0; j < ent->r.num_nonpvs_sounds; j++) {
 			npvs = &ent->r.nonpvs_sounds[j];
-			if (npvs->index) {
-				svs.nonpvs_sound_cache[npvs->index].inUse = qtrue;
+			// Changed in OPM
+			//  Only refresh the delete time for entries that are already in the
+			//  temporary non-PVS cache. Precached sounds (from SV_SoundIndex)
+			//  reuse existing configstrings and must not be marked as temporary,
+			//  otherwise SV_CleanupNonPVSSound would delete the precached entry.
+			if (npvs->index && svs.nonpvs_sound_cache[npvs->index].inUse) {
 				svs.nonpvs_sound_cache[npvs->index].deleteTime = svs.time + 200;
 			}
 		}
