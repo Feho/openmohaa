@@ -175,7 +175,30 @@ private:
     int    m_iLastUnseenTime;
     int    m_iContinuousFireTime;
     Vector m_vAimOffset;
+    Vector m_vAimOffsetTarget;
     int    m_iLastAimTime;
+    int    m_iAimLerpStartTime;
+
+    // Added in OPM
+    //  Combat strafing
+    int m_iStrafeTime;
+    int m_iStrafeDir;
+
+    // Added in OPM
+    //  Grenade avoidance
+    SafePtr<Entity> m_pGrenade;
+    int             m_iGrenadeAvoidTime;
+
+    // Added in OPM
+    //  Human-like movement behavior
+    int  m_iIdlePauseTime; // When current idle pause ends
+    int  m_iIdleLookTime;  // When to change look direction during pause
+    int  m_iWalkTime;      // When to stop walking and run again
+    int  m_iLeanTime;      // When to change lean state
+    int  m_iLeanDir;       // Current lean direction: -1 left, 0 none, 1 right
+    bool m_bIdlePausing;   // Currently in idle pause
+    bool m_bWalking;       // Currently walking instead of running
+    bool m_bStandingStill; // Standing still to aim (combat)
 
     Vector            m_vLastCuriousPos;
     Vector            m_vNewCuriousPos;

@@ -76,6 +76,23 @@ BotController::BotController()
 
     m_iNextTauntTime = 0;
 
+    m_iStrafeTime = 0;
+    m_iStrafeDir  = 0;
+
+    m_pGrenade          = NULL;
+    m_iGrenadeAvoidTime = 0;
+
+    m_iIdlePauseTime = 0;
+    m_iIdleLookTime  = 0;
+    m_iWalkTime      = 0;
+    m_iLeanTime      = 0;
+    m_iLeanDir       = 0;
+    m_bIdlePausing   = false;
+    m_bWalking       = false;
+    m_bStandingStill = false;
+
+    m_iAimLerpStartTime = 0;
+
     m_StateFlags = 0;
 }
 
@@ -123,7 +140,7 @@ void BotController::UpdateBotStates(void)
     m_botCmd.serverTime = level.svsTime;
 
     if (g_bot_manualmove->integer) {
-        m_botCmd.buttons = 0;
+        m_botCmd.buttons     = 0;
         m_botCmd.forwardmove = m_botCmd.rightmove = m_botCmd.upmove = 0;
         return;
     }
@@ -163,7 +180,28 @@ void BotController::UpdateBotStates(void)
         return;
     }
 
-    m_botCmd.buttons |= BUTTON_RUN;
+    //
+    // Added in OPM
+    //  Determine run/walk behavior based on context
+    //  - Walk when idle pausing, standing still to aim, or randomly walking
+    //  - Run otherwise
+    //
+    if (m_bIdlePausing || m_bStandingStill || m_bWalking) {
+        m_botCmd.buttons &= ~BUTTON_RUN;
+    } else {
+        m_botCmd.buttons |= BUTTON_RUN;
+    }
+
+    //
+    // Added in OPM
+    //  Handle leaning during combat
+    //
+    m_botCmd.buttons &= ~(BUTTON_LEAN_LEFT | BUTTON_LEAN_RIGHT);
+    if (m_iLeanDir < 0) {
+        m_botCmd.buttons |= BUTTON_LEAN_LEFT;
+    } else if (m_iLeanDir > 0) {
+        m_botCmd.buttons |= BUTTON_LEAN_RIGHT;
+    }
 
     m_botEyes.ofs[0]    = 0;
     m_botEyes.ofs[1]    = 0;
@@ -602,6 +640,52 @@ void BotController::State_Idle(void)
         CheckReload();
     }
 
+    //
+    // Added in OPM
+    //  Human-like idle behavior: periodic pauses to look around
+    //
+    if (m_bIdlePausing) {
+        // Currently paused - look around
+        if (level.inttime >= m_iIdlePauseTime) {
+            // Done pausing, resume movement
+            m_bIdlePausing = false;
+            // Sometimes start walking instead of running after a pause
+            if (rand() % 4 == 0) {
+                m_bWalking  = true;
+                m_iWalkTime = level.inttime + 2000 + (int)G_Random(3000);
+            }
+        } else {
+            // Look around periodically during pause
+            if (level.inttime >= m_iIdleLookTime) {
+                m_iIdleLookTime = level.inttime + 800 + (int)G_Random(1200);
+
+                // Pick a random look direction
+                Vector lookAngles = controlledEnt->angles;
+                lookAngles.y += G_CRandom(90);
+                lookAngles.x = G_CRandom(15);
+                rotation.SetTargetAngles(lookAngles);
+            }
+            return;
+        }
+    } else {
+        // Check if we should start a pause
+        if (rand() % 400 == 0 && !movement.MoveToBestAttractivePoint(1)) {
+            m_bIdlePausing   = true;
+            m_iIdlePauseTime = level.inttime + 1500 + (int)G_Random(2500);
+            m_iIdleLookTime  = level.inttime + 500;
+            movement.ClearMove();
+            return;
+        }
+    }
+
+    //
+    // Added in OPM
+    //  Occasionally walk instead of run
+    //
+    if (m_bWalking && level.inttime >= m_iWalkTime) {
+        m_bWalking = false;
+    }
+
     AimAtAimNode();
 
     if (!movement.MoveToBestAttractivePoint() && !movement.IsMoving()) {
@@ -754,10 +838,20 @@ bool BotController::CheckCondition_Attack(void)
 {
     Container<Sentient *> sents       = SentientList;
     float                 maxDistance = 0;
+    Sentient             *bestEnemy   = NULL;
+    float                 bestDistSq  = 999999999.0f;
 
     bot_origin = controlledEnt->origin;
     sents.Sort(sentients_compare);
 
+    maxDistance = Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828);
+
+    //
+    // Changed in OPM
+    //  Scan ALL visible enemies and pick the closest one, rather than
+    //  returning early when any enemy is found. Also use wider FOV (120°)
+    //  to notice threats from peripheral vision.
+    //
     for (int i = 1; i <= sents.NumObjects(); i++) {
         Sentient *sent = sents.ObjectAt(i);
 
@@ -765,27 +859,32 @@ bool BotController::CheckCondition_Attack(void)
             continue;
         }
 
-        maxDistance = Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828);
+        float distSq = (sent->origin - controlledEnt->origin).lengthSquared();
 
-        if (controlledEnt->CanSee(sent, 80, maxDistance, false)) {
-            if (m_pEnemy != sent) {
-                m_iEnemyEyesTag = -1;
+        // Use wider FOV (120°) to notice peripheral threats
+        if (controlledEnt->CanSee(sent, 120, maxDistance, false)) {
+            if (distSq < bestDistSq) {
+                bestDistSq = distSq;
+                bestEnemy  = sent;
             }
-
-            if (!m_pEnemy) {
-                m_iLastUnseenTime = level.inttime;
-            }
-
-            m_pEnemy        = sent;
-            m_vLastEnemyPos = m_pEnemy->origin;
-        }
-
-        if (m_pEnemy) {
-            m_iAttackTime = level.inttime + 1000;
-            return true;
         }
     }
 
+    // If we found a visible enemy, target them
+    if (bestEnemy) {
+        if (m_pEnemy != bestEnemy) {
+            m_iEnemyEyesTag = -1;
+            // Reset reaction time when switching targets
+            m_iLastUnseenTime = level.inttime;
+        }
+
+        m_pEnemy        = bestEnemy;
+        m_vLastEnemyPos = m_pEnemy->origin;
+        m_iAttackTime   = level.inttime + 1000;
+        return true;
+    }
+
+    // No visible enemy - check if we should keep hunting the last known position
     if (level.inttime > m_iAttackTime) {
         if (m_iAttackTime) {
             movement.ClearMove();
@@ -801,6 +900,11 @@ bool BotController::CheckCondition_Attack(void)
 void BotController::State_EndAttack(void)
 {
     m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
+    m_botCmd.rightmove = 0;
+    m_iStrafeTime      = 0;
+    m_iStrafeDir       = 0;
+    m_bStandingStill   = false;
+    m_iLeanDir         = 0;
     controlledEnt->ZoomOff();
 }
 
@@ -835,9 +939,9 @@ void BotController::State_Attack(void)
 
         bCanAttack = true;
         if (m_iLastUnseenTime) {
-            const float reactionTime = Q_min(1000 * Q_min(1, fDistanceSquared / Square(2048)), 1000);
-            const unsigned int minDelay = g_bot_attack_react_min_delay->value * 1000;
-            const unsigned int randomDelay = g_bot_attack_react_random_delay->value * 1000;
+            const float        reactionTime = Q_min(1000 * Q_min(1, fDistanceSquared / Square(2048)), 1000);
+            const unsigned int minDelay     = g_bot_attack_react_min_delay->value * 1000;
+            const unsigned int randomDelay  = g_bot_attack_react_random_delay->value * 1000;
             if (level.inttime <= m_iLastUnseenTime + minDelay + G_Random(randomDelay)) {
                 bCanAttack = false;
             } else {
@@ -854,7 +958,7 @@ void BotController::State_Attack(void)
             float     fSpreadFactor                = pWeap->GetSpreadFactor(FIRE_PRIMARY);
 
             const int maxcontinuousFireTime = fireDelay + g_bot_attack_continuousfire_min_firetime->value * 1000
-                                           + G_Random(g_bot_attack_continuousfire_random_firetime->value * 1000);
+                                            + G_Random(g_bot_attack_continuousfire_random_firetime->value * 1000);
             const int maxBurstTime = fireDelay + g_bot_attack_burst_min_time->value * 1000
                                    + G_Random(g_bot_attack_burst_random_delay->value * 1000);
 
@@ -997,17 +1101,42 @@ void BotController::State_Attack(void)
             vTarget = m_pEnemy->origin;
         }
 
-        if (level.inttime >= m_iLastAimTime + 100) {
+        //
+        // Changed in OPM
+        //  Humanized aiming: pick a new random offset target every 300-600ms,
+        //  then smoothly lerp toward it. Scale offset magnitude by distance
+        //  so bots are more accurate at close range.
+        //
+        if (level.inttime >= m_iLastAimTime + 300 + (int)G_Random(300)) {
+            float halfW = (m_pEnemy->maxs.x - m_pEnemy->mins.x) * 0.5;
+            float halfD = (m_pEnemy->maxs.y - m_pEnemy->mins.y) * 0.5;
+
+            // Scale offset by distance: close (< 256) = tight, far (> 1024) = full spread
+            float fDist     = sqrt(fDistanceSquared);
+            float distScale = Q_clamp_float((fDist - 256) / 768, 0.15, 1.0);
+
             if (m_iEnemyEyesTag != -1) {
-                m_vAimOffset[0] = G_CRandom((m_pEnemy->maxs.x - m_pEnemy->mins.x) * 0.5);
-                m_vAimOffset[1] = G_CRandom((m_pEnemy->maxs.y - m_pEnemy->mins.y) * 0.5);
-                m_vAimOffset[2] = -G_Random(m_pEnemy->maxs.z * 0.5);
+                m_vAimOffsetTarget[0] = G_CRandom(halfW) * distScale;
+                m_vAimOffsetTarget[1] = G_CRandom(halfD) * distScale;
+                m_vAimOffsetTarget[2] = -G_Random(m_pEnemy->maxs.z * 0.5) * distScale;
             } else {
-                m_vAimOffset[0] = G_CRandom((m_pEnemy->maxs.x - m_pEnemy->mins.x) * 0.5);
-                m_vAimOffset[1] = G_CRandom((m_pEnemy->maxs.y - m_pEnemy->mins.y) * 0.5);
-                m_vAimOffset[2] = 16 + G_Random(m_pEnemy->viewheight - 16);
+                m_vAimOffsetTarget[0] = G_CRandom(halfW) * distScale;
+                m_vAimOffsetTarget[1] = G_CRandom(halfD) * distScale;
+                m_vAimOffsetTarget[2] = 16 + G_Random(m_pEnemy->viewheight - 16) * distScale;
             }
-            m_iLastAimTime = level.inttime;
+
+            m_iLastAimTime      = level.inttime;
+            m_iAimLerpStartTime = level.inttime;
+        }
+
+        // Smoothly lerp current offset toward target offset
+        {
+            float dt       = level.frametime * g_bot_aim_lerp_speed->value;
+            float lerpFrac = Q_clamp_float(dt, 0.0, 1.0);
+
+            m_vAimOffset[0] = m_vAimOffset[0] + (m_vAimOffsetTarget[0] - m_vAimOffset[0]) * lerpFrac;
+            m_vAimOffset[1] = m_vAimOffset[1] + (m_vAimOffsetTarget[1] - m_vAimOffset[1]) * lerpFrac;
+            m_vAimOffset[2] = m_vAimOffset[2] + (m_vAimOffsetTarget[2] - m_vAimOffset[2]) * lerpFrac;
         }
 
         rotation.AimAt(vTarget + m_vAimOffset * g_bot_attack_spreadmult->value);
@@ -1016,10 +1145,64 @@ void BotController::State_Attack(void)
     }
 
     if (bNoMove) {
+        m_bStandingStill = true;
         return;
     }
 
     fEnemyDistanceSquared = (controlledEnt->origin - m_vLastEnemyPos).lengthSquared();
+
+    //
+    // Added in OPM
+    //  Stand still to aim at long range targets (more accurate)
+    //  At close range, keep moving
+    //
+    const float longRangeThreshold = 800 * 800;
+    const float midRangeThreshold  = 400 * 400;
+
+    if (bCanSee && bFiring && fEnemyDistanceSquared > longRangeThreshold) {
+        // Long range: stand completely still for accuracy
+        m_bStandingStill = true;
+        movement.ClearMove();
+        m_iStrafeDir = 0;
+    } else if (bCanSee && bFiring && fEnemyDistanceSquared > midRangeThreshold) {
+        // Mid range: stop periodically to aim, then move
+        if (rand() % 100 < 30) {
+            m_bStandingStill = true;
+            movement.ClearMove();
+        } else {
+            m_bStandingStill = false;
+        }
+    } else {
+        m_bStandingStill = false;
+    }
+
+    //
+    // Added in OPM
+    //  Leaning during combat: periodically lean left/right when stationary
+    //
+    if (bCanSee && m_bStandingStill) {
+        if (level.inttime >= m_iLeanTime) {
+            m_iLeanTime = level.inttime + 1500 + (int)G_Random(2000);
+
+            // Pick lean direction: left, right, or none
+            int roll = rand() % 5;
+            if (roll < 2) {
+                m_iLeanDir = -1;
+            } else if (roll < 4) {
+                m_iLeanDir = 1;
+            } else {
+                m_iLeanDir = 0;
+            }
+        }
+    } else {
+        // Not standing still, don't lean
+        m_iLeanDir = 0;
+    }
+
+    if (m_bStandingStill) {
+        // Already handled above
+        return;
+    }
 
     if ((!movement.MoveToBestAttractivePoint(5) && !movement.IsMoving())
         || (m_vOldEnemyPos != m_vLastEnemyPos && !movement.MoveDone()) || fEnemyDistanceSquared < fMinDistanceSquared) {
@@ -1043,6 +1226,31 @@ void BotController::State_Attack(void)
         }
     }
 
+    //
+    // Added in OPM
+    //  Combat strafing: periodically change strafe direction while engaging
+    //
+    if (bCanSee && !bMelee) {
+        if (level.inttime >= m_iStrafeTime) {
+            const int interval       = g_bot_strafe_interval->value * 1000;
+            const int randomAddition = G_Random(g_bot_strafe_random_interval->value * 1000);
+
+            m_iStrafeTime = level.inttime + interval + randomAddition;
+
+            // Pick a random strafe direction: left, right, or briefly none
+            int roll = rand() % 5;
+            if (roll < 2) {
+                m_iStrafeDir = 127;
+            } else if (roll < 4) {
+                m_iStrafeDir = -127;
+            } else {
+                m_iStrafeDir = 0;
+            }
+        }
+
+        m_botCmd.rightmove = m_iStrafeDir;
+    }
+
     if (movement.IsMoving()) {
         m_iAttackTime = level.inttime + 1000;
     }
@@ -1063,13 +1271,77 @@ void BotController::InitState_Grenade(botfunc_t *func)
 
 bool BotController::CheckCondition_Grenade(void)
 {
-    // FIXME: TODO
+    // Added in OPM
+    //  Scan for nearby enemy projectiles (grenades) and flee from them
+    if (m_pGrenade && m_pGrenade->IsSubclassOfProjectile()) {
+        float distSq = (m_pGrenade->origin - controlledEnt->origin).lengthSquared();
+        float radius = g_bot_grenade_avoid_radius->value;
+
+        if (distSq < radius * radius) {
+            return true;
+        }
+    }
+
+    m_pGrenade = NULL;
+
+    float      radiusSq = Square(g_bot_grenade_avoid_radius->value);
+    gentity_t *edict;
+    int        i;
+
+    for (i = game.maxclients, edict = &g_entities[i]; i < globals.num_entities; i++, edict++) {
+        if (!edict->inuse || !edict->entity) {
+            continue;
+        }
+
+        Entity *ent = edict->entity;
+        if (!ent->IsSubclassOfProjectile()) {
+            continue;
+        }
+
+        Projectile *proj = static_cast<Projectile *>(ent);
+
+        // Ignore own projectiles
+        if (proj->GetOwner() == controlledEnt) {
+            continue;
+        }
+
+        // Ignore friendly projectiles in team games
+        Sentient *projOwner = proj->GetOwner();
+        if (projOwner && projOwner->IsSubclassOfPlayer() && g_gametype->integer >= GT_TEAM) {
+            Player *p = static_cast<Player *>(projOwner);
+            if (p->GetTeam() == controlledEnt->GetTeam()) {
+                continue;
+            }
+        }
+
+        float distSq = (ent->origin - controlledEnt->origin).lengthSquared();
+        if (distSq < radiusSq) {
+            m_pGrenade          = ent;
+            m_iGrenadeAvoidTime = level.inttime + 3000;
+            return true;
+        }
+    }
+
+    if (level.inttime < m_iGrenadeAvoidTime) {
+        return true;
+    }
+
     return false;
 }
 
 void BotController::State_Grenade(void)
 {
-    // FIXME: TODO
+    // Added in OPM
+    //  Flee away from the grenade
+    if (!m_pGrenade) {
+        return;
+    }
+
+    Vector grenadePos = m_pGrenade->origin;
+    Vector fleeDir    = controlledEnt->origin - grenadePos;
+    VectorNormalizeFast(fleeDir);
+
+    movement.AvoidPath(grenadePos, g_bot_grenade_avoid_radius->value, fleeDir * 512);
 }
 
 /*
@@ -1263,10 +1535,23 @@ void BotController::Killed(const Event& ev)
 
 void BotController::GotKill(const Event& ev)
 {
-    ClearEnemy();
-    m_iCuriousTime = 0;
+    //
+    // Changed in OPM
+    //  Don't fully exit combat state after a kill - just clear the current
+    //  enemy so CheckCondition_Attack can find a new target. Keep m_iAttackTime
+    //  active so the bot stays in combat mode and continues scanning for enemies.
+    //
+    m_pEnemy        = NULL;
+    m_iEnemyEyesTag = -1;
+    m_iCuriousTime  = 0;
 
-    if (g_bot_instamsg_chance->integer && level.inttime >= m_iNextTauntTime && (rand() % g_bot_instamsg_chance->integer) == 0) {
+    // Extend attack time briefly to allow scanning for new targets
+    if (m_iAttackTime) {
+        m_iAttackTime = level.inttime + 1500;
+    }
+
+    if (g_bot_instamsg_chance->integer && level.inttime >= m_iNextTauntTime
+        && (rand() % g_bot_instamsg_chance->integer) == 0) {
         //
         // Randomly play a taunt
         //

@@ -294,6 +294,13 @@ cvar_t *g_bot_instamsg_delay;
 cvar_t *g_bot_initial_spawn_delay;
 cvar_t *g_bot_manualmove;
 
+// Added in OPM
+//  Combat strafing and grenade avoidance cvars
+cvar_t *g_bot_strafe_interval;
+cvar_t *g_bot_strafe_random_interval;
+cvar_t *g_bot_grenade_avoid_radius;
+cvar_t *g_bot_aim_lerp_speed;
+
 cvar_t *g_rankedserver;
 cvar_t *g_spectatefollow_firstperson;
 
@@ -709,6 +716,13 @@ void CVAR_Init(void)
     g_bot_initial_spawn_delay = gi.Cvar_Get("g_bot_initial_spawn_delay", "", 0);
 
     g_bot_manualmove = gi.Cvar_Get("g_bot_manualmove", "0", 0);
+
+    // Added in OPM
+    //  Combat strafing, grenade avoidance, aim lerp cvars
+    g_bot_strafe_interval        = gi.Cvar_Get("g_bot_strafe_interval", "0.5", 0);
+    g_bot_strafe_random_interval = gi.Cvar_Get("g_bot_strafe_random_interval", "1.5", 0);
+    g_bot_grenade_avoid_radius   = gi.Cvar_Get("g_bot_grenade_avoid_radius", "512", 0);
+    g_bot_aim_lerp_speed         = gi.Cvar_Get("g_bot_aim_lerp_speed", "4.0", 0);
 
     g_teambalance = gi.Cvar_Get("g_teambalance", "0", 0);
 

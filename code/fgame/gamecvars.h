@@ -327,6 +327,13 @@ extern cvar_t *g_bot_initial_spawn_delay;
  */
 extern cvar_t *g_bot_manualmove;
 
+// Added in OPM
+//  Combat strafing and grenade avoidance cvars
+extern cvar_t *g_bot_strafe_interval;
+extern cvar_t *g_bot_strafe_random_interval;
+extern cvar_t *g_bot_grenade_avoid_radius;
+extern cvar_t *g_bot_aim_lerp_speed;
+
 extern cvar_t *g_rankedserver;
 extern cvar_t *g_spectatefollow_firstperson;
 
