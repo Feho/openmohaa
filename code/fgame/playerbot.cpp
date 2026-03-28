@@ -882,7 +882,7 @@ bool BotController::CheckCondition_Attack(void)
 
         m_pEnemy        = bestEnemy;
         m_vLastEnemyPos = m_pEnemy->origin;
-        m_iAttackTime   = level.inttime + 1000;
+        m_iAttackTime   = level.inttime + 500 + (int)G_Random(1000);
         return true;
     }
 
@@ -925,8 +925,21 @@ void BotController::State_Attack(void)
     bool    bNoMove = false;
     bool    bFiring = false;
 
+    // Changed in OPM
+    //  When enemy is gone but we recently had one, keep looking at the last
+    //  known position briefly instead of snapping away. This prevents the
+    //  jarring 180-degree turn after a kill.
+    // Changed in OPM
+    //  When enemy is gone but we recently had one, keep looking at the last
+    //  known position briefly instead of snapping away.
     if (!m_pEnemy || !IsValidEnemy(m_pEnemy)) {
-        // Ignore dead enemies
+        if (level.inttime < m_iAttackStopAimTime && m_vLastEnemyPos != vec_zero) {
+            rotation.AimAt(m_vLastEnemyPos);
+            m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
+            m_iAttackTime = level.inttime + 200 + (int)G_Random(300);
+            return;
+        }
+
         m_iAttackTime = 0;
         return;
     }
@@ -1071,8 +1084,8 @@ void BotController::State_Attack(void)
                 }
             }
 
-            m_iAttackTime        = level.inttime + 1000;
-            m_iAttackStopAimTime = level.inttime + 3000;
+            m_iAttackTime        = level.inttime + 500 + (int)G_Random(1000);
+            m_iAttackStopAimTime = level.inttime + 500 + (int)G_Random(1000);
             m_iLastSeenTime      = level.inttime;
             m_vLastEnemyPos      = m_pEnemy->origin;
         }
@@ -1165,10 +1178,9 @@ void BotController::State_Attack(void)
     const float midRangeThreshold  = 400 * 400;
 
     if (bCanSee && bFiring && fEnemyDistanceSquared > longRangeThreshold) {
-        // Long range: stand completely still for accuracy
+        // Long range: stop forward movement, strafing handled separately
         m_bStandingStill = true;
         movement.ClearMove();
-        m_iStrafeDir = 0;
     } else if (bCanSee && bFiring && fEnemyDistanceSquared > midRangeThreshold) {
         // Mid range: stop periodically to aim, then move
         if (rand() % 100 < 30) {
@@ -1227,80 +1239,83 @@ void BotController::State_Attack(void)
         m_botCmd.upmove = 0;
     }
 
-    if (m_bStandingStill) {
-        // Already handled above
-        return;
-    }
-
-    if ((!movement.MoveToBestAttractivePoint(5) && !movement.IsMoving())
-        || (m_vOldEnemyPos != m_vLastEnemyPos && !movement.MoveDone()) || fEnemyDistanceSquared < fMinDistanceSquared) {
-        if (!bMelee || !bCanSee) {
-            if (fEnemyDistanceSquared < fMinDistanceSquared) {
-                Vector vDir = controlledEnt->origin - m_vLastEnemyPos;
-                VectorNormalizeFast(vDir);
-
-                movement.AvoidPath(m_vLastEnemyPos, fMinDistance, Vector(controlledEnt->orientation[1]) * 512);
-            } else {
-                movement.MoveTo(m_vLastEnemyPos);
-            }
-
-            if (!bCanSee && movement.MoveDone()) {
-                // Lost track of the enemy
-                ClearEnemy();
-                return;
-            }
-        } else {
-            movement.MoveTo(m_vLastEnemyPos);
-        }
-    }
-
     //
     // Changed in OPM
     //  Combat strafing: ADAD spam when actively firing and visible to enemy.
-    //  Uses shorter intervals (200-500ms) during active combat for rapid
-    //  direction changes, and longer intervals when not actively engaging.
+    //  Placed before the standing-still return so bots strafe at all ranges,
+    //  even when holding position.
     //
+    // Changed in OPM
+    //  Combat strafing with varied, unpredictable timing.
+    //  Mix of quick direction changes, longer holds, and brief pauses
+    //  so the pattern is never consistent.
     if (bCanSee && !bMelee) {
         if (level.inttime >= m_iStrafeTime) {
-            int interval;
-            int randomAddition;
+            int roll = rand() % 10;
 
-            if (bFiring) {
-                // Active combat: fast ADAD spam
-                interval       = 200;
-                randomAddition = (int)G_Random(300);
+            if (roll < 2) {
+                // Quick tap: short hold, then switch
+                m_iStrafeTime = level.inttime + 150 + (int)G_Random(250);
+                m_iStrafeDir  = (rand() % 2) ? 127 : -127;
+            } else if (roll < 4) {
+                // Hold direction: commit to one side for a while
+                m_iStrafeTime = level.inttime + 600 + (int)G_Random(1200);
+                m_iStrafeDir  = (rand() % 2) ? 127 : -127;
+            } else if (roll < 8) {
+                // Pause: stop strafing, longer duration
+                m_iStrafeTime = level.inttime + 300 + (int)G_Random(700);
+                m_iStrafeDir  = 0;
             } else {
-                // Passive engagement: normal strafe timing
-                interval       = g_bot_strafe_interval->value * 1000;
-                randomAddition = (int)G_Random(g_bot_strafe_random_interval->value * 1000);
-            }
-
-            m_iStrafeTime = level.inttime + interval + randomAddition;
-
-            if (bFiring) {
-                // ADAD spam: alternate direction, rarely stop
-                m_iStrafeDir = -m_iStrafeDir;
-                if (m_iStrafeDir == 0) {
-                    m_iStrafeDir = (rand() % 2) ? 127 : -127;
-                }
-            } else {
-                // Normal strafe: left, right, or none
-                int roll = rand() % 5;
-                if (roll < 2) {
-                    m_iStrafeDir = 127;
-                } else if (roll < 4) {
-                    m_iStrafeDir = -127;
-                } else {
-                    m_iStrafeDir = 0;
-                }
+                // Double-tap: reverse current direction
+                m_iStrafeTime = level.inttime + 100 + (int)G_Random(200);
+                m_iStrafeDir  = m_iStrafeDir > 0 ? -127 : 127;
             }
         }
 
         m_botCmd.rightmove = m_iStrafeDir;
     }
 
+    if (m_bStandingStill) {
+        return;
+    }
+
+    //
+    // Changed in OPM
+    //  Combat movement: only rush toward the enemy when they are not visible
+    //  or when using melee. When the bot can see and shoot the enemy, hold
+    //  position and fight from the current range instead of charging forward.
+    //  Back away if too close.
+    //
+    if (bCanSee && bCanAttack && !bMelee) {
+        // Can see and shoot - hold position, let strafing handle lateral movement
+        if (fEnemyDistanceSquared < fMinDistanceSquared) {
+            // Too close - back away
+            movement.AvoidPath(m_vLastEnemyPos, fMinDistance, Vector(controlledEnt->orientation[1]) * 512);
+        } else {
+            // Good firing position - stop advancing
+            if (movement.IsMoving() && !movement.MoveToBestAttractivePoint(5)) {
+                movement.ClearMove();
+            }
+        }
+    } else if ((!movement.MoveToBestAttractivePoint(5) && !movement.IsMoving())
+               || (m_vOldEnemyPos != m_vLastEnemyPos && !movement.MoveDone())
+               || fEnemyDistanceSquared < fMinDistanceSquared) {
+        // Can't see enemy or using melee - close the distance
+        if (fEnemyDistanceSquared < fMinDistanceSquared && !bMelee) {
+            movement.AvoidPath(m_vLastEnemyPos, fMinDistance, Vector(controlledEnt->orientation[1]) * 512);
+        } else {
+            movement.MoveTo(m_vLastEnemyPos);
+        }
+
+        if (!bCanSee && movement.MoveDone()) {
+            // Lost track of the enemy
+            ClearEnemy();
+            return;
+        }
+    }
+
     if (movement.IsMoving()) {
-        m_iAttackTime = level.inttime + 1000;
+        m_iAttackTime = level.inttime + 500 + (int)G_Random(1000);
     }
 }
 
@@ -1595,7 +1610,7 @@ void BotController::GotKill(const Event& ev)
 
     // Extend attack time briefly to allow scanning for new targets
     if (m_iAttackTime) {
-        m_iAttackTime = level.inttime + 1500;
+        m_iAttackTime = level.inttime + 500 + (int)G_Random(1000);
     }
 
     if (g_bot_instamsg_chance->integer && level.inttime >= m_iNextTauntTime

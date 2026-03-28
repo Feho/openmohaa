@@ -61,12 +61,14 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
     Vector vWishDir;
     Vector vDelta;
 
-    botcmd.forwardmove = 0;
-    botcmd.rightmove   = 0;
-
     CheckAttractiveNodes();
 
     if (!IsMoving() || !m_pPath) {
+        // Changed in OPM
+        //  Don't zero rightmove/upmove here — other states (attack strafing,
+        //  crouching) may have already set them. Only zero forwardmove since
+        //  the movement system owns forward/backward when there's no active path.
+        botcmd.forwardmove = 0;
         return;
     }
 
