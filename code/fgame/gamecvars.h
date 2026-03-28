@@ -334,6 +334,16 @@ extern cvar_t *g_bot_strafe_random_interval;
 extern cvar_t *g_bot_grenade_avoid_radius;
 extern cvar_t *g_bot_aim_lerp_speed;
 
+// Added in OPM
+//  Combat crouching
+extern cvar_t *g_bot_crouch_chance;
+
+// Added in OPM
+//  Aim dynamics: overshoot and settle
+extern cvar_t *g_bot_aim_overshoot;
+extern cvar_t *g_bot_aim_settle_speed;
+extern cvar_t *g_bot_aim_noise;
+
 extern cvar_t *g_rankedserver;
 extern cvar_t *g_spectatefollow_firstperson;
 

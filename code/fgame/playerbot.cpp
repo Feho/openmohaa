@@ -90,6 +90,8 @@ BotController::BotController()
     m_bIdlePausing   = false;
     m_bWalking       = false;
     m_bStandingStill = false;
+    m_bCrouching     = false;
+    m_bCrouchDecided = false;
 
     m_iAimLerpStartTime = 0;
 
@@ -901,9 +903,12 @@ void BotController::State_EndAttack(void)
 {
     m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
     m_botCmd.rightmove = 0;
+    m_botCmd.upmove    = 0;
     m_iStrafeTime      = 0;
     m_iStrafeDir       = 0;
     m_bStandingStill   = false;
+    m_bCrouching       = false;
+    m_bCrouchDecided   = false;
     m_iLeanDir         = 0;
     controlledEnt->ZoomOff();
 }
@@ -1199,6 +1204,29 @@ void BotController::State_Attack(void)
         m_iLeanDir = 0;
     }
 
+    //
+    // Added in OPM
+    //  Combat crouching: crouch when standing still to reduce profile
+    //  and improve accuracy. Decided once when entering standing-still state.
+    //
+    if (m_bStandingStill) {
+        if (!m_bCrouching && !m_bCrouchDecided) {
+            m_bCrouchDecided = true;
+            if (rand() % 100 < g_bot_crouch_chance->integer) {
+                m_bCrouching = true;
+            }
+        }
+    } else {
+        m_bCrouching     = false;
+        m_bCrouchDecided = false;
+    }
+
+    if (m_bCrouching) {
+        m_botCmd.upmove = -127;
+    } else {
+        m_botCmd.upmove = 0;
+    }
+
     if (m_bStandingStill) {
         // Already handled above
         return;
@@ -1227,24 +1255,44 @@ void BotController::State_Attack(void)
     }
 
     //
-    // Added in OPM
-    //  Combat strafing: periodically change strafe direction while engaging
+    // Changed in OPM
+    //  Combat strafing: ADAD spam when actively firing and visible to enemy.
+    //  Uses shorter intervals (200-500ms) during active combat for rapid
+    //  direction changes, and longer intervals when not actively engaging.
     //
     if (bCanSee && !bMelee) {
         if (level.inttime >= m_iStrafeTime) {
-            const int interval       = g_bot_strafe_interval->value * 1000;
-            const int randomAddition = G_Random(g_bot_strafe_random_interval->value * 1000);
+            int interval;
+            int randomAddition;
+
+            if (bFiring) {
+                // Active combat: fast ADAD spam
+                interval       = 200;
+                randomAddition = (int)G_Random(300);
+            } else {
+                // Passive engagement: normal strafe timing
+                interval       = g_bot_strafe_interval->value * 1000;
+                randomAddition = (int)G_Random(g_bot_strafe_random_interval->value * 1000);
+            }
 
             m_iStrafeTime = level.inttime + interval + randomAddition;
 
-            // Pick a random strafe direction: left, right, or briefly none
-            int roll = rand() % 5;
-            if (roll < 2) {
-                m_iStrafeDir = 127;
-            } else if (roll < 4) {
-                m_iStrafeDir = -127;
+            if (bFiring) {
+                // ADAD spam: alternate direction, rarely stop
+                m_iStrafeDir = -m_iStrafeDir;
+                if (m_iStrafeDir == 0) {
+                    m_iStrafeDir = (rand() % 2) ? 127 : -127;
+                }
             } else {
-                m_iStrafeDir = 0;
+                // Normal strafe: left, right, or none
+                int roll = rand() % 5;
+                if (roll < 2) {
+                    m_iStrafeDir = 127;
+                } else if (roll < 4) {
+                    m_iStrafeDir = -127;
+                } else {
+                    m_iStrafeDir = 0;
+                }
             }
         }
 

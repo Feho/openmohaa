@@ -139,6 +139,14 @@ private:
     Vector m_vCurrentAng;
     Vector m_vAngDelta;
     Vector m_vAngSpeed;
+
+    // Added in OPM
+    //  Aim dynamics: overshoot and settle model
+    Vector m_vPrevTargetAng;  // Previous target to detect new aim requests
+    bool   m_bOvershootPhase; // Currently in overshoot phase
+    float  m_fSettleFrac;     // 0..1 progress through settle phase
+    float  m_fOvershootYaw;   // Overshoot amount applied to yaw
+    float  m_fOvershootPitch; // Overshoot amount applied to pitch
 };
 
 class BotState
@@ -199,6 +207,8 @@ private:
     bool m_bIdlePausing;   // Currently in idle pause
     bool m_bWalking;       // Currently walking instead of running
     bool m_bStandingStill; // Standing still to aim (combat)
+    bool m_bCrouching;     // Currently crouching in combat
+    bool m_bCrouchDecided; // Whether crouch decision was made for current stand-still
 
     Vector            m_vLastCuriousPos;
     Vector            m_vNewCuriousPos;

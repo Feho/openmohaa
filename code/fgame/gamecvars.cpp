@@ -300,6 +300,10 @@ cvar_t *g_bot_strafe_interval;
 cvar_t *g_bot_strafe_random_interval;
 cvar_t *g_bot_grenade_avoid_radius;
 cvar_t *g_bot_aim_lerp_speed;
+cvar_t *g_bot_crouch_chance;
+cvar_t *g_bot_aim_overshoot;
+cvar_t *g_bot_aim_settle_speed;
+cvar_t *g_bot_aim_noise;
 
 cvar_t *g_rankedserver;
 cvar_t *g_spectatefollow_firstperson;
@@ -723,6 +727,10 @@ void CVAR_Init(void)
     g_bot_strafe_random_interval = gi.Cvar_Get("g_bot_strafe_random_interval", "1.5", 0);
     g_bot_grenade_avoid_radius   = gi.Cvar_Get("g_bot_grenade_avoid_radius", "512", 0);
     g_bot_aim_lerp_speed         = gi.Cvar_Get("g_bot_aim_lerp_speed", "4.0", 0);
+    g_bot_crouch_chance          = gi.Cvar_Get("g_bot_crouch_chance", "40", 0);
+    g_bot_aim_overshoot          = gi.Cvar_Get("g_bot_aim_overshoot", "0.1", 0);
+    g_bot_aim_settle_speed       = gi.Cvar_Get("g_bot_aim_settle_speed", "8.0", 0);
+    g_bot_aim_noise              = gi.Cvar_Get("g_bot_aim_noise", "0.3", 0);
 
     g_teambalance = gi.Cvar_Get("g_teambalance", "0", 0);
 
