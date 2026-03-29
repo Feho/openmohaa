@@ -113,6 +113,54 @@ BotMovement& BotController::GetMovement()
     return movement;
 }
 
+BotBeliefMap& BotController::GetBeliefMap()
+{
+    return beliefMap;
+}
+
+// Added in OPM
+//  Draw debug visualization of belief zones. Each zone is drawn as a
+//  colored circle at its centroid: green (low) → yellow → red (high).
+//  Only drawn for the first bot to avoid visual clutter.
+void BotController::DrawDebugBeliefs()
+{
+    if (!beliefMap.IsInitialized()) {
+        return;
+    }
+
+    // Only draw for the first bot to avoid clutter
+    const Container<BotController *>& controllers = botManager.getControllerManager().getControllers();
+    if (controllers.NumObjects() > 0 && controllers.ObjectAt(1) != this) {
+        return;
+    }
+
+    const Container<BeliefZone>& zones = beliefMap.GetZones();
+
+    for (int i = 1; i <= zones.NumObjects(); i++) {
+        const BeliefZone& zone = zones.ObjectAt(i);
+        if (zone.belief < 0.05f) {
+            continue;
+        }
+
+        float r, g, b;
+        if (zone.belief < 0.5f) {
+            // Green to yellow
+            r = zone.belief * 2.0f;
+            g = 1.0f;
+            b = 0.0f;
+        } else {
+            // Yellow to red
+            r = 1.0f;
+            g = 1.0f - (zone.belief - 0.5f) * 2.0f;
+            b = 0.0f;
+        }
+
+        float  radius = 32.0f + zone.belief * 64.0f;
+        Vector pos    = zone.centroid;
+        G_DebugCircle((float *)pos, radius, r, g, b, zone.belief, qtrue);
+    }
+}
+
 void BotController::Init(void)
 {
     for (int i = 0; i < MAX_BOT_FUNCTIONS; i++) {
@@ -211,6 +259,11 @@ void BotController::UpdateBotStates(void)
     m_botEyes.angles[0] = 0;
     m_botEyes.angles[1] = 0;
 
+    // Added in OPM
+    //  Per-frame belief map maintenance
+    beliefMap.Decay(level.frametime);
+    beliefMap.ClearZonesVisibleFrom(controlledEnt);
+
     CheckStates();
 
     movement.MoveThink(m_botCmd);
@@ -218,6 +271,12 @@ void BotController::UpdateBotStates(void)
     CheckUse();
 
     CheckValidWeapon();
+
+    // Added in OPM
+    //  Debug visualization of belief zones
+    if (g_bot_debug_beliefs->integer) {
+        DrawDebugBeliefs();
+    }
 }
 
 void BotController::CheckUse(void)
@@ -485,6 +544,10 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
         }
     }
 
+    // Added in OPM
+    //  Feed the belief map with event data
+    beliefMap.UpdateFromEvent(vPos, iType, fRangeFactor);
+
     switch (iType) {
     case AI_EVENT_MISC:
     case AI_EVENT_MISC_LOUD:
@@ -688,10 +751,33 @@ void BotController::State_Idle(void)
         m_bWalking = false;
     }
 
-    AimAtAimNode();
+    // Changed in OPM
+    //  Pre-aim toward highest-belief direction when not in combat,
+    //  instead of staring along the path direction.
+    {
+        Vector beliefDir = beliefMap.GetHighestBeliefDir(controlledEnt->origin);
+        if (beliefDir != vec_zero) {
+            Vector beliefAngles = beliefDir.toAngles();
+            beliefAngles.x      = 0;
+            rotation.SetTargetAngles(beliefAngles);
+        } else {
+            AimAtAimNode();
+        }
+    }
 
+    // Changed in OPM
+    //  Belief-driven patrol: move toward the highest-belief zone instead
+    //  of wandering randomly. Falls back to attractive nodes and random
+    //  movement when no zone has significant belief.
     if (!movement.MoveToBestAttractivePoint() && !movement.IsMoving()) {
-        if (m_vLastDeathPos != vec_zero) {
+        Vector beliefPos = beliefMap.GetHighestBeliefPos();
+        if (beliefPos != vec_zero) {
+            movement.MoveTo(beliefPos);
+
+            if (movement.MoveDone()) {
+                beliefMap.ClearZone(beliefPos);
+            }
+        } else if (m_vLastDeathPos != vec_zero) {
             movement.MoveTo(m_vLastDeathPos);
 
             if (movement.MoveDone()) {
@@ -750,14 +836,37 @@ void BotController::State_Curious(void)
         m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
     }
 
-    AimAtAimNode();
+    // Changed in OPM
+    //  Pre-aim toward highest-belief direction during curious state
+    {
+        Vector beliefDir = beliefMap.GetHighestBeliefDir(controlledEnt->origin);
+        if (beliefDir != vec_zero) {
+            Vector beliefAngles = beliefDir.toAngles();
+            beliefAngles.x      = 0;
+            rotation.SetTargetAngles(beliefAngles);
+        } else {
+            AimAtAimNode();
+        }
+    }
 
-    if (!movement.MoveToBestAttractivePoint(3) && (!movement.IsMoving() || m_vLastCuriousPos != m_vNewCuriousPos)) {
-        movement.MoveTo(m_vNewCuriousPos);
-        m_vLastCuriousPos = m_vNewCuriousPos;
+    // Changed in OPM
+    //  Navigate to the highest-belief zone instead of the last single
+    //  event position. Multiple events build up belief in an area rather
+    //  than replacing each other. Falls back to m_vNewCuriousPos when no
+    //  zone has significant belief.
+    if (!movement.MoveToBestAttractivePoint(3)) {
+        Vector beliefPos = beliefMap.GetHighestBeliefPos();
+        Vector targetPos = (beliefPos != vec_zero) ? beliefPos : m_vNewCuriousPos;
+
+        if (!movement.IsMoving() || m_vLastCuriousPos != targetPos) {
+            movement.MoveTo(targetPos);
+            m_vLastCuriousPos = targetPos;
+        }
     }
 
     if (movement.MoveDone()) {
+        // Clear the belief at the arrived zone
+        beliefMap.ClearZone(controlledEnt->origin);
         m_iCuriousTime = 0;
     }
 }
@@ -883,6 +992,11 @@ bool BotController::CheckCondition_Attack(void)
         m_pEnemy        = bestEnemy;
         m_vLastEnemyPos = m_pEnemy->origin;
         m_iAttackTime   = level.inttime + 500 + (int)G_Random(1000);
+
+        // Added in OPM
+        //  Update belief map with direct sighting
+        beliefMap.UpdateFromSighting(m_pEnemy->origin);
+
         return true;
     }
 
@@ -1573,6 +1687,10 @@ void BotController::Killed(const Event& ev)
 
     attacker = ev.GetEntity(1);
 
+    // Added in OPM
+    //  Record death location in belief map — persists across respawn
+    beliefMap.UpdateFromDeath(controlledEnt->origin);
+
     if (attacker && rand() % 5 == 0) {
         // 1/5 chance to go back to the attacker position
         m_vLastDeathPos = attacker->origin;
@@ -1644,6 +1762,12 @@ void BotController::setControlledEntity(Player *player)
     controlledEnt = player;
     movement.SetControlledEntity(player);
     rotation.SetControlledEntity(player);
+
+    // Added in OPM
+    //  Initialize belief map from world bounds
+    if (world && !beliefMap.IsInitialized()) {
+        beliefMap.Init(world->absmin, world->absmax, 512.0f);
+    }
 
     delegateHandle_gotKill =
         player->delegate_gotKill.Add(std::bind(&BotController::GotKill, this, std::placeholders::_1));

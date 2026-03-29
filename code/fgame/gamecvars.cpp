@@ -304,6 +304,10 @@ cvar_t *g_bot_crouch_chance;
 cvar_t *g_bot_aim_overshoot;
 cvar_t *g_bot_aim_settle_speed;
 cvar_t *g_bot_aim_noise;
+cvar_t *g_bot_belief_decay;
+cvar_t *g_bot_belief_event_weight;
+cvar_t *g_bot_belief_min_patrol;
+cvar_t *g_bot_debug_beliefs;
 
 cvar_t *g_rankedserver;
 cvar_t *g_spectatefollow_firstperson;
@@ -731,6 +735,10 @@ void CVAR_Init(void)
     g_bot_aim_overshoot          = gi.Cvar_Get("g_bot_aim_overshoot", "0.1", 0);
     g_bot_aim_settle_speed       = gi.Cvar_Get("g_bot_aim_settle_speed", "8.0", 0);
     g_bot_aim_noise              = gi.Cvar_Get("g_bot_aim_noise", "0.3", 0);
+    g_bot_belief_decay           = gi.Cvar_Get("g_bot_belief_decay", "0.95", 0);
+    g_bot_belief_event_weight    = gi.Cvar_Get("g_bot_belief_event_weight", "1.0", 0);
+    g_bot_belief_min_patrol      = gi.Cvar_Get("g_bot_belief_min_patrol", "0.3", 0);
+    g_bot_debug_beliefs          = gi.Cvar_Get("g_bot_debug_beliefs", "0", 0);
 
     g_teambalance = gi.Cvar_Get("g_teambalance", "0", 0);
 

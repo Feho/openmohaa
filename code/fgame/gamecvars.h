@@ -344,6 +344,13 @@ extern cvar_t *g_bot_aim_overshoot;
 extern cvar_t *g_bot_aim_settle_speed;
 extern cvar_t *g_bot_aim_noise;
 
+// Added in OPM
+//  Belief map: spatial probability grid for bot decision making
+extern cvar_t *g_bot_belief_decay;
+extern cvar_t *g_bot_belief_event_weight;
+extern cvar_t *g_bot_belief_min_patrol;
+extern cvar_t *g_bot_debug_beliefs;
+
 extern cvar_t *g_rankedserver;
 extern cvar_t *g_spectatefollow_firstperson;
 

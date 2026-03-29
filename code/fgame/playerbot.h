@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "player.h"
 #include "navigate.h"
 #include "navigation_path.h"
+#include "playerbot_beliefs.h"
 
 #define MAX_BOT_FUNCTIONS 5
 
@@ -171,8 +172,9 @@ public:
 private:
     static botfunc_t botfuncs[];
 
-    BotMovement movement;
-    BotRotation rotation;
+    BotMovement  movement;
+    BotRotation  rotation;
+    BotBeliefMap beliefMap;
 
     // States
     int    m_iCuriousTime;
@@ -312,7 +314,10 @@ public:
     void GotKill(const Event& ev);
     void EventStuffText(const str& text);
 
-    BotMovement& GetMovement();
+    BotMovement&  GetMovement();
+    BotBeliefMap& GetBeliefMap();
+
+    void DrawDebugBeliefs();
 
 public:
     void    setControlledEntity(Player *player);
