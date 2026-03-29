@@ -498,7 +498,11 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     if (m_iCuriousTime) {
         delta1 = vPos - controlledEnt->origin;
         delta2 = m_vNewCuriousPos - controlledEnt->origin;
-        if (delta1.lengthSquared() < delta2.lengthSquared()) {
+        if (delta1.lengthSquared() > delta2.lengthSquared()) {
+            // Fixed in OPM
+            //  Was using '<' which caused the bot to ignore closer sounds
+            //  (like nearby gunfire) when already curious about a distant event.
+            //  Now ignores farther sounds so closer threats take priority.
             return;
         }
     }
