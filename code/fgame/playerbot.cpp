@@ -1392,33 +1392,20 @@ void BotController::State_Attack(void)
         return;
     }
 
-    //
     // Changed in OPM
-    //  Combat movement: only rush toward the enemy when they are not visible
-    //  or when using melee. When the bot can see and shoot the enemy, hold
-    //  position and fight from the current range instead of charging forward.
-    //  Back away if too close.
-    //
+    //  Combat movement: when the bot can see and attack, hold position and
+    //  fight from the current range — strafing provides lateral movement.
+    //  Never flee from close combat; at point blank, stand and shoot.
+    //  Only advance when the enemy is not visible or when using melee.
     if (bCanSee && bCanAttack && !bMelee) {
-        // Can see and shoot - hold position, let strafing handle lateral movement
-        if (fEnemyDistanceSquared < fMinDistanceSquared) {
-            // Too close - back away
-            movement.AvoidPath(m_vLastEnemyPos, fMinDistance, Vector(controlledEnt->orientation[1]) * 512);
-        } else {
-            // Good firing position - stop advancing
-            if (movement.IsMoving() && !movement.MoveToBestAttractivePoint(5)) {
-                movement.ClearMove();
-            }
+        // Can see and shoot — hold position, let strafing handle movement
+        if (movement.IsMoving() && !movement.MoveToBestAttractivePoint(5)) {
+            movement.ClearMove();
         }
     } else if ((!movement.MoveToBestAttractivePoint(5) && !movement.IsMoving())
-               || (m_vOldEnemyPos != m_vLastEnemyPos && !movement.MoveDone())
-               || fEnemyDistanceSquared < fMinDistanceSquared) {
-        // Can't see enemy or using melee - close the distance
-        if (fEnemyDistanceSquared < fMinDistanceSquared && !bMelee) {
-            movement.AvoidPath(m_vLastEnemyPos, fMinDistance, Vector(controlledEnt->orientation[1]) * 512);
-        } else {
-            movement.MoveTo(m_vLastEnemyPos);
-        }
+               || (m_vOldEnemyPos != m_vLastEnemyPos && !movement.MoveDone())) {
+        // Can't see enemy or using melee — close the distance
+        movement.MoveTo(m_vLastEnemyPos);
 
         if (!bCanSee && movement.MoveDone()) {
             // Lost track of the enemy
