@@ -752,14 +752,13 @@ void BotController::State_Idle(void)
     }
 
     // Changed in OPM
-    //  Pre-aim toward highest-belief direction when not in combat,
-    //  instead of staring along the path direction.
+    //  Pre-aim toward highest-belief direction when not in combat and
+    //  the zone is visible. Otherwise look along the path direction so
+    //  the bot doesn't stare at walls.
     {
-        Vector beliefDir = beliefMap.GetHighestBeliefDir(controlledEnt->origin);
-        if (beliefDir != vec_zero) {
-            Vector beliefAngles = beliefDir.toAngles();
-            beliefAngles.x      = 0;
-            rotation.SetTargetAngles(beliefAngles);
+        Vector beliefPos = beliefMap.GetHighestBeliefPos();
+        if (beliefPos != vec_zero && controlledEnt->CanSee(beliefPos, 120, 2048, false)) {
+            rotation.AimAt(beliefPos);
         } else {
             AimAtAimNode();
         }
@@ -837,13 +836,13 @@ void BotController::State_Curious(void)
     }
 
     // Changed in OPM
-    //  Pre-aim toward highest-belief direction during curious state
+    //  Pre-aim toward highest-belief zone during curious state, but only
+    //  when the zone is visible. Otherwise look along the path direction
+    //  so the bot doesn't stare at walls.
     {
-        Vector beliefDir = beliefMap.GetHighestBeliefDir(controlledEnt->origin);
-        if (beliefDir != vec_zero) {
-            Vector beliefAngles = beliefDir.toAngles();
-            beliefAngles.x      = 0;
-            rotation.SetTargetAngles(beliefAngles);
+        Vector beliefPos = beliefMap.GetHighestBeliefPos();
+        if (beliefPos != vec_zero && controlledEnt->CanSee(beliefPos, 120, 2048, false)) {
+            rotation.AimAt(beliefPos);
         } else {
             AimAtAimNode();
         }
