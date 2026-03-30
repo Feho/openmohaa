@@ -30,19 +30,15 @@ BotMovement::BotMovement()
 {
     controlledEntity = NULL;
 
-    m_pPath         = NULL;
-    m_iLastMoveTime = 0;
-
-    m_bPathing       = false;
-    m_iTempAwayState = 0;
-    m_fAttractTime   = 0;
-
+    m_pPath          = NULL;
+    m_iLastMoveTime  = 0;
     m_iCheckPathTime = 0;
-    m_iTempAwayTime  = 0;
-    m_iNumBlocks     = 0;
+    m_fAttractTime   = 0;
+    m_bPathing       = false;
 
-    m_bAvoidCollision     = false;
-    m_iCollisionCheckTime = 0;
+    m_blocked.reset();
+    m_collision.reset();
+    m_jump.reset();
 }
 
 BotMovement::~BotMovement()
@@ -95,8 +91,8 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
         m_iLastMoveTime = level.inttime;
     }
 
-    if (m_iTempAwayState == 2 && level.inttime >= m_iTempAwayTime + 750) {
-        m_iTempAwayState = 0;
+    if (m_blocked.state == 2 && level.inttime >= m_blocked.time + 750) {
+        m_blocked.state = 0;
 
         PathSearchParameter parameters;
         parameters.entity     = controlledEntity;
@@ -118,13 +114,12 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
 
         if (MoveDone()) {
             // Fixed in OPM
-            //  Also clear m_bPathing so IsMoving() returns false.
+            //  Use ClearMove() to properly reset all movement state.
             //  Previously only the path was cleared, leaving m_bPathing
             //  true. This caused states to think the bot was still moving
             //  and never issue new movement commands, trapping the bot in
             //  random micro-movements from the fallback below.
-            m_bPathing = false;
-            m_pPath->Clear();
+            ClearMove();
         }
     }
 
@@ -133,12 +128,12 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
     }
 
     // Check if we're blocked
-    if (level.inttime >= m_iCheckPathTime + 1000 && m_iTempAwayState != 2) {
+    if (level.inttime >= m_iCheckPathTime + 1000 && m_blocked.state != 2) {
         bool blocked = false;
 
         m_iCheckPathTime = level.inttime;
 
-        if (m_iNumBlocks >= 5) {
+        if (m_blocked.numBlocks >= 5) {
             // Give up
             ClearMove();
         }
@@ -154,25 +149,25 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
         }
 
         if (!blocked) {
-            m_iTempAwayState = 0;
-            m_iNumBlocks     = 0;
+            m_blocked.state     = 0;
+            m_blocked.numBlocks = 0;
 
             if (!m_pPath->GetNodeCount()) {
                 m_vTargetPos   = controlledEntity->origin + Vector(G_CRandom(512), G_CRandom(512), G_CRandom(512));
                 m_vCurrentGoal = m_vTargetPos;
             }
-        } else if (m_iTempAwayState == 0) {
-            m_iLastBlockTime = level.inttime;
-            m_iTempAwayState = 1;
+        } else if (m_blocked.state == 0) {
+            m_blocked.lastTime = level.inttime;
+            m_blocked.state    = 1;
         }
 
-        if (m_iTempAwayState && level.inttime >= m_iLastBlockTime + 1000) {
+        if (m_blocked.state && level.inttime >= m_blocked.lastTime + 1000) {
             Vector delta;
             Vector dir;
 
-            m_iTempAwayState = 2;
-            m_iTempAwayTime  = level.inttime;
-            m_iNumBlocks++;
+            m_blocked.state = 2;
+            m_blocked.time  = level.inttime;
+            m_blocked.numBlocks++;
 
             // Try to backward a little
             if (m_pPath->GetNodeCount()) {
@@ -183,7 +178,7 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
 
             m_pPath->Clear();
 
-            if (m_iNumBlocks < 2) {
+            if (m_blocked.numBlocks < 2) {
                 dir   = -delta;
                 dir.z = 0;
                 dir.normalize();
@@ -223,7 +218,7 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
         }
     }
 
-    if (m_pPath->GetNodeCount() || m_iTempAwayState != 0) {
+    if (m_pPath->GetNodeCount() || m_blocked.state != 0) {
         if ((m_vTargetPos - controlledEntity->origin).lengthSquared() <= Square(16)) {
             ClearMove();
         }
@@ -252,7 +247,7 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
 
     CheckJump(botcmd);
 
-    if (!m_bJump) {
+    if (!m_jump.active) {
         CheckJumpOverEdge(botcmd);
     }
 }
@@ -332,7 +327,7 @@ void BotMovement::CheckJump(usercmd_t& botcmd)
 
     if (!controlledEntity->groundentity && !controlledEntity->client->ps.walking) {
         // Falling
-        m_bJump = false;
+        m_jump.active = false;
         return;
     }
 
@@ -360,7 +355,7 @@ void BotMovement::CheckJump(usercmd_t& botcmd)
 
     // No need to jump
     if (!trace.startsolid && trace.fraction > 0.5f) {
-        m_bJump = false;
+        m_jump.active = false;
         return;
     }
 
@@ -406,18 +401,18 @@ void BotMovement::CheckJump(usercmd_t& botcmd)
     );
 
     if (trace.plane.normal[2] <= MIN_WALK_NORMAL && trace.fraction < 1) {
-        m_bJump = false;
+        m_jump.active = false;
         return;
     }
 
-    if (!m_bJump) {
-        m_bJump          = true;
-        m_iJumpCheckTime = level.inttime;
-        m_vJumpLocation  = controlledEntity->origin;
-    } else if (level.inttime > m_iJumpCheckTime + 100) {
-        m_bJump = false;
+    if (!m_jump.active) {
+        m_jump.active    = true;
+        m_jump.checkTime = level.inttime;
+        m_jump.startPos  = controlledEntity->origin;
+    } else if (level.inttime > m_jump.checkTime + 100) {
+        m_jump.active = false;
 
-        delta = m_vJumpLocation - controlledEntity->origin;
+        delta = m_jump.startPos - controlledEntity->origin;
         if (delta.lengthSquared() < Square(32)) {
             botcmd.upmove = 127;
         }
@@ -855,23 +850,23 @@ Vector BotMovement::FixDeltaFromCollision(const Vector& delta)
         return delta;
     }
 
-    if (level.inttime < m_iCollisionCheckTime + 250 || m_bJump) {
-        if (m_bAvoidCollision) {
-            newDelta = m_vTempCollisionAvoidance - controlledEntity->origin;
+    if (level.inttime < m_collision.checkTime + 250 || m_jump.active) {
+        if (m_collision.active) {
+            newDelta = m_collision.avoidancePos - controlledEntity->origin;
             if (newDelta.lengthSquared() > Square(16)) {
                 // Not reached
                 return newDelta;
             }
 
             // Path has been reached so clear the collision
-            m_bAvoidCollision = false;
+            m_collision.active = false;
         }
 
         return delta;
     }
 
-    m_iCollisionCheckTime = level.inttime;
-    m_bAvoidCollision     = false;
+    m_collision.checkTime = level.inttime;
+    m_collision.active    = false;
 
     dest     = controlledEntity->origin + delta;
     newDelta = delta;
@@ -947,21 +942,21 @@ Vector BotMovement::FixDeltaFromCollision(const Vector& delta)
         }
 
         if (bestLeftFrac != 0 || bestRightFrac != 0) {
-            m_bAvoidCollision = true;
+            m_collision.active = true;
 
             //
             // By default use the one with higher fraction
             //
             if (bestLeftFrac > bestRightFrac) {
-                m_vTempCollisionAvoidance = bestLeftPos + forward * 64;
+                m_collision.avoidancePos = bestLeftPos + forward * 64;
             } else if (bestLeftFrac < bestRightFrac) {
-                m_vTempCollisionAvoidance = bestRightPos + forward * 64;
+                m_collision.avoidancePos = bestRightPos + forward * 64;
             } else {
                 // Randomly choose direction if both are the same
                 if (Vector::DistanceSquared(bestLeftPos, dest) > Vector::DistanceSquared(bestRightPos, dest)) {
-                    m_vTempCollisionAvoidance = bestRightPos + forward * 64;
+                    m_collision.avoidancePos = bestRightPos + forward * 64;
                 } else {
-                    m_vTempCollisionAvoidance = bestLeftPos + forward * 64;
+                    m_collision.avoidancePos = bestLeftPos + forward * 64;
                 }
             }
 
@@ -972,14 +967,14 @@ Vector BotMovement::FixDeltaFromCollision(const Vector& delta)
             if (leftFallTrace.fraction != rightFallTrace.fraction
                 && (leftFallTrace.fraction != 1 || rightFallTrace.fraction != 1)) {
                 if (leftFallTrace.fraction == 1 && bestRightFrac) {
-                    m_vTempCollisionAvoidance = bestRightPos + forward * 64;
+                    m_collision.avoidancePos = bestRightPos + forward * 64;
                 } else if (rightFallTrace.fraction == 1 && bestLeftFrac) {
-                    m_vTempCollisionAvoidance = bestLeftPos + forward * 64;
+                    m_collision.avoidancePos = bestLeftPos + forward * 64;
                 }
             }
 #endif
 
-            return m_vTempCollisionAvoidance - controlledEntity->origin;
+            return m_collision.avoidancePos - controlledEntity->origin;
         }
     }
 
@@ -993,7 +988,7 @@ CanMoveTo
 Returns true if the bot has done moving
 ====================
 */
-bool BotMovement::CanMoveTo(Vector vPos)
+bool BotMovement::CanMoveTo(Vector vPos) const
 {
     PathSearchParameter parameters;
     parameters.fallHeight = maxFallHeight;
@@ -1008,13 +1003,13 @@ MoveDone
 Returns true if the bot has done moving
 ====================
 */
-bool BotMovement::MoveDone()
+bool BotMovement::MoveDone() const
 {
     if (!m_bPathing) {
         return true;
     }
 
-    if (m_iTempAwayState != 0) {
+    if (m_blocked.state != 0) {
         return false;
     }
 
@@ -1037,7 +1032,7 @@ IsMoving
 Returns true if the bot has a current path
 ====================
 */
-bool BotMovement::IsMoving(void)
+bool BotMovement::IsMoving() const
 {
     return m_bPathing;
 }
@@ -1049,10 +1044,10 @@ ClearMove
 Stop the bot from moving
 ====================
 */
-void BotMovement::ClearMove(void)
+void BotMovement::ClearMove()
 {
-    m_bPathing   = false;
-    m_iNumBlocks = 0;
+    m_bPathing = false;
+    m_blocked.reset();
 
     if (m_pPath) {
         m_pPath->Clear();

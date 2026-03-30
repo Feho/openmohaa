@@ -37,6 +37,68 @@ typedef struct nodeAttract_s {
 
 class BotController;
 
+// Added in OPM
+//  Grouped state structs to prevent partial-reset bugs
+
+/**
+ * @brief Tracks temporary "back away" behavior when the bot is blocked.
+ *
+ * When the bot gets stuck, it enters a temporary state where it backs away
+ * from obstacles before re-pathfinding. This struct groups all related state
+ * so it can be reset atomically.
+ */
+struct BotBlockedState {
+    int state;     // 0 = normal, 1 = detected block, 2 = backing away
+    int time;      // When current state began
+    int lastTime;  // When block was first detected
+    int numBlocks; // How many times we've been blocked (gives up after 5)
+
+    void reset()
+    {
+        state     = 0;
+        time      = 0;
+        lastTime  = 0;
+        numBlocks = 0;
+    }
+};
+
+/**
+ * @brief Collision avoidance state for navigating around obstacles.
+ *
+ * When the bot detects an obstacle in front, it calculates an avoidance
+ * position to the left or right. This struct groups the avoidance state.
+ */
+struct BotCollisionState {
+    bool   active;       // Currently avoiding collision
+    int    checkTime;    // Last time we checked for collisions
+    Vector avoidancePos; // Position to move to for avoidance
+
+    void reset()
+    {
+        active       = false;
+        checkTime    = 0;
+        avoidancePos = vec_zero;
+    }
+};
+
+/**
+ * @brief Jump detection state for obstacle traversal.
+ *
+ * Tracks whether the bot needs to jump and validates the jump is making progress.
+ */
+struct BotJumpState {
+    bool   active;    // Currently trying to jump
+    int    checkTime; // When jump was initiated
+    Vector startPos;  // Position when jump started (to detect progress)
+
+    void reset()
+    {
+        active    = false;
+        checkTime = 0;
+        startPos  = vec_zero;
+    }
+};
+
 class BotMovement
 {
 public:
@@ -58,11 +120,10 @@ public:
     void MoveTo(Vector vPos, float *vLeashHome = NULL, float fLeashRadius = 0.0f);
     bool MoveToBestAttractivePoint(int iMinPriority = 0);
 
-    bool CanMoveTo(Vector vPos);
-    bool MoveDone();
-    bool IsMoving(void);
-    void ClearMove(void);
-
+    bool   CanMoveTo(Vector vPos) const;
+    bool   MoveDone() const;
+    bool   IsMoving() const;
+    void   ClearMove();
     Vector GetCurrentGoal() const;
     Vector GetCurrentPathDirection() const;
 
@@ -91,34 +152,20 @@ private:
     IPather                   *m_pPath;
     int                        m_iLastMoveTime;
 
+    // Core movement state
     Vector m_vCurrentOrigin;
     Vector m_vTargetPos;
     Vector m_vCurrentGoal;
     Vector m_vCurrentDir;
     Vector m_vLastCheckPos[2];
-    float  m_fAttractTime;
-    int    m_iTempAwayTime;
-    int    m_iNumBlocks;
     int    m_iCheckPathTime;
-    int    m_iLastBlockTime;
-    int    m_iTempAwayState;
+    float  m_fAttractTime;
     bool   m_bPathing;
 
-    ///
-    /// Collision detection
-    ///
-
-    bool   m_bAvoidCollision;
-    int    m_iCollisionCheckTime;
-    Vector m_vTempCollisionAvoidance;
-
-    ///
-    /// Jump detection
-    ///
-
-    bool   m_bJump;
-    int    m_iJumpCheckTime;
-    Vector m_vJumpLocation;
+    // Grouped state structs (prevents partial-reset bugs)
+    BotBlockedState   m_blocked;
+    BotCollisionState m_collision;
+    BotJumpState      m_jump;
 };
 
 class BotRotation
@@ -159,6 +206,123 @@ public:
     virtual void Think()                = 0;
 };
 
+// Added in OPM
+//  Grouped state structs for BotController to prevent partial-reset bugs
+
+/**
+ * @brief Combat/attack state including aiming and firing behavior.
+ */
+struct BotCombatState {
+    int    attackTime;         // When attack state should expire
+    int    attackStopAimTime;  // When to stop aiming at last known position
+    int    lastBurstTime;      // When last burst fire pause started
+    int    lastSeenTime;       // When enemy was last seen
+    int    lastUnseenTime;     // When enemy became unseen
+    int    continuousFireTime; // How long we've been firing continuously
+    Vector aimOffset;          // Current aim offset from target center
+    Vector aimOffsetTarget;    // Target aim offset (lerped toward)
+    int    lastAimTime;        // Last time aim offset was updated
+    int    aimLerpStartTime;   // When aim lerp started
+    int    strafeTime;         // When to change strafe direction
+    int    strafeDir;          // Current strafe direction
+    bool   standingStill;      // Standing still to aim
+    bool   crouching;          // Currently crouching in combat
+    bool   crouchDecided;      // Whether crouch decision was made
+
+    void reset()
+    {
+        attackTime         = 0;
+        attackStopAimTime  = 0;
+        lastBurstTime      = 0;
+        lastSeenTime       = 0;
+        lastUnseenTime     = 0;
+        continuousFireTime = 0;
+        aimOffset          = vec_zero;
+        aimOffsetTarget    = vec_zero;
+        lastAimTime        = 0;
+        aimLerpStartTime   = 0;
+        strafeTime         = 0;
+        strafeDir          = 0;
+        standingStill      = false;
+        crouching          = false;
+        crouchDecided      = false;
+    }
+};
+
+/**
+ * @brief Enemy tracking state.
+ */
+struct BotEnemyState {
+    SafePtr<Sentient> enemy;
+    int               eyesTag;  // Bone tag for enemy's eyes
+    Vector            oldPos;   // Previous known enemy position
+    Vector            lastPos;  // Last known enemy position
+    Vector            deathPos; // Where enemy died (for avoidance)
+
+    void reset()
+    {
+        enemy    = NULL;
+        eyesTag  = -1;
+        oldPos   = vec_zero;
+        lastPos  = vec_zero;
+        deathPos = vec_zero;
+    }
+};
+
+/**
+ * @brief Curious state for investigating sounds/events.
+ */
+struct BotCuriousState {
+    int    time;      // When curious state should expire
+    Vector lastPos;   // Last curious position investigated
+    Vector targetPos; // Current position to investigate
+
+    void reset()
+    {
+        time      = 0;
+        lastPos   = vec_zero;
+        targetPos = vec_zero;
+    }
+};
+
+/**
+ * @brief Grenade avoidance state.
+ */
+struct BotGrenadeState {
+    SafePtr<Entity> grenade;   // The grenade being avoided
+    int             avoidTime; // When to stop avoiding
+
+    void reset()
+    {
+        grenade   = NULL;
+        avoidTime = 0;
+    }
+};
+
+/**
+ * @brief Human-like idle/movement behavior state.
+ */
+struct BotIdleBehavior {
+    int  pauseTime; // When current idle pause ends
+    int  lookTime;  // When to change look direction during pause
+    int  walkTime;  // When to stop walking and run again
+    int  leanTime;  // When to change lean state
+    int  leanDir;   // Current lean direction: -1 left, 0 none, 1 right
+    bool pausing;   // Currently in idle pause
+    bool walking;   // Currently walking instead of running
+
+    void reset()
+    {
+        pauseTime = 0;
+        lookTime  = 0;
+        walkTime  = 0;
+        leanTime  = 0;
+        leanDir   = 0;
+        pausing   = false;
+        walking   = false;
+    }
+};
+
 class BotController : public Listener
 {
 public:
@@ -176,49 +340,12 @@ private:
     BotRotation  rotation;
     BotBeliefMap beliefMap;
 
-    // States
-    int    m_iCuriousTime;
-    int    m_iAttackTime;
-    int    m_iAttackStopAimTime;
-    int    m_iLastBurstTime;
-    int    m_iLastSeenTime;
-    int    m_iLastUnseenTime;
-    int    m_iContinuousFireTime;
-    Vector m_vAimOffset;
-    Vector m_vAimOffsetTarget;
-    int    m_iLastAimTime;
-    int    m_iAimLerpStartTime;
-
-    // Added in OPM
-    //  Combat strafing
-    int m_iStrafeTime;
-    int m_iStrafeDir;
-
-    // Added in OPM
-    //  Grenade avoidance
-    SafePtr<Entity> m_pGrenade;
-    int             m_iGrenadeAvoidTime;
-
-    // Added in OPM
-    //  Human-like movement behavior
-    int  m_iIdlePauseTime; // When current idle pause ends
-    int  m_iIdleLookTime;  // When to change look direction during pause
-    int  m_iWalkTime;      // When to stop walking and run again
-    int  m_iLeanTime;      // When to change lean state
-    int  m_iLeanDir;       // Current lean direction: -1 left, 0 none, 1 right
-    bool m_bIdlePausing;   // Currently in idle pause
-    bool m_bWalking;       // Currently walking instead of running
-    bool m_bStandingStill; // Standing still to aim (combat)
-    bool m_bCrouching;     // Currently crouching in combat
-    bool m_bCrouchDecided; // Whether crouch decision was made for current stand-still
-
-    Vector            m_vLastCuriousPos;
-    Vector            m_vNewCuriousPos;
-    Vector            m_vOldEnemyPos;
-    Vector            m_vLastEnemyPos;
-    Vector            m_vLastDeathPos;
-    SafePtr<Sentient> m_pEnemy;
-    int               m_iEnemyEyesTag;
+    // Grouped state structs (prevents partial-reset bugs)
+    BotCombatState  m_combat;
+    BotEnemyState   m_enemy;
+    BotCuriousState m_curious;
+    BotGrenadeState m_grenade;
+    BotIdleBehavior m_idle;
 
     // Input
     usercmd_t  m_botCmd;
@@ -254,33 +381,25 @@ private:
 
     static void InitState_Idle(botfunc_t *func);
     bool        CheckCondition_Idle(void);
-    void        State_BeginIdle(void);
-    void        State_EndIdle(void);
     void        State_Idle(void);
 
     static void InitState_Curious(botfunc_t *func);
     bool        CheckCondition_Curious(void);
-    void        State_BeginCurious(void);
-    void        State_EndCurious(void);
     void        State_Curious(void);
 
     static void InitState_Attack(botfunc_t *func);
     bool        CheckCondition_Attack(void);
-    void        State_BeginAttack(void);
     void        State_EndAttack(void);
     void        State_Attack(void);
     bool        IsValidEnemy(Sentient *sent) const;
 
     static void InitState_Grenade(botfunc_t *func);
     bool        CheckCondition_Grenade(void);
-    void        State_BeginGrenade(void);
-    void        State_EndGrenade(void);
     void        State_Grenade(void);
 
     static void InitState_Weapon(botfunc_t *func);
     bool        CheckCondition_Weapon(void);
     void        State_BeginWeapon(void);
-    void        State_EndWeapon(void);
     void        State_Weapon(void);
 
     void CheckStates(void);
