@@ -559,6 +559,28 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
         m_curious.targetPos = vPos;
         break;
     }
+
+    // Added in OPM
+    //  For close-range threat sounds, immediately turn toward the source.
+    //  Don't wait for the state machine to process it - a soldier would
+    //  instinctively look toward nearby gunfire. Skip if already in combat
+    //  (attack state handles its own aiming).
+    if (bypassProbability && !m_combat.attackTime) {
+        if (g_bot_debug_reaction->integer) {
+            gi.Printf(
+                "BOT %s: Immediate reaction to close-range sound (type=%d, rangeFactor=%.2f) at (%.0f, %.0f, %.0f)\n",
+                controlledEnt->client->pers.netname,
+                iType,
+                fRangeFactor,
+                vPos.x,
+                vPos.y,
+                vPos.z
+            );
+        }
+        rotation.AimAt(vPos);
+        movement.ClearMove();
+        m_idle.reset();
+    }
 }
 
 /*
@@ -772,6 +794,18 @@ void BotController::Damaged(const Event& ev)
 
     // If the attacker is a valid sentient enemy, enter attack mode
     if (sentAttacker) {
+        if (g_bot_debug_reaction->integer) {
+            gi.Printf(
+                "BOT %s: Damaged by %s - entering attack mode, looking at (%.0f, %.0f, %.0f)\n",
+                controlledEnt->client->pers.netname,
+                sentAttacker->IsSubclassOfPlayer() ? static_cast<Player *>(sentAttacker)->client->pers.netname
+                                                   : sentAttacker->targetname.c_str(),
+                attacker->centroid.x,
+                attacker->centroid.y,
+                attacker->centroid.z
+            );
+        }
+
         // Set up enemy tracking
         m_enemy.enemy   = sentAttacker;
         m_enemy.lastPos = sentAttacker->origin;
