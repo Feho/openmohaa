@@ -75,7 +75,29 @@ void BotManager::BroadcastEvent(Entity *originator, Vector origin, int iType, fl
 
     assert(originator);
 
-    r2 = Square(radius);
+    // Changed in OPM
+    //  Bots have extended hearing range compared to AI actors.
+    //  Gunfire and explosions are audible across most of the map,
+    //  footsteps and other sounds from a moderate distance.
+    float botRadius;
+    switch (iType) {
+    case AI_EVENT_WEAPON_FIRE:
+    case AI_EVENT_EXPLOSION:
+        botRadius = Q_max(radius, 8192.0f);
+        break;
+    case AI_EVENT_WEAPON_IMPACT:
+    case AI_EVENT_GRENADE:
+        botRadius = Q_max(radius, 4096.0f);
+        break;
+    case AI_EVENT_FOOTSTEP:
+        botRadius = Q_max(radius, 1500.0f);
+        break;
+    default:
+        botRadius = Q_max(radius, 2048.0f);
+        break;
+    }
+
+    r2 = Square(botRadius);
 
     const Container<BotController *>& controllers = getControllerManager().getControllers();
     for (i = 1; i <= controllers.NumObjects(); i++) {

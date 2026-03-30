@@ -495,24 +495,14 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     float     fRangeFactor;
     Vector    delta1, delta2;
 
-    if (m_iCuriousTime) {
-        delta1 = vPos - controlledEnt->origin;
-        delta2 = m_vNewCuriousPos - controlledEnt->origin;
-        if (delta1.lengthSquared() > delta2.lengthSquared()) {
-            // Fixed in OPM
-            //  Was using '<' which caused the bot to ignore closer sounds
-            //  (like nearby gunfire) when already curious about a distant event.
-            //  Now ignores farther sounds so closer threats take priority.
-            return;
-        }
-    }
-
     fRangeFactor = 1.0 - (fDistanceSquared / fRadiusSquared);
-
-    if (fRangeFactor < random()) {
-        return;
+    if (fRangeFactor < 0) {
+        fRangeFactor = 0;
     }
 
+    //
+    // Resolve the entity that caused the sound
+    //
     if (pEnt->IsSubclassOfSentient()) {
         pSentOwner = static_cast<Sentient *>(pEnt);
     } else if (pEnt->IsSubclassOfVehicleTurretGun()) {
@@ -548,9 +538,30 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
         }
     }
 
-    // Added in OPM
-    //  Feed the belief map with event data
+    // Changed in OPM
+    //  Always update beliefs from enemy sounds regardless of distance
+    //  or whether the bot is already investigating something else.
+    //  The belief map is the bot's spatial awareness — it should
+    //  accumulate all heard information. Only the curiosity trigger
+    //  (whether to actively investigate) is gated by probability.
     beliefMap.UpdateFromEvent(vPos, iType, fRangeFactor);
+
+    //
+    // Curiosity trigger — probability-gated
+    //
+
+    // Already curious about a closer sound? Don't switch target.
+    if (m_iCuriousTime) {
+        delta1 = vPos - controlledEnt->origin;
+        delta2 = m_vNewCuriousPos - controlledEnt->origin;
+        if (delta1.lengthSquared() > delta2.lengthSquared()) {
+            return;
+        }
+    }
+
+    if (fRangeFactor < random()) {
+        return;
+    }
 
     switch (iType) {
     case AI_EVENT_MISC:
