@@ -213,39 +213,41 @@ public:
  * @brief Combat/attack state including aiming and firing behavior.
  */
 struct BotCombatState {
-    int    attackTime;         // When attack state should expire
-    int    attackStopAimTime;  // When to stop aiming at last known position
-    int    lastBurstTime;      // When last burst fire pause started
-    int    lastSeenTime;       // When enemy was last seen
-    int    lastUnseenTime;     // When enemy became unseen
-    int    continuousFireTime; // How long we've been firing continuously
-    Vector aimOffset;          // Current aim offset from target center
-    Vector aimOffsetTarget;    // Target aim offset (lerped toward)
-    int    lastAimTime;        // Last time aim offset was updated
-    int    aimLerpStartTime;   // When aim lerp started
-    int    strafeTime;         // When to change strafe direction
-    int    strafeDir;          // Current strafe direction
-    bool   standingStill;      // Standing still to aim
-    bool   crouching;          // Currently crouching in combat
-    bool   crouchDecided;      // Whether crouch decision was made
+    int    attackTime;           // When attack state should expire
+    int    attackStopAimTime;    // When to stop aiming at last known position
+    int    lastBurstTime;        // When last burst fire pause started
+    int    lastSeenTime;         // When enemy was last seen
+    int    lastUnseenTime;       // When enemy became unseen
+    int    continuousFireTime;   // How long we've been firing continuously
+    int    lastWeaponSwitchTime; // When last weapon switch was attempted
+    Vector aimOffset;            // Current aim offset from target center
+    Vector aimOffsetTarget;      // Target aim offset (lerped toward)
+    int    lastAimTime;          // Last time aim offset was updated
+    int    aimLerpStartTime;     // When aim lerp started
+    int    strafeTime;           // When to change strafe direction
+    int    strafeDir;            // Current strafe direction
+    bool   standingStill;        // Standing still to aim
+    bool   crouching;            // Currently crouching in combat
+    bool   crouchDecided;        // Whether crouch decision was made
 
     void reset()
     {
-        attackTime         = 0;
-        attackStopAimTime  = 0;
-        lastBurstTime      = 0;
-        lastSeenTime       = 0;
-        lastUnseenTime     = 0;
-        continuousFireTime = 0;
-        aimOffset          = vec_zero;
-        aimOffsetTarget    = vec_zero;
-        lastAimTime        = 0;
-        aimLerpStartTime   = 0;
-        strafeTime         = 0;
-        strafeDir          = 0;
-        standingStill      = false;
-        crouching          = false;
-        crouchDecided      = false;
+        attackTime           = 0;
+        attackStopAimTime    = 0;
+        lastBurstTime        = 0;
+        lastSeenTime         = 0;
+        lastUnseenTime       = 0;
+        continuousFireTime   = 0;
+        lastWeaponSwitchTime = 0;
+        aimOffset            = vec_zero;
+        aimOffsetTarget      = vec_zero;
+        lastAimTime          = 0;
+        aimLerpStartTime     = 0;
+        strafeTime           = 0;
+        strafeDir            = 0;
+        standingStill        = false;
+        crouching            = false;
+        crouchDecided        = false;
     }
 };
 

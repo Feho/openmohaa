@@ -734,10 +734,18 @@ void BotController::State_Attack(void)
             if (controlledEnt->client->ps.stats[STAT_AMMO] <= 0
                 && controlledEnt->client->ps.stats[STAT_CLIPAMMO] <= 0) {
                 if (g_bot_debug_state->integer >= 2) {
-                    gi.Printf("BOT %s: Attack - no ammo\n", controlledEnt->client->pers.netname);
+                    gi.Printf("BOT %s: Attack - no ammo, switching weapon\n", controlledEnt->client->pers.netname);
                 }
                 m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
                 controlledEnt->ZoomOff();
+
+                // Added in OPM
+                //  Switch to next weapon when out of ammo (with cooldown to prevent spam)
+                if (level.inttime > m_combat.lastWeaponSwitchTime + 500) {
+                    m_combat.lastWeaponSwitchTime = level.inttime;
+                    Event ev;
+                    controlledEnt->SelectNextWeapon(&ev);
+                }
             } else if (fDistanceSquared > fPrimaryBulletRangeSquared) {
                 if (g_bot_debug_state->integer >= 2) {
                     gi.Printf(
