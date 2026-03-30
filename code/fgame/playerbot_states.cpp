@@ -560,7 +560,6 @@ bool BotController::CheckCondition_Attack(void)
     //  detect enemies regardless of where they're currently looking -
     //  a player would notice someone appearing in their peripheral vision.
     //
-    int validEnemyCount = 0;
     for (int i = 1; i <= sents.NumObjects(); i++) {
         Sentient *sent = sents.ObjectAt(i);
 
@@ -568,7 +567,6 @@ bool BotController::CheckCondition_Attack(void)
             continue;
         }
 
-        validEnemyCount++;
         float distSq = (sent->origin - controlledEnt->origin).lengthSquared();
 
         // Use 360° FOV - detect enemies anywhere, not just where we're looking
@@ -597,16 +595,6 @@ bool BotController::CheckCondition_Attack(void)
         beliefMap.UpdateFromSighting(m_enemy.enemy->origin);
 
         return true;
-    }
-
-    // Added in OPM - Debug why no enemy was found
-    if (g_bot_debug_state->integer >= 2 && validEnemyCount > 0) {
-        gi.Printf(
-            "BOT %s: CheckAttack - %d valid enemies but none visible (maxDist=%.0f)\n",
-            controlledEnt->client->pers.netname,
-            validEnemyCount,
-            maxDistance
-        );
     }
 
     // No visible enemy - check if we should keep hunting the last known position
