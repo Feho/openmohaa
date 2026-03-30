@@ -823,10 +823,12 @@ void BotController::Damaged(const Event& ev)
         m_enemy.lastPos = sentAttacker->origin;
         m_enemy.eyesTag = gi.Tag_NumForName(sentAttacker->edict->tiki, "eyes bone");
 
-        // Enter attack state immediately
+        // Enter attack state - still need reaction time to aim before firing
+        // Being shot tells you where the threat is, but you still need to turn and aim
         m_combat.attackTime        = level.inttime + 5000;
         m_combat.lastSeenTime      = level.inttime;
         m_combat.attackStopAimTime = level.inttime + 2000;
+        m_combat.lastUnseenTime    = level.inttime; // Start reaction delay - need time to aim
 
         // Clear movement so we don't keep walking away from threat
         movement.ClearMove();

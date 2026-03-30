@@ -363,33 +363,21 @@ void BotController::State_Curious(void)
     }
 
     // Changed in OPM
-    //  Turn toward the sound source. If the position is visible, aim directly
-    //  at it. If not visible (e.g., behind a wall or behind the bot), still
-    //  turn toward it so the bot reacts to sounds from behind. Only fall back
-    //  to path direction when close to the target (within 256 units) to avoid
-    //  staring at walls when navigating.
-    //  Prefer the specific sound location over the belief map to avoid aiming
-    //  in the wrong direction.
+    //  Turn toward the sound source if visible, otherwise look along the path.
+    //  This prevents bots from staring at walls while walking, which looks unnatural.
+    //  Only turn toward invisible sounds briefly at the start (handled in BeginState).
     {
         Vector targetPos = (m_curious.targetPos != vec_zero) ? m_curious.targetPos : beliefMap.GetHighestBeliefPos();
 
-        if (targetPos != vec_zero) {
-            Vector delta       = targetPos - controlledEnt->origin;
-            float  distSquared = delta.lengthSquared();
-
-            // If far from target, always turn toward it (even if not visible)
-            // This ensures the bot reacts to sounds from behind
-            if (distSquared > 256 * 256) {
-                rotation.AimAt(targetPos);
-            } else if (controlledEnt->CanSee(targetPos, 120, 2048, false)) {
-                // Close and can see - aim at it
-                rotation.AimAt(targetPos);
-            } else {
-                // Close but can't see - look along path to navigate around obstacles
-                AimAtAimNode();
-            }
-        } else {
+        if (targetPos != vec_zero && controlledEnt->CanSee(targetPos, 120, 2048, false)) {
+            // Can see the target position - aim at it
+            rotation.AimAt(targetPos);
+        } else if (movement.IsMoving()) {
+            // Can't see target, but we're moving - look along path
             AimAtAimNode();
+        } else if (targetPos != vec_zero) {
+            // Not moving and can't see - still face the target direction
+            rotation.AimAt(targetPos);
         }
     }
 
@@ -696,6 +684,14 @@ void BotController::State_Attack(void)
             const unsigned int minDelay     = g_bot_attack_react_min_delay->value * 1000;
             const unsigned int randomDelay  = g_bot_attack_react_random_delay->value * 1000;
             if (level.inttime <= m_combat.lastUnseenTime + minDelay + G_Random(randomDelay)) {
+                if (g_bot_debug_state->integer >= 2) {
+                    gi.Printf(
+                        "BOT %s: Attack - waiting for reaction delay (elapsed=%dms, min=%dms)\n",
+                        controlledEnt->client->pers.netname,
+                        level.inttime - m_combat.lastUnseenTime,
+                        minDelay
+                    );
+                }
                 bCanAttack = false;
             } else {
                 m_combat.lastUnseenTime = 0;
@@ -738,9 +734,20 @@ void BotController::State_Attack(void)
 
             if (controlledEnt->client->ps.stats[STAT_AMMO] <= 0
                 && controlledEnt->client->ps.stats[STAT_CLIPAMMO] <= 0) {
+                if (g_bot_debug_state->integer >= 2) {
+                    gi.Printf("BOT %s: Attack - no ammo\n", controlledEnt->client->pers.netname);
+                }
                 m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
                 controlledEnt->ZoomOff();
             } else if (fDistanceSquared > fPrimaryBulletRangeSquared) {
+                if (g_bot_debug_state->integer >= 2) {
+                    gi.Printf(
+                        "BOT %s: Attack - out of range (dist=%.0f, range=%.0f)\n",
+                        controlledEnt->client->pers.netname,
+                        sqrtf(fDistanceSquared),
+                        fPrimaryBulletRange
+                    );
+                }
                 m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
                 controlledEnt->ZoomOff();
             } else {
@@ -752,6 +759,13 @@ void BotController::State_Attack(void)
                     if (controlledEnt->client->ps.iViewModelAnim != VM_ANIM_IDLE
                         && (controlledEnt->client->ps.iViewModelAnim < VM_ANIM_IDLE_0
                             || controlledEnt->client->ps.iViewModelAnim > VM_ANIM_IDLE_2)) {
+                        if (g_bot_debug_state->integer >= 2) {
+                            gi.Printf(
+                                "BOT %s: Attack - waiting for weapon idle (anim=%d)\n",
+                                controlledEnt->client->pers.netname,
+                                controlledEnt->client->ps.iViewModelAnim
+                            );
+                        }
                         m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
                         controlledEnt->ZoomOff();
                     } else if (fSpreadFactor < 0.25) {
@@ -765,6 +779,13 @@ void BotController::State_Attack(void)
                             }
                         }
                     } else {
+                        if (g_bot_debug_state->integer >= 2) {
+                            gi.Printf(
+                                "BOT %s: Attack - spread too high (spread=%.2f, need <0.25)\n",
+                                controlledEnt->client->pers.netname,
+                                fSpreadFactor
+                            );
+                        }
                         bNoMove = true;
                         movement.ClearMove();
                     }
