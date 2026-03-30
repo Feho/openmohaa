@@ -704,7 +704,6 @@ void BotController::State_Attack(void)
             float     fPrimaryBulletRangeSquared   = fPrimaryBulletRange * fPrimaryBulletRange;
             float     fSecondaryBulletRange        = pWeap->GetBulletRange(FIRE_SECONDARY);
             float     fSecondaryBulletRangeSquared = fSecondaryBulletRange * fSecondaryBulletRange;
-            float     fSpreadFactor                = pWeap->GetSpreadFactor(FIRE_PRIMARY);
 
             const int maxcontinuousFireTime = fireDelay + g_bot_attack_continuousfire_min_firetime->value * 1000
                                             + G_Random(g_bot_attack_continuousfire_random_firetime->value * 1000);
@@ -768,7 +767,10 @@ void BotController::State_Attack(void)
                         }
                         m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
                         controlledEnt->ZoomOff();
-                    } else if (fSpreadFactor < 0.25) {
+                    } else {
+                        // Changed in OPM
+                        //  Removed spread factor check - bots should fire while moving
+                        //  like real players do. The weapon's inherent spread handles accuracy.
                         bFiring = true;
                         m_botCmd.buttons ^= BUTTON_ATTACKLEFT;
                         if (pWeap->GetZoom()) {
@@ -778,16 +780,6 @@ void BotController::State_Attack(void)
                                 m_botCmd.buttons &= ~BUTTON_ATTACKRIGHT;
                             }
                         }
-                    } else {
-                        if (g_bot_debug_state->integer >= 2) {
-                            gi.Printf(
-                                "BOT %s: Attack - spread too high (spread=%.2f, need <0.25)\n",
-                                controlledEnt->client->pers.netname,
-                                fSpreadFactor
-                            );
-                        }
-                        bNoMove = true;
-                        movement.ClearMove();
                     }
                 } else {
                     bFiring = true;
