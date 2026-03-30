@@ -245,7 +245,16 @@ Forward to the last event position
 void BotController::InitState_Curious(botfunc_t *func)
 {
     func->CheckCondition = &BotController::CheckCondition_Curious;
+    func->BeginState     = &BotController::State_BeginCurious;
     func->ThinkState     = &BotController::State_Curious;
+}
+
+// Added in OPM
+//  Clear idle state and movement when entering curious mode
+void BotController::State_BeginCurious(void)
+{
+    movement.ClearMove();
+    m_idle.reset();
 }
 
 bool BotController::CheckCondition_Curious(void)
@@ -321,8 +330,17 @@ Attack the enemy
 void BotController::InitState_Attack(botfunc_t *func)
 {
     func->CheckCondition = &BotController::CheckCondition_Attack;
+    func->BeginState     = &BotController::State_BeginAttack;
     func->EndState       = &BotController::State_EndAttack;
     func->ThinkState     = &BotController::State_Attack;
+}
+
+// Added in OPM
+//  Clear idle state and movement when entering attack mode
+void BotController::State_BeginAttack(void)
+{
+    movement.ClearMove();
+    m_idle.reset();
 }
 
 static Vector bot_origin;
@@ -874,7 +892,16 @@ Avoid any grenades
 void BotController::InitState_Grenade(botfunc_t *func)
 {
     func->CheckCondition = &BotController::CheckCondition_Grenade;
+    func->BeginState     = &BotController::State_BeginGrenade;
     func->ThinkState     = &BotController::State_Grenade;
+}
+
+// Added in OPM
+//  Clear idle state and movement when fleeing from grenade
+void BotController::State_BeginGrenade(void)
+{
+    movement.ClearMove();
+    m_idle.reset();
 }
 
 bool BotController::CheckCondition_Grenade(void)
