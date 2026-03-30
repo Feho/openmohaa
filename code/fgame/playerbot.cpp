@@ -522,12 +522,12 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     //  Close-range weapon fire and explosions bypass the probability gate.
     //  This ensures bots react immediately to nearby threats even if they
     //  weren't directly hit. A soldier would always notice gunfire 10 feet away.
+    //  Note: WEAPON_IMPACT is excluded - we want the shooter position, not impact.
     bool bypassProbability = false;
     if (fRangeFactor > 0.7f) {
         // Close range (within ~30% of sound radius)
         switch (iType) {
         case AI_EVENT_WEAPON_FIRE:
-        case AI_EVENT_WEAPON_IMPACT:
         case AI_EVENT_EXPLOSION:
         case AI_EVENT_GRENADE:
             bypassProbability = true;
@@ -544,9 +544,11 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     switch (iType) {
     case AI_EVENT_MISC:
     case AI_EVENT_MISC_LOUD:
+    case AI_EVENT_WEAPON_IMPACT:
+        // Ignore bullet impacts - they indicate where the bullet hit, not where
+        // the shooter is. React to WEAPON_FIRE instead which gives shooter position.
         break;
     case AI_EVENT_WEAPON_FIRE:
-    case AI_EVENT_WEAPON_IMPACT:
     case AI_EVENT_EXPLOSION:
     case AI_EVENT_AMERICAN_VOICE:
     case AI_EVENT_GERMAN_VOICE:

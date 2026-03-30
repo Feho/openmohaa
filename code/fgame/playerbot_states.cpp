@@ -368,9 +368,10 @@ void BotController::State_Curious(void)
     //  turn toward it so the bot reacts to sounds from behind. Only fall back
     //  to path direction when close to the target (within 256 units) to avoid
     //  staring at walls when navigating.
+    //  Prefer the specific sound location over the belief map to avoid aiming
+    //  in the wrong direction.
     {
-        Vector beliefPos = beliefMap.GetHighestBeliefPos();
-        Vector targetPos = (beliefPos != vec_zero) ? beliefPos : m_curious.targetPos;
+        Vector targetPos = (m_curious.targetPos != vec_zero) ? m_curious.targetPos : beliefMap.GetHighestBeliefPos();
 
         if (targetPos != vec_zero) {
             Vector delta       = targetPos - controlledEnt->origin;
@@ -393,24 +394,68 @@ void BotController::State_Curious(void)
     }
 
     // Changed in OPM
-    //  Navigate to the highest-belief zone instead of the last single
-    //  event position. Multiple events build up belief in an area rather
-    //  than replacing each other. Falls back to m_curious.targetPos when no
-    //  zone has significant belief.
-    if (!movement.MoveToBestAttractivePoint(3)) {
+    //  In Curious state, prioritize investigating the sound location over
+    //  wandering to attractive points. Attractive points are for idle patrol,
+    //  not for investigating threats.
+    //  Use MoveNear instead of MoveTo - the sound position might not be
+    //  exactly on the navigation mesh, so find a path to anywhere within
+    //  512 units of the target.
+    {
         Vector beliefPos = beliefMap.GetHighestBeliefPos();
-        Vector targetPos = (beliefPos != vec_zero) ? beliefPos : m_curious.targetPos;
+        Vector targetPos = (m_curious.targetPos != vec_zero) ? m_curious.targetPos : beliefPos;
 
-        if (!movement.IsMoving() || m_curious.lastPos != targetPos) {
-            movement.MoveTo(targetPos);
+        if (targetPos != vec_zero && m_curious.lastPos != targetPos) {
+            movement.MoveNear(targetPos, 512);
             m_curious.lastPos = targetPos;
+
+            if (g_bot_debug_state->integer >= 2) {
+                if (movement.IsMoving()) {
+                    gi.Printf(
+                        "BOT %s: Curious moving to investigate (%.0f, %.0f, %.0f)\n",
+                        controlledEnt->client->pers.netname,
+                        targetPos.x,
+                        targetPos.y,
+                        targetPos.z
+                    );
+                } else {
+                    gi.Printf(
+                        "BOT %s: Curious can't path to (%.0f, %.0f, %.0f) - will look toward it\n",
+                        controlledEnt->client->pers.netname,
+                        targetPos.x,
+                        targetPos.y,
+                        targetPos.z
+                    );
+                }
+            }
         }
     }
 
     if (movement.MoveDone()) {
-        // Clear the belief at the arrived zone
-        beliefMap.ClearZone(controlledEnt->origin);
-        m_curious.time = 0;
+        float distToTarget = (m_curious.targetPos - controlledEnt->origin).length();
+
+        // If we arrived close to the target, clear curious
+        if (distToTarget < 256) {
+            if (g_bot_debug_state->integer >= 2) {
+                gi.Printf(
+                    "BOT %s: Curious arrived at target (dist=%.0f)\n", controlledEnt->client->pers.netname, distToTarget
+                );
+            }
+            beliefMap.ClearZone(controlledEnt->origin);
+            m_curious.time = 0;
+        } else if (!movement.IsMoving()) {
+            // Can't path to target - stay alert briefly (3 seconds) then resume normal behavior
+            // This gives time to spot an enemy while not freezing the bot
+            if (level.inttime + 17000 > m_curious.time) {
+                if (g_bot_debug_state->integer >= 2) {
+                    gi.Printf(
+                        "BOT %s: Curious can't reach target (dist=%.0f) - resuming patrol\n",
+                        controlledEnt->client->pers.netname,
+                        distToTarget
+                    );
+                }
+                m_curious.time = 0;
+            }
+        }
     }
 }
 
