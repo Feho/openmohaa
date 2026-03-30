@@ -682,8 +682,12 @@ void BotController::State_Attack(void)
 
     m_enemy.oldPos = m_enemy.lastPos;
 
+    // Changed in OPM
+    //  Use 120° FOV instead of 20° so the bot recognizes enemies in peripheral
+    //  vision. The narrow 20° FOV caused bots to ignore enemies that appeared
+    //  while they were looking elsewhere (e.g., toward a previous target).
     bCanSee = controlledEnt->CanSee(
-        m_enemy.enemy, 20, Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828), false
+        m_enemy.enemy, 120, Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828), false
     );
 
     if (bCanSee) {
