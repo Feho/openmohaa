@@ -297,9 +297,10 @@ void BotController::State_BeginCurious(void)
     m_idle.reset();
 
     // Immediately look toward the sound source
-    Vector targetPos = beliefMap.GetHighestBeliefPos();
+    // Prefer the specific sound location over the general belief map area
+    Vector targetPos = m_curious.targetPos;
     if (targetPos == vec_zero) {
-        targetPos = m_curious.targetPos;
+        targetPos = beliefMap.GetHighestBeliefPos();
     }
     if (targetPos != vec_zero) {
         rotation.AimAt(targetPos);
