@@ -25,10 +25,23 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // to improve code organization and make state transitions easier to reason about.
 
 #include "playerbot.h"
+#include "gamecvars.h"
 #include "vehicleturret.h"
 #include "weaputils.h"
 #include "windows.h"
 #include "g_bot.h"
+
+// Added in OPM
+//  State names for debug output
+static const char *botStateNames[] = {"Attack", "Curious", "Grenade", "Idle", "Weapon"};
+
+static const char *GetStateName(int index)
+{
+    if (index >= 0 && index < (int)(sizeof(botStateNames) / sizeof(botStateNames[0]))) {
+        return botStateNames[index];
+    }
+    return "Unknown";
+}
 
 /*
 ====================
@@ -48,6 +61,8 @@ void BotController::CheckStates(void)
 {
     m_StateCount = 0;
 
+    unsigned int oldFlags = m_StateFlags;
+
     for (int i = 0; i < MAX_BOT_FUNCTIONS; i++) {
         botfunc_t *func = &botfuncs[i];
 
@@ -55,6 +70,11 @@ void BotController::CheckStates(void)
             if ((this->*func->CheckCondition)()) {
                 if (!(m_StateFlags & (1 << i))) {
                     m_StateFlags |= 1 << i;
+
+                    // Added in OPM - Debug state transitions
+                    if (g_bot_debug_state->integer) {
+                        gi.Printf("BOT %s: ENTER state %s\n", controlledEnt->client->pers.netname, GetStateName(i));
+                    }
 
                     if (func->BeginState) {
                         (this->*func->BeginState)();
@@ -69,6 +89,11 @@ void BotController::CheckStates(void)
                 if ((m_StateFlags & (1 << i))) {
                     m_StateFlags &= ~(1 << i);
 
+                    // Added in OPM - Debug state transitions
+                    if (g_bot_debug_state->integer) {
+                        gi.Printf("BOT %s: EXIT state %s\n", controlledEnt->client->pers.netname, GetStateName(i));
+                    }
+
                     if (func->EndState) {
                         (this->*func->EndState)();
                     }
@@ -80,6 +105,20 @@ void BotController::CheckStates(void)
                 (this->*func->ThinkState)();
             }
         }
+    }
+
+    // Added in OPM - Debug active states (level 2)
+    if (g_bot_debug_state->integer >= 2 && m_StateFlags != oldFlags) {
+        char stateList[256] = {0};
+        for (int i = 0; i < MAX_BOT_FUNCTIONS; i++) {
+            if (m_StateFlags & (1 << i)) {
+                if (stateList[0]) {
+                    strcat(stateList, ", ");
+                }
+                strcat(stateList, GetStateName(i));
+            }
+        }
+        gi.Printf("BOT %s: Active states: [%s]\n", controlledEnt->client->pers.netname, stateList);
     }
 
     assert(m_StateCount);
@@ -264,18 +303,44 @@ void BotController::State_BeginCurious(void)
     }
     if (targetPos != vec_zero) {
         rotation.AimAt(targetPos);
+
+        if (g_bot_debug_state->integer) {
+            float dist = (targetPos - controlledEnt->origin).length();
+            gi.Printf(
+                "BOT %s: Curious - investigating position (%.0f, %.0f, %.0f) dist=%.0f\n",
+                controlledEnt->client->pers.netname,
+                targetPos.x,
+                targetPos.y,
+                targetPos.z,
+                dist
+            );
+        }
     }
 }
 
 bool BotController::CheckCondition_Curious(void)
 {
     if (m_combat.attackTime) {
+        if (g_bot_debug_state->integer >= 2 && m_curious.time) {
+            gi.Printf(
+                "BOT %s: Curious blocked - in combat (attackTime=%d)\n",
+                controlledEnt->client->pers.netname,
+                m_combat.attackTime - level.inttime
+            );
+        }
         m_curious.time = 0;
         return false;
     }
 
     if (level.inttime > m_curious.time) {
         if (m_curious.time) {
+            if (g_bot_debug_state->integer >= 2) {
+                gi.Printf(
+                    "BOT %s: Curious expired (was investigating for %dms)\n",
+                    controlledEnt->client->pers.netname,
+                    20000 - (m_curious.time - level.inttime)
+                );
+            }
             movement.ClearMove();
             m_curious.time = 0;
         }
@@ -368,6 +433,17 @@ void BotController::State_BeginAttack(void)
 {
     movement.ClearMove();
     m_idle.reset();
+
+    if (g_bot_debug_state->integer && m_enemy.enemy) {
+        const char *enemyName = "unknown";
+        if (m_enemy.enemy->IsSubclassOfPlayer()) {
+            enemyName = static_cast<Player *>(m_enemy.enemy.Pointer())->client->pers.netname;
+        } else {
+            enemyName = m_enemy.enemy->targetname.c_str();
+        }
+        float dist = (m_enemy.enemy->origin - controlledEnt->origin).length();
+        gi.Printf("BOT %s: Attack - targeting %s at dist=%.0f\n", controlledEnt->client->pers.netname, enemyName, dist);
+    }
 }
 
 static Vector bot_origin;
@@ -500,6 +576,18 @@ bool BotController::CheckCondition_Attack(void)
 
 void BotController::State_EndAttack(void)
 {
+    if (g_bot_debug_state->integer) {
+        const char *reason = "unknown";
+        if (!m_enemy.enemy) {
+            reason = "no enemy";
+        } else if (!IsValidEnemy(m_enemy.enemy)) {
+            reason = "enemy invalid (dead/hidden/team)";
+        } else if (m_combat.attackTime && level.inttime > m_combat.attackTime) {
+            reason = "attack timer expired";
+        }
+        gi.Printf("BOT %s: Attack ended - %s\n", controlledEnt->client->pers.netname, reason);
+    }
+
     m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
     m_botCmd.rightmove     = 0;
     m_botCmd.upmove        = 0;

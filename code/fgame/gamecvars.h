@@ -352,6 +352,7 @@ extern cvar_t *g_bot_belief_min_patrol;
 extern cvar_t *g_bot_debug_beliefs;
 
 extern cvar_t *g_bot_debug_reaction;
+extern cvar_t *g_bot_debug_state;
 extern cvar_t *g_rankedserver;
 extern cvar_t *g_spectatefollow_firstperson;
 
