@@ -324,7 +324,7 @@ bool BotController::CheckCondition_Curious(void)
     if (m_combat.attackTime) {
         if (g_bot_debug_state->integer >= 2 && m_curious.time) {
             gi.Printf(
-                "BOT %s: Curious blocked - in combat (attackTime=%d)\n",
+                "BOT %s: Curious blocked - in combat (attackTime=%dms)\n",
                 controlledEnt->client->pers.netname,
                 m_combat.attackTime - level.inttime
             );
@@ -337,9 +337,10 @@ bool BotController::CheckCondition_Curious(void)
         if (m_curious.time) {
             if (g_bot_debug_state->integer >= 2) {
                 gi.Printf(
-                    "BOT %s: Curious expired (was investigating for %dms)\n",
+                    "BOT %s: Curious expired (curiousTime=%d, inttime=%d)\n",
                     controlledEnt->client->pers.netname,
-                    20000 - (m_curious.time - level.inttime)
+                    m_curious.time,
+                    level.inttime
                 );
             }
             movement.ClearMove();

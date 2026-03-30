@@ -557,6 +557,16 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     default:
         m_curious.time      = level.inttime + 20000;
         m_curious.targetPos = vPos;
+        if (g_bot_debug_state->integer >= 2) {
+            gi.Printf(
+                "BOT %s: NoticeEvent set curious (time=%d, pos=(%.0f,%.0f,%.0f))\n",
+                controlledEnt->client->pers.netname,
+                m_curious.time,
+                vPos.x,
+                vPos.y,
+                vPos.z
+            );
+        }
         break;
     }
 
