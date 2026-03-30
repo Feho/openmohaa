@@ -518,7 +518,26 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
         }
     }
 
-    if (fRangeFactor < random()) {
+    // Changed in OPM
+    //  Close-range weapon fire and explosions bypass the probability gate.
+    //  This ensures bots react immediately to nearby threats even if they
+    //  weren't directly hit. A soldier would always notice gunfire 10 feet away.
+    bool bypassProbability = false;
+    if (fRangeFactor > 0.7f) {
+        // Close range (within ~30% of sound radius)
+        switch (iType) {
+        case AI_EVENT_WEAPON_FIRE:
+        case AI_EVENT_WEAPON_IMPACT:
+        case AI_EVENT_EXPLOSION:
+        case AI_EVENT_GRENADE:
+            bypassProbability = true;
+            break;
+        default:
+            break;
+        }
+    }
+
+    if (!bypassProbability && fRangeFactor < random()) {
         return;
     }
 
@@ -720,6 +739,61 @@ void BotController::Killed(const Event& ev)
     G_ClientUserinfoChanged(controlledEnt->edict, controlledEnt->client->pers.userinfo);
 }
 
+// Added in OPM
+//  React to being damaged - look toward attacker immediately
+void BotController::Damaged(const Event& ev)
+{
+    Entity *attacker = ev.GetEntity(1);
+
+    if (!attacker || attacker == controlledEnt) {
+        return;
+    }
+
+    // Check if attacker is a valid enemy
+    Sentient *sentAttacker = NULL;
+    if (attacker->IsSubclassOfSentient()) {
+        sentAttacker = static_cast<Sentient *>(attacker);
+
+        if (!IsValidEnemy(sentAttacker)) {
+            return;
+        }
+    }
+
+    // Update belief map with attacker position - high confidence
+    beliefMap.UpdateFromEvent(attacker->origin, AI_EVENT_WEAPON_FIRE, 1.0f);
+
+    // If we already have this enemy targeted and can see them, don't interrupt
+    if (m_enemy.enemy == sentAttacker && m_combat.lastSeenTime == level.inttime) {
+        return;
+    }
+
+    // Immediately look toward the attacker
+    rotation.AimAt(attacker->centroid);
+
+    // If the attacker is a valid sentient enemy, enter attack mode
+    if (sentAttacker) {
+        // Set up enemy tracking
+        m_enemy.enemy   = sentAttacker;
+        m_enemy.lastPos = sentAttacker->origin;
+        m_enemy.eyesTag = gi.Tag_NumForName(sentAttacker->edict->tiki, "eyes bone");
+
+        // Enter attack state immediately
+        m_combat.attackTime        = level.inttime + 5000;
+        m_combat.lastSeenTime      = level.inttime;
+        m_combat.attackStopAimTime = level.inttime + 2000;
+
+        // Clear movement so we don't keep walking away from threat
+        movement.ClearMove();
+
+        // Clear any curious state - we have a real threat now
+        m_curious.time = 0;
+    } else {
+        // Non-sentient attacker (e.g., explosion, trap) - go curious toward the position
+        m_curious.targetPos = attacker->origin;
+        m_curious.time      = level.inttime + 5000;
+    }
+}
+
 void BotController::GotKill(const Event& ev)
 {
     //
@@ -778,6 +852,8 @@ void BotController::setControlledEntity(Player *player)
     delegateHandle_gotKill =
         player->delegate_gotKill.Add(std::bind(&BotController::GotKill, this, std::placeholders::_1));
     delegateHandle_killed = player->delegate_killed.Add(std::bind(&BotController::Killed, this, std::placeholders::_1));
+    delegateHandle_damage =
+        player->delegate_damage.Add(std::bind(&BotController::Damaged, this, std::placeholders::_1));
     delegateHandle_stufftext =
         player->delegate_stufftext.Add(std::bind(&BotController::EventStuffText, this, std::placeholders::_1));
     delegateHandle_spawned = player->delegate_spawned.Add(std::bind(&BotController::Spawned, this));

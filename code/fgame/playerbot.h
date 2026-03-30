@@ -363,6 +363,7 @@ private:
 private:
     DelegateHandle delegateHandle_gotKill;
     DelegateHandle delegateHandle_killed;
+    DelegateHandle delegateHandle_damage;
     DelegateHandle delegateHandle_stufftext;
     DelegateHandle delegateHandle_spawned;
 
@@ -433,6 +434,7 @@ public:
     void Spawned(void);
 
     void Killed(const Event& ev);
+    void Damaged(const Event& ev);
     void GotKill(const Event& ev);
     void EventStuffText(const str& text);
 

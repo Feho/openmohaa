@@ -250,11 +250,21 @@ void BotController::InitState_Curious(botfunc_t *func)
 }
 
 // Added in OPM
-//  Clear idle state and movement when entering curious mode
+//  Clear idle state and movement when entering curious mode.
+//  Immediately turn toward the sound source.
 void BotController::State_BeginCurious(void)
 {
     movement.ClearMove();
     m_idle.reset();
+
+    // Immediately look toward the sound source
+    Vector targetPos = beliefMap.GetHighestBeliefPos();
+    if (targetPos == vec_zero) {
+        targetPos = m_curious.targetPos;
+    }
+    if (targetPos != vec_zero) {
+        rotation.AimAt(targetPos);
+    }
 }
 
 bool BotController::CheckCondition_Curious(void)
@@ -286,13 +296,30 @@ void BotController::State_Curious(void)
     }
 
     // Changed in OPM
-    //  Pre-aim toward highest-belief zone during curious state, but only
-    //  when the zone is visible. Otherwise look along the path direction
-    //  so the bot doesn't stare at walls.
+    //  Turn toward the sound source. If the position is visible, aim directly
+    //  at it. If not visible (e.g., behind a wall or behind the bot), still
+    //  turn toward it so the bot reacts to sounds from behind. Only fall back
+    //  to path direction when close to the target (within 256 units) to avoid
+    //  staring at walls when navigating.
     {
         Vector beliefPos = beliefMap.GetHighestBeliefPos();
-        if (beliefPos != vec_zero && controlledEnt->CanSee(beliefPos, 120, 2048, false)) {
-            rotation.AimAt(beliefPos);
+        Vector targetPos = (beliefPos != vec_zero) ? beliefPos : m_curious.targetPos;
+
+        if (targetPos != vec_zero) {
+            Vector delta       = targetPos - controlledEnt->origin;
+            float  distSquared = delta.lengthSquared();
+
+            // If far from target, always turn toward it (even if not visible)
+            // This ensures the bot reacts to sounds from behind
+            if (distSquared > 256 * 256) {
+                rotation.AimAt(targetPos);
+            } else if (controlledEnt->CanSee(targetPos, 120, 2048, false)) {
+                // Close and can see - aim at it
+                rotation.AimAt(targetPos);
+            } else {
+                // Close but can't see - look along path to navigate around obstacles
+                AimAtAimNode();
+            }
         } else {
             AimAtAimNode();
         }
