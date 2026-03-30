@@ -85,10 +85,12 @@ void BotManager::BroadcastEvent(Entity *originator, Vector origin, int iType, fl
     case AI_EVENT_EXPLOSION:
         botRadius = Q_max(radius, 8192.0f);
         break;
-    case AI_EVENT_WEAPON_IMPACT:
     case AI_EVENT_GRENADE:
         botRadius = Q_max(radius, 4096.0f);
         break;
+    case AI_EVENT_WEAPON_IMPACT:
+        // Ignore bullet impacts - they indicate where bullets hit, not shooter position
+        return;
     case AI_EVENT_FOOTSTEP:
         botRadius = Q_max(radius, 1500.0f);
         break;

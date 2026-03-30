@@ -53,11 +53,11 @@ void BotBeliefMap::Init(const Vector& worldMins, const Vector& worldMaxs, float 
     for (int y = 0; y < m_iGridHeight; y++) {
         for (int x = 0; x < m_iGridWidth; x++) {
             BeliefZone zone;
-            zone.centroid.x      = worldMins.x + (x + 0.5f) * m_fCellSize;
-            zone.centroid.y      = worldMins.y + (y + 0.5f) * m_fCellSize;
-            zone.centroid.z      = (worldMins.z + worldMaxs.z) * 0.5f;
-            zone.belief          = 0.0f;
-            zone.lastUpdateTime  = 0;
+            zone.centroid.x     = worldMins.x + (x + 0.5f) * m_fCellSize;
+            zone.centroid.y     = worldMins.y + (y + 0.5f) * m_fCellSize;
+            zone.centroid.z     = (worldMins.z + worldMaxs.z) * 0.5f;
+            zone.belief         = 0.0f;
+            zone.lastUpdateTime = 0;
             m_zones.AddObject(zone);
         }
     }
@@ -101,8 +101,8 @@ void BotBeliefMap::AddBelief(int zoneIndex, float amount)
         return;
     }
 
-    BeliefZone& zone = m_zones.ObjectAt(zoneIndex + 1);
-    zone.belief      = Q_clamp_float(zone.belief + amount, 0.0f, 1.0f);
+    BeliefZone& zone    = m_zones.ObjectAt(zoneIndex + 1);
+    zone.belief         = Q_clamp_float(zone.belief + amount, 0.0f, 1.0f);
     zone.lastUpdateTime = level.inttime;
 }
 
@@ -153,9 +153,12 @@ void BotBeliefMap::UpdateFromEvent(Vector pos, int iType, float fRangeFactor)
 
     switch (iType) {
     case AI_EVENT_WEAPON_FIRE:
-    case AI_EVENT_WEAPON_IMPACT:
         weight = 0.6f;
         break;
+    case AI_EVENT_WEAPON_IMPACT:
+        // Ignore bullet impacts - they indicate where the bullet hit, not where
+        // the shooter is. This would cause bots to investigate walls.
+        return;
     case AI_EVENT_EXPLOSION:
         weight = 0.4f;
         break;
@@ -297,8 +300,8 @@ int BotBeliefMap::GetHighestBeliefZone() const
         return -1;
     }
 
-    float minBelief = g_bot_belief_min_patrol->value;
-    int   bestIndex = -1;
+    float minBelief  = g_bot_belief_min_patrol->value;
+    int   bestIndex  = -1;
     float bestBelief = 0.0f;
 
     for (int i = 1; i <= m_zones.NumObjects(); i++) {
