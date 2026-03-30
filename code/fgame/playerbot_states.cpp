@@ -1039,15 +1039,13 @@ void BotController::State_Attack(void)
     }
 
     // Changed in OPM
-    //  Combat movement: when the bot can see and attack, hold position and
-    //  fight from the current range — strafing provides lateral movement.
-    //  Never flee from close combat; at point blank, stand and shoot.
+    //  Combat movement: when the bot can see and attack, stop and fight.
+    //  Don't continue walking toward navigation goals - that makes bots
+    //  walk right up to enemies instead of engaging from a distance.
     //  Only advance when the enemy is not visible or when using melee.
     if (bCanSee && bCanAttack && !bMelee) {
-        // Can see and shoot — hold position, let strafing handle movement
-        if (movement.IsMoving() && !movement.MoveToBestAttractivePoint(5)) {
-            movement.ClearMove();
-        }
+        // Can see and shoot — stop and fight, let strafing handle lateral movement
+        movement.ClearMove();
     } else if ((!movement.MoveToBestAttractivePoint(5) && !movement.IsMoving())
                || (m_enemy.oldPos != m_enemy.lastPos && !movement.MoveDone())) {
         // Can't see enemy or using melee — close the distance
