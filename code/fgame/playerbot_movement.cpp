@@ -117,7 +117,13 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
         VectorAdd2D(m_vCurrentGoal, vDelta, m_vCurrentGoal);
 
         if (MoveDone()) {
-            // Clear the path
+            // Fixed in OPM
+            //  Also clear m_bPathing so IsMoving() returns false.
+            //  Previously only the path was cleared, leaving m_bPathing
+            //  true. This caused states to think the bot was still moving
+            //  and never issue new movement commands, trapping the bot in
+            //  random micro-movements from the fallback below.
+            m_bPathing = false;
             m_pPath->Clear();
         }
     }
