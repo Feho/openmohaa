@@ -19,6 +19,8 @@ BotBeliefMap::BotBeliefMap()
     , m_fCellSize(0)
     , m_iGridWidth(0)
     , m_iGridHeight(0)
+    , m_iCurrentTargetZone(-1)
+    , m_iTargetLockTime(0)
 {}
 
 /*
@@ -288,28 +290,66 @@ void BotBeliefMap::ClearZonesVisibleFrom(Player *player)
 
 /*
 ====================
-GetHighestBeliefZone
+GetBestZone
 
-Return the index of the zone with the highest belief.
-Returns -1 if no zone has belief above the patrol threshold.
+Return the index of the best zone to investigate, considering both
+belief level and distance from the bot. Uses hysteresis to prevent
+flip-flopping between zones.
+
+Score = belief * distanceFactor
+Where distanceFactor favors closer zones (1.0 at 0 distance, 0.3 at max distance)
 ====================
 */
-int BotBeliefMap::GetHighestBeliefZone() const
+int BotBeliefMap::GetBestZone(Vector myPos)
 {
     if (!m_bInitialized) {
         return -1;
     }
 
-    float minBelief  = g_bot_belief_min_patrol->value;
-    int   bestIndex  = -1;
-    float bestBelief = 0.0f;
+    // Hysteresis: if we have a current target and it still has belief, stick with it
+    // for a minimum time to avoid flip-flopping
+    if (m_iCurrentTargetZone >= 0 && m_iCurrentTargetZone < m_zones.NumObjects()) {
+        const BeliefZone& currentZone = m_zones.ObjectAt(m_iCurrentTargetZone + 1);
+        if (currentZone.belief >= g_bot_belief_min_patrol->value && level.inttime < m_iTargetLockTime) {
+            return m_iCurrentTargetZone;
+        }
+    }
+
+    float minBelief = g_bot_belief_min_patrol->value;
+    int   bestIndex = -1;
+    float bestScore = 0.0f;
+
+    // Calculate max distance for normalization (diagonal of world)
+    float worldWidth  = m_vWorldMaxs.x - m_vWorldMins.x;
+    float worldHeight = m_vWorldMaxs.y - m_vWorldMins.y;
+    float maxDist     = sqrtf(worldWidth * worldWidth + worldHeight * worldHeight);
 
     for (int i = 1; i <= m_zones.NumObjects(); i++) {
         const BeliefZone& zone = m_zones.ObjectAt(i);
-        if (zone.belief > bestBelief && zone.belief >= minBelief) {
-            bestBelief = zone.belief;
-            bestIndex  = i - 1;
+        if (zone.belief < minBelief) {
+            continue;
         }
+
+        // Calculate distance factor: closer zones score higher
+        // Range: 1.0 (at bot position) to 0.3 (at max distance)
+        Vector delta     = zone.centroid - myPos;
+        delta.z          = 0; // 2D distance
+        float dist       = delta.length();
+        float distFactor = 1.0f - (dist / maxDist) * 0.7f;
+
+        float score = zone.belief * distFactor;
+
+        if (score > bestScore) {
+            bestScore = score;
+            bestIndex = i - 1;
+        }
+    }
+
+    // Update hysteresis state if we found a new target
+    if (bestIndex >= 0 && bestIndex != m_iCurrentTargetZone) {
+        m_iCurrentTargetZone = bestIndex;
+        // Lock to this target for 2-4 seconds
+        m_iTargetLockTime = level.inttime + 2000 + (int)G_Random(2000);
     }
 
     return bestIndex;
@@ -340,13 +380,13 @@ float BotBeliefMap::GetBeliefAtPos(Vector pos) const
 ====================
 GetHighestBeliefDir
 
-Return the direction from myPos toward the highest-belief zone.
+Return the direction from myPos toward the best zone.
 Returns vec_zero if no zone has significant belief.
 ====================
 */
-Vector BotBeliefMap::GetHighestBeliefDir(Vector myPos) const
+Vector BotBeliefMap::GetHighestBeliefDir(Vector myPos)
 {
-    int bestIndex = GetHighestBeliefZone();
+    int bestIndex = GetBestZone(myPos);
     if (bestIndex < 0) {
         return vec_zero;
     }
@@ -361,13 +401,13 @@ Vector BotBeliefMap::GetHighestBeliefDir(Vector myPos) const
 ====================
 GetHighestBeliefPos
 
-Return the centroid of the highest-belief zone.
+Return the centroid of the best zone to investigate.
 Returns vec_zero if no zone has significant belief.
 ====================
 */
-Vector BotBeliefMap::GetHighestBeliefPos() const
+Vector BotBeliefMap::GetHighestBeliefPos(Vector myPos)
 {
-    int bestIndex = GetHighestBeliefZone();
+    int bestIndex = GetBestZone(myPos);
     if (bestIndex < 0) {
         return vec_zero;
     }

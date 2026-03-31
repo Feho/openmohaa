@@ -236,7 +236,7 @@ void BotController::State_Idle(void)
     //  the zone is visible. Otherwise look along the path direction so
     //  the bot doesn't stare at walls.
     {
-        Vector beliefPos = beliefMap.GetHighestBeliefPos();
+        Vector beliefPos = beliefMap.GetHighestBeliefPos(controlledEnt->origin);
         if (beliefPos != vec_zero && controlledEnt->CanSee(beliefPos, 120, 2048, false)) {
             rotation.AimAt(beliefPos);
         } else {
@@ -249,7 +249,7 @@ void BotController::State_Idle(void)
     //  of wandering randomly. Falls back to attractive nodes and random
     //  movement when no zone has significant belief.
     if (!movement.MoveToBestAttractivePoint() && !movement.IsMoving()) {
-        Vector beliefPos = beliefMap.GetHighestBeliefPos();
+        Vector beliefPos = beliefMap.GetHighestBeliefPos(controlledEnt->origin);
         if (beliefPos != vec_zero) {
             movement.MoveTo(beliefPos);
 
@@ -300,7 +300,7 @@ void BotController::State_BeginCurious(void)
     // Prefer the specific sound location over the general belief map area
     Vector targetPos = m_curious.targetPos;
     if (targetPos == vec_zero) {
-        targetPos = beliefMap.GetHighestBeliefPos();
+        targetPos = beliefMap.GetHighestBeliefPos(controlledEnt->origin);
     }
     if (targetPos != vec_zero) {
         rotation.AimAt(targetPos);
@@ -367,7 +367,8 @@ void BotController::State_Curious(void)
     //  This prevents bots from staring at walls while walking, which looks unnatural.
     //  Only turn toward invisible sounds briefly at the start (handled in BeginState).
     {
-        Vector targetPos = (m_curious.targetPos != vec_zero) ? m_curious.targetPos : beliefMap.GetHighestBeliefPos();
+        Vector targetPos = (m_curious.targetPos != vec_zero) ? m_curious.targetPos
+                                                             : beliefMap.GetHighestBeliefPos(controlledEnt->origin);
 
         if (targetPos != vec_zero && controlledEnt->CanSee(targetPos, 120, 2048, false)) {
             // Can see the target position - aim at it
@@ -389,7 +390,7 @@ void BotController::State_Curious(void)
     //  exactly on the navigation mesh, so find a path to anywhere within
     //  512 units of the target.
     {
-        Vector beliefPos = beliefMap.GetHighestBeliefPos();
+        Vector beliefPos = beliefMap.GetHighestBeliefPos(controlledEnt->origin);
         Vector targetPos = (m_curious.targetPos != vec_zero) ? m_curious.targetPos : beliefPos;
 
         if (targetPos != vec_zero && m_curious.lastPos != targetPos) {

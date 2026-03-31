@@ -33,10 +33,13 @@ public:
     void ClearZone(Vector pos);
     void ClearZonesVisibleFrom(Player *player);
 
-    int    GetHighestBeliefZone() const;
+    // Changed in OPM
+    //  Zone selection now considers distance from bot position and uses
+    //  hysteresis to prevent flip-flopping between zones.
+    int    GetBestZone(Vector myPos);
     float  GetBeliefAtPos(Vector pos) const;
-    Vector GetHighestBeliefDir(Vector myPos) const;
-    Vector GetHighestBeliefPos() const;
+    Vector GetHighestBeliefDir(Vector myPos);
+    Vector GetHighestBeliefPos(Vector myPos);
 
     int                          GetZoneCount() const;
     const Container<BeliefZone>& GetZones() const;
@@ -58,4 +61,8 @@ private:
     float  m_fCellSize;
     int    m_iGridWidth;
     int    m_iGridHeight;
+
+    // Hysteresis - prevent flip-flopping between zones
+    int m_iCurrentTargetZone;
+    int m_iTargetLockTime;
 };
