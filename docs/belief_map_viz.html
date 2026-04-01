@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Bot Belief Map - Interactive Explanation</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+  }
+  #sidebar {
+    width: 360px;
+    min-width: 360px;
+    background: #16213e;
+    padding: 24px;
+    overflow-y: auto;
+    border-right: 2px solid #0f3460;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  #sidebar h1 {
+    font-size: 20px;
+    color: #e94560;
+    margin-bottom: 4px;
+  }
+  #sidebar h2 {
+    font-size: 15px;
+    color: #0f9b8e;
+    margin-bottom: 2px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .step-info {
+    background: #1a1a3e;
+    border-radius: 8px;
+    padding: 14px;
+    border-left: 3px solid #e94560;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .step-info code {
+    background: #0d1b3e;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 13px;
+    color: #53d8fb;
+  }
+  .controls {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  button {
+    background: #0f3460;
+    color: #e0e0e0;
+    border: 1px solid #1a5276;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.15s;
+  }
+  button:hover { background: #1a5276; }
+  button.active { background: #e94560; border-color: #e94560; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  .legend {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    flex-wrap: wrap;
+  }
+  .legend-swatch {
+    width: 14px; height: 14px;
+    border-radius: 3px;
+    display: inline-block;
+  }
+  .stats {
+    font-size: 13px;
+    line-height: 1.8;
+    background: #0d1b3e;
+    padding: 10px 14px;
+    border-radius: 6px;
+  }
+  .stats span { color: #53d8fb; font-weight: bold; }
+  #canvas-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .param-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+  }
+  .param-row label { min-width: 100px; }
+  .param-row input[type=range] { flex: 1; }
+  .param-row .val { min-width: 40px; text-align: right; color: #53d8fb; }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div>
+    <h1>Bot Belief Map</h1>
+    <p style="font-size:12px;color:#888;">OpenMoHAA - Interactive Explanation</p>
+  </div>
+
+  <div>
+    <h2>Current Step</h2>
+    <div class="step-info" id="step-text">Click "Start" to begin the walkthrough.</div>
+  </div>
+
+  <div class="controls">
+    <button id="btn-prev" onclick="prevStep()" disabled>&larr; Prev</button>
+    <button id="btn-next" onclick="nextStep()">Start &rarr;</button>
+    <button id="btn-reset" onclick="resetAll()">Reset</button>
+  </div>
+
+  <div>
+    <h2>Parameters</h2>
+    <div class="param-row">
+      <label>Decay rate:</label>
+      <input type="range" id="sl-decay" min="0.90" max="0.995" step="0.005" value="0.95">
+      <div class="val" id="val-decay">0.95</div>
+    </div>
+    <div class="param-row">
+      <label>Patrol threshold:</label>
+      <input type="range" id="sl-threshold" min="0.05" max="0.60" step="0.05" value="0.30">
+      <div class="val" id="val-threshold">0.30</div>
+    </div>
+    <div class="param-row">
+      <label>Spawn belief:</label>
+      <input type="range" id="sl-spawn-belief" min="0.3" max="1.0" step="0.1" value="0.8">
+      <div class="val" id="val-spawn-belief">0.80</div>
+    </div>
+  </div>
+
+  <div>
+    <h2>Legend</h2>
+    <div class="legend">
+      <span class="legend-swatch" style="background:#2ecc71;"></span> Low belief
+      <span class="legend-swatch" style="background:#f1c40f;"></span> Medium
+      <span class="legend-swatch" style="background:#e74c3c;"></span> High belief
+      <span class="legend-swatch" style="background:#1abc9c;border:2px solid #fff;"></span> Bot
+      <span class="legend-swatch" style="background:#e94560;border:2px dashed #fff;"></span> Target
+    </div>
+  </div>
+
+  <div>
+    <h2>Live Stats</h2>
+    <div class="stats" id="stats">
+      Active zones: <span id="st-active">0</span> / <span id="st-total">0</span><br>
+      Best zone: <span id="st-best">-</span><br>
+      Best belief: <span id="st-belief">0.00</span><br>
+      Time elapsed: <span id="st-time">0.0s</span>
+    </div>
+  </div>
+
+  <div style="font-size:11px;color:#666;margin-top:auto;">
+    <b>Interactions:</b><br>
+    Left-click grid: add gunfire event (0.6)<br>
+    Right-click grid: add footstep event (0.2)<br>
+    Drag bot icon to reposition
+  </div>
+</div>
+
+<div id="canvas-container"></div>
+
+<script>
+// ── Belief Map Model ──────────────────────────────────────────────
+const GRID_W = 10;
+const GRID_H = 10;
+const CELL_PX = 56;
+const PAD = 40;
+
+let zones = [];
+let botPos = { gx: 1, gy: 8 };  // grid coords
+let bestZone = -1;
+let currentStep = -1;
+let simRunning = false;
+let simTime = 0;
+let lastFrameTime = 0;
+
+// Spawn points (enemy team - right/top side of map)
+const enemySpawns = [
+  {gx:8,gy:1},{gx:9,gy:1},{gx:8,gy:2},{gx:9,gy:0},{gx:7,gy:0},
+  {gx:6,gy:2},{gx:7,gy:3},{gx:5,gy:1}
+];
+
+// Ally spawns (left/bottom)
+const allySpawns = [
+  {gx:0,gy:8},{gx:1,gy:9},{gx:0,gy:9},{gx:1,gy:8},{gx:2,gy:9}
+];
+
+// Event log for visualization
+let eventLog = [];
+let arrowPulse = 0;
+
+// Hysteresis
+let currentTargetZone = -1;
+let targetLockUntil = 0;
+
+function initZones() {
+  zones = [];
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      zones.push({ x, y, belief: 0, lastUpdate: 0 });
+    }
+  }
+  bestZone = -1;
+  currentTargetZone = -1;
+  targetLockUntil = 0;
+  simTime = 0;
+  eventLog = [];
+}
+
+function zoneIndex(gx, gy) {
+  return gy * GRID_W + gx;
+}
+
+function addBelief(idx, amount) {
+  if (idx < 0 || idx >= zones.length) return;
+  zones[idx].belief = Math.min(1.0, zones[idx].belief + amount);
+  zones[idx].lastUpdate = simTime;
+}
+
+function decayAll(dt) {
+  let rate = parseFloat(document.getElementById('sl-decay').value);
+  let factor = Math.pow(rate, dt);
+  for (let z of zones) {
+    z.belief *= factor;
+    if (z.belief < 0.01) z.belief = 0;
+  }
+}
+
+function seedSpawnPoints() {
+  let spawnBelief = parseFloat(document.getElementById('sl-spawn-belief').value);
+  for (let sp of enemySpawns) {
+    addBelief(zoneIndex(sp.gx, sp.gy), spawnBelief);
+  }
+}
+
+function computeBestZone() {
+  let threshold = parseFloat(document.getElementById('sl-threshold').value);
+
+  // Hysteresis
+  if (currentTargetZone >= 0 && currentTargetZone < zones.length) {
+    if (zones[currentTargetZone].belief >= threshold && simTime < targetLockUntil) {
+      bestZone = currentTargetZone;
+      return;
+    }
+  }
+
+  let best = -1;
+  let bestScore = 0;
+  let maxDist = Math.sqrt(GRID_W * GRID_W + GRID_H * GRID_H);
+
+  for (let i = 0; i < zones.length; i++) {
+    if (zones[i].belief < threshold) continue;
+    let dx = zones[i].x - botPos.gx;
+    let dy = zones[i].y - botPos.gy;
+    let dist = Math.sqrt(dx*dx + dy*dy);
+    let distFactor = 1.0 - (dist / maxDist) * 0.7;
+    let score = zones[i].belief * distFactor;
+    if (score > bestScore) {
+      bestScore = score;
+      best = i;
+    }
+  }
+
+  if (best >= 0 && best !== currentTargetZone) {
+    currentTargetZone = best;
+    targetLockUntil = simTime + 2 + Math.random() * 2;
+  }
+  bestZone = best;
+}
+
+// ── Steps ─────────────────────────────────────────────────────────
+const steps = [
+  {
+    title: "1. The Grid",
+    text: `The belief map discretizes the game map into a <b>2D grid</b> of zones.
+Each zone stores a <code>belief</code> value from <b>0.0</b> to <b>1.0</b>,
+estimating the probability of enemy presence.<br><br>
+The grid is computed from <b>spawn point bounds</b> with padding, giving
+a ~50-200 zone coverage of the playable area.`,
+    action: () => { initZones(); simRunning = false; }
+  },
+  {
+    title: "2. Spawn Point Seeding",
+    text: `On spawn, the bot seeds the belief map with <b>enemy spawn locations</b>
+at <code>spawnBelief</code> (default 0.8).<br><br>
+<b>Red diamonds</b> = enemy spawns. Multiple spawns in the same zone
+stack but <b>clamp at 1.0</b>.<br><br>
+This gives bots initial awareness before any shots are fired.`,
+    action: () => { initZones(); seedSpawnPoints(); simRunning = false; }
+  },
+  {
+    title: "3. Decay",
+    text: `Every frame, all beliefs decay exponentially:<br>
+<code>belief *= decay_rate ^ dt</code><br><br>
+With rate <b>0.95</b>, a belief of 0.8 reaches the patrol threshold (0.3) in ~19 seconds.
+Beliefs below <b>0.01</b> snap to zero.<br><br>
+<b>Watch the zones fade.</b> Adjust the decay slider to see the effect.`,
+    action: () => { initZones(); seedSpawnPoints(); simRunning = true; lastFrameTime = millis() / 1000; }
+  },
+  {
+    title: "4. Patrol Threshold",
+    text: `<code>g_bot_belief_min_patrol</code> (default <b>0.3</b>) is the minimum
+belief for a zone to be considered as a patrol target.<br><br>
+Zones below this threshold are <b>ignored</b> by <code>GetBestZone()</code>.
+The dashed line on the color bar shows the threshold.<br><br>
+Adjust the threshold slider and watch zones drop out.`,
+    action: () => { simRunning = true; }
+  },
+  {
+    title: "5. Best Zone Selection",
+    text: `The bot picks the best zone using:<br>
+<code>score = belief * distanceFactor</code><br><br>
+<b>distanceFactor</b> favors closer zones (1.0 nearby, 0.3 at max distance).
+<b>Hysteresis</b> locks the target for 2-4 seconds to prevent flip-flopping.<br><br>
+The <b>dashed pink outline</b> shows the current target. Drag the bot to see
+how distance affects selection.`,
+    action: () => { simRunning = true; }
+  },
+  {
+    title: "6. Events Update Beliefs",
+    text: `Sound events add belief to zones:<br>
+&bull; Gunfire: <b>+0.6</b><br>
+&bull; Explosion: <b>+0.4</b><br>
+&bull; Footstep: <b>+0.2</b><br>
+&bull; Voice: <b>+0.3</b><br><br>
+Values <b>clamp at 1.0</b> &mdash; two gunfires (0.6+0.6=1.2) cap at 1.0.<br><br>
+<b>Left-click</b> the grid to simulate gunfire.<br>
+<b>Right-click</b> for footsteps.`,
+    action: () => { simRunning = true; }
+  },
+  {
+    title: "7. Putting It Together",
+    text: `The full cycle:<br><br>
+<b>1.</b> Bot spawns &rarr; seed enemy spawns<br>
+<b>2.</b> Idle state &rarr; patrol toward best zone<br>
+<b>3.</b> Hear gunfire &rarr; curious state uses direct position<br>
+<b>4.</b> Events also update belief map in background<br>
+<b>5.</b> Return to idle &rarr; belief map steers patrol again<br>
+<b>6.</b> Decay clears stale info over time<br><br>
+Experiment freely with clicks and sliders!`,
+    action: () => { simRunning = true; }
+  }
+];
+
+function nextStep() {
+  if (currentStep < steps.length - 1) {
+    currentStep++;
+    steps[currentStep].action();
+    updateStepUI();
+  }
+}
+
+function prevStep() {
+  if (currentStep > 0) {
+    currentStep--;
+    steps[currentStep].action();
+    updateStepUI();
+  }
+}
+
+function resetAll() {
+  currentStep = -1;
+  initZones();
+  simRunning = false;
+  updateStepUI();
+}
+
+function updateStepUI() {
+  let el = document.getElementById('step-text');
+  if (currentStep < 0) {
+    el.innerHTML = 'Click "Start" to begin the walkthrough.';
+  } else {
+    el.innerHTML = `<b>${steps[currentStep].title}</b><br><br>${steps[currentStep].text}`;
+  }
+  document.getElementById('btn-prev').disabled = (currentStep <= 0);
+  let btn = document.getElementById('btn-next');
+  btn.disabled = (currentStep >= steps.length - 1);
+  btn.textContent = currentStep < 0 ? 'Start \u2192' : 'Next \u2192';
+}
+
+// ── Slider updates ────────────────────────────────────────────────
+function hookSliders() {
+  for (let id of ['decay', 'threshold', 'spawn-belief']) {
+    let sl = document.getElementById('sl-' + id);
+    let vl = document.getElementById('val-' + id);
+    sl.addEventListener('input', () => { vl.textContent = parseFloat(sl.value).toFixed(id === 'decay' ? 3 : 2); });
+  }
+}
+
+// ── p5.js ─────────────────────────────────────────────────────────
+let draggingBot = false;
+let canvasOffX, canvasOffY;
+
+function setup() {
+  let cw = GRID_W * CELL_PX + PAD * 2;
+  let ch = GRID_H * CELL_PX + PAD * 2 + 60; // extra for color bar
+  let cnv = createCanvas(cw, ch);
+  cnv.parent('canvas-container');
+  cnv.elt.addEventListener('contextmenu', e => e.preventDefault());
+  textFont('monospace');
+  initZones();
+  hookSliders();
+  updateStepUI();
+}
+
+function gridToPixel(gx, gy) {
+  return {
+    x: PAD + gx * CELL_PX + CELL_PX / 2,
+    y: PAD + gy * CELL_PX + CELL_PX / 2
+  };
+}
+
+function pixelToGrid(px, py) {
+  return {
+    gx: Math.floor((px - PAD) / CELL_PX),
+    gy: Math.floor((py - PAD) / CELL_PX)
+  };
+}
+
+function beliefColor(b) {
+  // Green -> Yellow -> Red
+  let r, g, bl;
+  if (b < 0.5) {
+    r = lerp(46, 241, b * 2);
+    g = lerp(204, 196, b * 2);
+    bl = lerp(113, 15, b * 2);
+  } else {
+    r = lerp(241, 231, (b - 0.5) * 2);
+    g = lerp(196, 76, (b - 0.5) * 2);
+    bl = lerp(15, 60, (b - 0.5) * 2);
+  }
+  return color(r, g, bl);
+}
+
+function draw() {
+  background(26, 26, 46);
+  let now = millis() / 1000;
+
+  // Simulation tick
+  if (simRunning && currentStep >= 2) {
+    let dt = now - lastFrameTime;
+    dt = Math.min(dt, 0.1);
+    simTime += dt;
+    decayAll(dt);
+  }
+  lastFrameTime = now;
+
+  if (currentStep >= 4) {
+    computeBestZone();
+  }
+
+  arrowPulse = (sin(now * 3) + 1) / 2;
+
+  let threshold = parseFloat(document.getElementById('sl-threshold').value);
+
+  // Draw grid
+  for (let i = 0; i < zones.length; i++) {
+    let z = zones[i];
+    let px = PAD + z.x * CELL_PX;
+    let py = PAD + z.y * CELL_PX;
+
+    // Zone fill
+    if (z.belief > 0.01) {
+      let c = beliefColor(z.belief);
+      let a = map(z.belief, 0, 1, 40, 220);
+      fill(red(c), green(c), blue(c), a);
+    } else {
+      fill(30, 30, 55, 150);
+    }
+
+    // Highlight best zone
+    if (i === bestZone && currentStep >= 4) {
+      strokeWeight(2.5);
+      let pa = lerp(150, 255, arrowPulse);
+      stroke(233, 69, 96, pa);
+      drawingContext.setLineDash([6, 4]);
+    } else {
+      strokeWeight(1);
+      stroke(50, 50, 80);
+      drawingContext.setLineDash([]);
+    }
+
+    rect(px, py, CELL_PX, CELL_PX, 3);
+    drawingContext.setLineDash([]);
+
+    // Belief text
+    if (z.belief >= 0.01) {
+      fill(255, 255, 255, 200);
+      noStroke();
+      textAlign(CENTER, CENTER);
+      textSize(11);
+      text(z.belief.toFixed(2), px + CELL_PX / 2, py + CELL_PX / 2);
+    }
+
+    // Below threshold indicator
+    if (z.belief > 0.01 && z.belief < threshold && currentStep >= 3) {
+      noFill();
+      stroke(100, 100, 100, 100);
+      strokeWeight(1);
+      line(px + 4, py + 4, px + CELL_PX - 4, py + CELL_PX - 4);
+      line(px + CELL_PX - 4, py + 4, px + 4, py + CELL_PX - 4);
+    }
+  }
+
+  // Draw enemy spawns
+  if (currentStep >= 1) {
+    for (let sp of enemySpawns) {
+      let p = gridToPixel(sp.gx, sp.gy);
+      push();
+      translate(p.x, p.y);
+      rotate(PI / 4);
+      noStroke();
+      fill(231, 76, 60, 180);
+      rectMode(CENTER);
+      rect(0, 0, 10, 10);
+      pop();
+    }
+  }
+
+  // Draw ally spawns
+  if (currentStep >= 1) {
+    for (let sp of allySpawns) {
+      let p = gridToPixel(sp.gx, sp.gy);
+      noStroke();
+      fill(52, 152, 219, 180);
+      ellipse(p.x, p.y, 10, 10);
+    }
+  }
+
+  // Draw bot
+  {
+    let bp = gridToPixel(botPos.gx, botPos.gy);
+    // Bot glow
+    noStroke();
+    fill(26, 188, 156, 40 + arrowPulse * 30);
+    ellipse(bp.x, bp.y, 40, 40);
+    // Bot body
+    fill(26, 188, 156);
+    stroke(255, 255, 255, 200);
+    strokeWeight(2);
+    ellipse(bp.x, bp.y, 22, 22);
+    // Bot label
+    noStroke();
+    fill(255);
+    textAlign(CENTER, CENTER);
+    textSize(9);
+    text("BOT", bp.x, bp.y);
+  }
+
+  // Draw arrow to best zone
+  if (bestZone >= 0 && currentStep >= 4) {
+    let bp = gridToPixel(botPos.gx, botPos.gy);
+    let tz = zones[bestZone];
+    let tp = gridToPixel(tz.x, tz.y);
+
+    let dx = tp.x - bp.x;
+    let dy = tp.y - bp.y;
+    let len = Math.sqrt(dx * dx + dy * dy);
+    if (len > 30) {
+      let nx = dx / len;
+      let ny = dy / len;
+      let startX = bp.x + nx * 16;
+      let startY = bp.y + ny * 16;
+      let endX = tp.x - nx * 16;
+      let endY = tp.y - ny * 16;
+
+      strokeWeight(2.5);
+      let a = lerp(120, 255, arrowPulse);
+      stroke(233, 69, 96, a);
+      drawingContext.setLineDash([8, 5]);
+      line(startX, startY, endX, endY);
+      drawingContext.setLineDash([]);
+
+      // Arrowhead
+      push();
+      translate(endX, endY);
+      rotate(atan2(ny, nx));
+      fill(233, 69, 96, a);
+      noStroke();
+      triangle(0, 0, -12, -5, -12, 5);
+      pop();
+    }
+  }
+
+  // Draw event flashes
+  for (let i = eventLog.length - 1; i >= 0; i--) {
+    let ev = eventLog[i];
+    let age = now - ev.time;
+    if (age > 0.8) {
+      eventLog.splice(i, 1);
+      continue;
+    }
+    let p = gridToPixel(ev.gx, ev.gy);
+    let alpha = map(age, 0, 0.8, 255, 0);
+    let radius = map(age, 0, 0.8, 10, 40);
+    noFill();
+    strokeWeight(2);
+    stroke(ev.type === 'gunfire' ? color(255, 200, 50, alpha) : color(150, 200, 255, alpha));
+    ellipse(p.x, p.y, radius, radius);
+    if (ev.type === 'gunfire') {
+      ellipse(p.x, p.y, radius * 0.6, radius * 0.6);
+    }
+  }
+
+  // Color bar at bottom
+  let barY = PAD + GRID_H * CELL_PX + 20;
+  let barX = PAD;
+  let barW = GRID_W * CELL_PX;
+  let barH = 18;
+
+  // Bar gradient
+  for (let px = 0; px < barW; px++) {
+    let b = px / barW;
+    let c = beliefColor(b);
+    stroke(c);
+    line(barX + px, barY, barX + px, barY + barH);
+  }
+  noStroke();
+  fill(200);
+  textAlign(LEFT, TOP);
+  textSize(10);
+  text("0.0", barX, barY + barH + 3);
+  textAlign(RIGHT, TOP);
+  text("1.0", barX + barW, barY + barH + 3);
+  textAlign(CENTER, TOP);
+  text("belief", barX + barW / 2, barY + barH + 3);
+
+  // Threshold marker on bar
+  if (currentStep >= 3) {
+    let thX = barX + threshold * barW;
+    stroke(255, 255, 255, 200);
+    strokeWeight(2);
+    drawingContext.setLineDash([3, 3]);
+    line(thX, barY - 4, thX, barY + barH + 2);
+    drawingContext.setLineDash([]);
+    noStroke();
+    fill(255, 200);
+    textAlign(CENTER, BOTTOM);
+    textSize(9);
+    text("threshold", thX, barY - 5);
+  }
+
+  // Clamp indicator
+  if (currentStep >= 5) {
+    let clX = barX + barW;
+    noStroke();
+    fill(255, 100, 100, 180);
+    textAlign(RIGHT, BOTTOM);
+    textSize(9);
+    text("clamp", clX, barY - 5);
+  }
+
+  // Update stats
+  let active = zones.filter(z => z.belief >= 0.01).length;
+  document.getElementById('st-active').textContent = active;
+  document.getElementById('st-total').textContent = zones.length;
+  document.getElementById('st-best').textContent = bestZone >= 0 ? bestZone : '-';
+  document.getElementById('st-belief').textContent = bestZone >= 0 ? zones[bestZone].belief.toFixed(3) : '0.000';
+  document.getElementById('st-time').textContent = simTime.toFixed(1) + 's';
+}
+
+// ── Interaction ───────────────────────────────────────────────────
+function mousePressed() {
+  if (currentStep < 0) return;
+  let g = pixelToGrid(mouseX, mouseY);
+  if (g.gx < 0 || g.gx >= GRID_W || g.gy < 0 || g.gy >= GRID_H) return;
+
+  // Check if clicking bot
+  let bp = gridToPixel(botPos.gx, botPos.gy);
+  if (dist(mouseX, mouseY, bp.x, bp.y) < 20) {
+    draggingBot = true;
+    return;
+  }
+
+  if (currentStep >= 5) {
+    let idx = zoneIndex(g.gx, g.gy);
+    if (mouseButton === LEFT) {
+      addBelief(idx, 0.6);
+      eventLog.push({ gx: g.gx, gy: g.gy, time: millis() / 1000, type: 'gunfire' });
+    } else if (mouseButton === RIGHT) {
+      addBelief(idx, 0.2);
+      eventLog.push({ gx: g.gx, gy: g.gy, time: millis() / 1000, type: 'footstep' });
+    }
+  }
+}
+
+function mouseDragged() {
+  if (draggingBot) {
+    let g = pixelToGrid(mouseX, mouseY);
+    g.gx = constrain(g.gx, 0, GRID_W - 1);
+    g.gy = constrain(g.gy, 0, GRID_H - 1);
+    botPos.gx = g.gx;
+    botPos.gy = g.gy;
+  }
+}
+
+function mouseReleased() {
+  draggingBot = false;
+}
+</script>
+</body>
+</html>

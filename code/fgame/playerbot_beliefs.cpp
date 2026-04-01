@@ -250,7 +250,7 @@ void BotBeliefMap::SeedFromSpawnPoints(Player *player)
         return;
     }
 
-    const float spawnBelief = 0.5f;
+    const float spawnBelief = 0.8f;
 
     teamtype_t botTeam = player->GetTeam();
 
@@ -264,25 +264,24 @@ void BotBeliefMap::SeedFromSpawnPoints(Player *player)
         }
 
         for (int i = 1; i <= enemyTeam->m_spawnpoints.NumObjects(); i++) {
-            PlayerStart *spawn = enemyTeam->m_spawnpoints.ObjectAt(i);
-            if (!spawn->m_bForbidSpawns) {
-                int zoneIndex = FindZoneForPos(spawn->origin);
-                AddBelief(zoneIndex, spawnBelief);
-            }
+            PlayerStart *spawn    = enemyTeam->m_spawnpoints.ObjectAt(i);
+            int          zoneIndex = FindZoneForPos(spawn->origin);
+            // Seed all spawn points regardless of m_bForbidSpawns — disabled
+            // spawns may be enabled later (objective mode) and still represent
+            // likely enemy positions the bot should be aware of.
+            AddBelief(zoneIndex, spawnBelief);
         }
     } else {
         // FFA: seed all deathmatch spawns except our own zone
         DM_Team *freeForAll = dmManager.GetTeamAllies();
+        int      myZone     = FindZoneForPos(player->origin);
 
         for (int i = 1; i <= freeForAll->m_spawnpoints.NumObjects(); i++) {
-            PlayerStart *spawn = freeForAll->m_spawnpoints.ObjectAt(i);
-            if (!spawn->m_bForbidSpawns) {
-                int zoneIndex = FindZoneForPos(spawn->origin);
-                // Skip the zone the bot is currently in
-                int myZone = FindZoneForPos(player->origin);
-                if (zoneIndex != myZone) {
-                    AddBelief(zoneIndex, spawnBelief);
-                }
+            PlayerStart *spawn    = freeForAll->m_spawnpoints.ObjectAt(i);
+            int          zoneIndex = FindZoneForPos(spawn->origin);
+            // Skip the zone the bot is currently in
+            if (zoneIndex != myZone) {
+                AddBelief(zoneIndex, spawnBelief);
             }
         }
     }

@@ -28,6 +28,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "playerbot.h"
 #include "consoleevent.h"
 #include "debuglines.h"
+#include "dm_manager.h"
+#include "playerstart.h"
 #include "scriptexception.h"
 #include "vehicleturret.h"
 #include "weaputils.h"
@@ -100,8 +102,11 @@ BotBeliefMap& BotController::GetBeliefMap()
 
 // Added in OPM
 //  Draw debug visualization of belief zones. Each zone is drawn as a
-//  colored circle at its centroid: green (low) → yellow → red (high).
+//  colored circle at its centroid: green (low) -> yellow -> red (high).
+//  The current patrol target zone gets a cyan pyramid marker.
+//  A cyan arrow is drawn from the bot to its target zone.
 //  Only drawn for the first bot to avoid visual clutter.
+//  Periodic console output summarizes belief state.
 void BotController::DrawDebugBeliefs()
 {
     if (!beliefMap.IsInitialized()) {
@@ -114,13 +119,19 @@ void BotController::DrawDebugBeliefs()
         return;
     }
 
-    const Container<BeliefZone>& zones = beliefMap.GetZones();
+    const Container<BeliefZone>& zones    = beliefMap.GetZones();
+    Vector                       botPos   = controlledEnt->origin;
+    int                          bestZone = beliefMap.GetBestZone(botPos);
+
+    int activeCount = 0;
 
     for (int i = 1; i <= zones.NumObjects(); i++) {
         const BeliefZone& zone = zones.ObjectAt(i);
-        if (zone.belief < 0.05f) {
+        if (zone.belief < 0.01f) {
             continue;
         }
+
+        activeCount++;
 
         float r, g, b;
         if (zone.belief < 0.5f) {
@@ -138,6 +149,51 @@ void BotController::DrawDebugBeliefs()
         float  radius = 32.0f + zone.belief * 64.0f;
         Vector pos    = zone.centroid;
         G_DebugCircle((float *)pos, radius, r, g, b, zone.belief, qtrue);
+
+        // Mark the current patrol target with a cyan pyramid
+        if ((i - 1) == bestZone) {
+            Vector pyramidPos = zone.centroid;
+            pyramidPos.z += 96.0f;
+            G_DebugPyramid(pyramidPos, 48.0f, 0.0f, 1.0f, 1.0f, 1.0f);
+        }
+    }
+
+    // Draw arrow from bot to target zone
+    if (bestZone >= 0 && bestZone < zones.NumObjects()) {
+        const BeliefZone& target = zones.ObjectAt(bestZone + 1);
+        Vector            dir    = target.centroid - botPos;
+        float             len    = dir.length();
+        if (len > 1.0f) {
+            VectorNormalize(dir);
+            G_DebugArrow(botPos, dir, len, 0.0f, 1.0f, 1.0f, 1.0f);
+        }
+    }
+
+    // Periodic console summary (every 2 seconds)
+    static int lastPrintTime = 0;
+    if (level.inttime - lastPrintTime >= 2000) {
+        lastPrintTime = level.inttime;
+
+        gi.Printf(
+            "--- Belief Map [%s]: %d/%d active zones ---\n",
+            controlledEnt->client->pers.netname,
+            activeCount,
+            zones.NumObjects()
+        );
+
+        if (bestZone >= 0 && bestZone < zones.NumObjects()) {
+            const BeliefZone& target = zones.ObjectAt(bestZone + 1);
+            gi.Printf(
+                "  Target zone %d: belief=%.2f pos=(%.0f, %.0f, %.0f)\n",
+                bestZone,
+                target.belief,
+                target.centroid.x,
+                target.centroid.y,
+                target.centroid.z
+            );
+        } else {
+            gi.Printf("  No target zone (all beliefs below threshold)\n");
+        }
     }
 }
 
@@ -897,9 +953,40 @@ void BotController::setControlledEntity(Player *player)
     rotation.SetControlledEntity(player);
 
     // Added in OPM
-    //  Initialize belief map from world bounds
-    if (world && !beliefMap.IsInitialized()) {
-        beliefMap.Init(world->absmin, world->absmax, 512.0f);
+    //  Initialize belief map from spawn point bounds. We use spawn points
+    //  rather than world->absmin/absmax because the world entity bounds
+    //  don't reflect the actual playable area.
+    if (!beliefMap.IsInitialized()) {
+        Vector mapMins(999999, 999999, 999999);
+        Vector mapMaxs(-999999, -999999, -999999);
+        int    totalSpawns = 0;
+
+        DM_Team *teams[] = {dmManager.GetTeamAllies(), dmManager.GetTeamAxis()};
+        for (int t = 0; t < 2; t++) {
+            for (int i = 1; i <= teams[t]->m_spawnpoints.NumObjects(); i++) {
+                PlayerStart *spawn = teams[t]->m_spawnpoints.ObjectAt(i);
+                Vector       pos   = spawn->origin;
+
+                if (pos.x < mapMins.x) mapMins.x = pos.x;
+                if (pos.y < mapMins.y) mapMins.y = pos.y;
+                if (pos.z < mapMins.z) mapMins.z = pos.z;
+                if (pos.x > mapMaxs.x) mapMaxs.x = pos.x;
+                if (pos.y > mapMaxs.y) mapMaxs.y = pos.y;
+                if (pos.z > mapMaxs.z) mapMaxs.z = pos.z;
+                totalSpawns++;
+            }
+        }
+
+        if (totalSpawns > 0) {
+            // Pad bounds so edge spawns aren't at grid boundary
+            float padding = 512.0f;
+            mapMins.x -= padding;
+            mapMins.y -= padding;
+            mapMaxs.x += padding;
+            mapMaxs.y += padding;
+
+            beliefMap.Init(mapMins, mapMaxs, 512.0f);
+        }
     }
 
     delegateHandle_gotKill =
