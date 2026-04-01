@@ -1355,6 +1355,13 @@ void SV_CacheNonPVSSound(void)
 	}
 }
 
+// Changed in OPM
+//  Maximum number of non-PVS sound configstrings to clear per frame.
+//  Each clear sends a reliable command to every active client, so bulk-clearing
+//  can push slow or high-latency clients past MAX_RELIABLE_COMMANDS (512)
+//  and trigger "Server command overflow" disconnects.
+#define MAX_NONPVS_SOUND_CLEANUPS_PER_FRAME 8
+
 /*
 =======================
 SV_CleanupNonPVSSound
@@ -1363,7 +1370,20 @@ SV_CleanupNonPVSSound
 void SV_CleanupNonPVSSound(void)
 {
 	nonpvs_sound_cache_t* cache;
-	int i, j, k, l;
+	int i;
+	int cleaned = 0;
+
+	// Changed in OPM
+	//  Before clearing expired sound configstrings, check whether any client
+	//  is close to reliable command overflow. If so, skip cleanup entirely
+	//  this frame to avoid pushing them over the limit.
+	for (i = 0; i < sv_maxclients->integer; i++) {
+		client_t *cl = &svs.clients[i];
+		if (cl->state >= CS_PRIMED
+			&& cl->reliableSequence - cl->reliableAcknowledge > MAX_RELIABLE_COMMANDS - 32) {
+			return;
+		}
+	}
 
 	for (i = 1; i < MAX_SOUNDS; i++) {
 		cache = &svs.nonpvs_sound_cache[i];
@@ -1379,6 +1399,13 @@ void SV_CleanupNonPVSSound(void)
 		if (svs.time >= cache->deleteTime) {
 			SV_SetConfigstring(CS_SOUNDS + i, NULL);
 			cache->inUse = qfalse;
+
+			// Changed in OPM
+			//  Limit the number of configstrings cleared per frame to avoid
+			//  flooding the reliable command buffer.
+			if (++cleaned >= MAX_NONPVS_SOUND_CLEANUPS_PER_FRAME) {
+				break;
+			}
 		}
 	}
 }

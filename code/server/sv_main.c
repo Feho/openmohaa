@@ -1150,6 +1150,12 @@ void SV_Frame( int msec ) {
 	// check timeouts
 	SV_CheckTimeouts();
 
+	// Added in OPM
+	//  Handle non-pvs sounds before sending client messages so that
+	//  cleanup configstring commands are included in this frame's snapshot
+	//  rather than piling up alongside next frame's game commands.
+	SV_HandleNonPVSSound();
+
 	// send messages back to the clients
 	SV_SendClientMessages();
 
@@ -1158,10 +1164,6 @@ void SV_Frame( int msec ) {
 
 	// process all gamespy queries
 	SV_ProcessGamespyQueries();
-
-	// Added in OPM
-	//  Handle non-pvs sounds
-	SV_HandleNonPVSSound();
 
 	svs.lastTime = svs.time;
 }
