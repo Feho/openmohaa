@@ -6,6 +6,7 @@
 #include "../corepp/container.h"
 
 class Player;
+class DM_Team;
 
 // Added in OPM
 //  Spatial belief map: a per-bot probability grid estimating where enemies
@@ -30,6 +31,7 @@ public:
     void UpdateFromEvent(Vector pos, int iType, float fRangeFactor);
     void UpdateFromSighting(Vector pos);
     void UpdateFromDeath(Vector pos);
+    void SeedFromSpawnPoints(Player *player);
     void ClearZone(Vector pos);
     void ClearZonesVisibleFrom(Player *player);
 

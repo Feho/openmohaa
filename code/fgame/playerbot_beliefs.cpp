@@ -12,6 +12,8 @@
 #include "gamecvars.h"
 #include "player.h"
 #include "sentient.h"
+#include "dm_manager.h"
+#include "playerstart.h"
 
 BotBeliefMap::BotBeliefMap()
     : m_bInitialized(false)
@@ -229,6 +231,61 @@ void BotBeliefMap::UpdateFromDeath(Vector pos)
 
     int zoneIndex = FindZoneForPos(pos);
     AddBelief(zoneIndex, 0.8f);
+}
+
+/*
+====================
+SeedFromSpawnPoints
+
+// Added in OPM
+//  Seed the belief map with low belief at enemy spawn points so bots
+//  patrol toward likely spawn areas even before hearing anything.
+//  In team games, seeds only opposing team spawns.
+//  In FFA, seeds all deathmatch spawns (everyone is an enemy).
+====================
+*/
+void BotBeliefMap::SeedFromSpawnPoints(Player *player)
+{
+    if (!m_bInitialized || !player) {
+        return;
+    }
+
+    const float spawnBelief = 0.5f;
+
+    teamtype_t botTeam = player->GetTeam();
+
+    if (g_gametype->integer >= GT_TEAM && botTeam >= TEAM_ALLIES) {
+        // Team game: seed enemy team spawn points
+        DM_Team *enemyTeam;
+        if (botTeam == TEAM_ALLIES) {
+            enemyTeam = dmManager.GetTeamAxis();
+        } else {
+            enemyTeam = dmManager.GetTeamAllies();
+        }
+
+        for (int i = 1; i <= enemyTeam->m_spawnpoints.NumObjects(); i++) {
+            PlayerStart *spawn = enemyTeam->m_spawnpoints.ObjectAt(i);
+            if (!spawn->m_bForbidSpawns) {
+                int zoneIndex = FindZoneForPos(spawn->origin);
+                AddBelief(zoneIndex, spawnBelief);
+            }
+        }
+    } else {
+        // FFA: seed all deathmatch spawns except our own zone
+        DM_Team *freeForAll = dmManager.GetTeamAllies();
+
+        for (int i = 1; i <= freeForAll->m_spawnpoints.NumObjects(); i++) {
+            PlayerStart *spawn = freeForAll->m_spawnpoints.ObjectAt(i);
+            if (!spawn->m_bForbidSpawns) {
+                int zoneIndex = FindZoneForPos(spawn->origin);
+                // Skip the zone the bot is currently in
+                int myZone = FindZoneForPos(player->origin);
+                if (zoneIndex != myZone) {
+                    AddBelief(zoneIndex, spawnBelief);
+                }
+            }
+        }
+    }
 }
 
 /*

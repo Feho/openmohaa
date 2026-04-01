@@ -713,6 +713,11 @@ void BotController::Spawned(void)
     ClearEnemy();
     m_curious.time   = 0;
     m_botCmd.buttons = 0;
+
+    // Added in OPM
+    //  Seed belief map with enemy spawn points so bots patrol toward
+    //  likely spawn areas on round start.
+    beliefMap.SeedFromSpawnPoints(controlledEnt);
 }
 
 void BotController::Think()
