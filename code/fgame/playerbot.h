@@ -127,6 +127,13 @@ public:
     Vector GetCurrentGoal() const;
     Vector GetCurrentPathDirection() const;
 
+    // Added in OPM
+    //  Path blocking: when the bot gives up trying to reach a destination,
+    //  return the blocked position so the belief map can mark it unreachable
+    bool   DidGiveUpPath() const;
+    Vector GetBlockedDestination() const;
+    void   ClearGiveUpFlag();
+
 private:
     Vector CalculateDir(const Vector& delta) const;
     Vector CalculateRelativeWishDirection(const Vector& dir) const;
@@ -166,6 +173,11 @@ private:
     BotBlockedState   m_blocked;
     BotCollisionState m_collision;
     BotJumpState      m_jump;
+
+    // Added in OPM
+    //  Path blocking: track when we give up on a destination
+    bool   m_bGaveUpPath;
+    Vector m_vBlockedDest;
 };
 
 class BotRotation

@@ -39,6 +39,11 @@ BotMovement::BotMovement()
     m_blocked.reset();
     m_collision.reset();
     m_jump.reset();
+
+    // Added in OPM
+    //  Path blocking state
+    m_bGaveUpPath  = false;
+    m_vBlockedDest = vec_zero;
 }
 
 BotMovement::~BotMovement()
@@ -56,6 +61,10 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
     Vector vAngles;
     Vector vWishDir;
     Vector vDelta;
+
+    // Added in OPM
+    //  Clear give-up flag at start of each frame
+    m_bGaveUpPath = false;
 
     CheckAttractiveNodes();
 
@@ -134,6 +143,10 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
         m_iCheckPathTime = level.inttime;
 
         if (m_blocked.numBlocks >= 5) {
+            // Added in OPM
+            //  Store blocked destination before clearing so belief map can mark it
+            m_vBlockedDest = m_vTargetPos;
+            m_bGaveUpPath  = true;
             // Give up
             ClearMove();
         }
@@ -1078,4 +1091,21 @@ Vector BotMovement::GetCurrentGoal() const
 Vector BotMovement::GetCurrentPathDirection() const
 {
     return m_pPath->GetCurrentDirection();
+}
+
+// Added in OPM
+//  Path blocking accessors
+bool BotMovement::DidGiveUpPath() const
+{
+    return m_bGaveUpPath;
+}
+
+Vector BotMovement::GetBlockedDestination() const
+{
+    return m_vBlockedDest;
+}
+
+void BotMovement::ClearGiveUpFlag()
+{
+    m_bGaveUpPath = false;
 }

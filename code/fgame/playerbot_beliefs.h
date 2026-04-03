@@ -18,8 +18,9 @@ struct BeliefZone {
     Vector centroid;
     float  belief;
     int    lastUpdateTime;
-    int    visitCount;    // Times searched without finding enemy
-    int    lastVisitTime; // For visit decay
+    int    visitCount;      // Times searched without finding enemy
+    int    lastVisitTime;   // For visit decay
+    int    pathBlockedTime; // When path to this zone was marked blocked (0 = not blocked)
 };
 
 class BotBeliefMap
@@ -43,6 +44,11 @@ public:
     //  belief, encouraging exploration of new areas.
     void MarkVisited(Vector pos);
     void ResetVisitsOnSighting(Vector pos);
+
+    // Added in OPM
+    //  Path-blocked zone tracking: when a bot fails to reach a zone after
+    //  repeated attempts, mark it as blocked so the bot stops trying.
+    void MarkPathBlocked(Vector pos);
 
     // Changed in OPM
     //  Zone selection now considers distance from bot position and uses

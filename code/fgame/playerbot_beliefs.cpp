@@ -57,13 +57,14 @@ void BotBeliefMap::Init(const Vector& worldMins, const Vector& worldMaxs, float 
     for (int y = 0; y < m_iGridHeight; y++) {
         for (int x = 0; x < m_iGridWidth; x++) {
             BeliefZone zone;
-            zone.centroid.x     = worldMins.x + (x + 0.5f) * m_fCellSize;
-            zone.centroid.y     = worldMins.y + (y + 0.5f) * m_fCellSize;
-            zone.centroid.z     = (worldMins.z + worldMaxs.z) * 0.5f;
-            zone.belief         = 0.0f;
-            zone.lastUpdateTime = 0;
-            zone.visitCount     = 0;
-            zone.lastVisitTime  = 0;
+            zone.centroid.x      = worldMins.x + (x + 0.5f) * m_fCellSize;
+            zone.centroid.y      = worldMins.y + (y + 0.5f) * m_fCellSize;
+            zone.centroid.z      = (worldMins.z + worldMaxs.z) * 0.5f;
+            zone.belief          = 0.0f;
+            zone.lastUpdateTime  = 0;
+            zone.visitCount      = 0;
+            zone.lastVisitTime   = 0;
+            zone.pathBlockedTime = 0;
             m_zones.AddObject(zone);
         }
     }
@@ -390,8 +391,16 @@ int BotBeliefMap::GetBestZone(Vector myPos)
     // Visit decay time in milliseconds
     int visitDecayTime = (int)(g_bot_belief_visit_decay->value * 1000.0f);
 
+    // Path block duration in milliseconds
+    int pathBlockDuration = (int)(g_bot_belief_path_block_time->value * 1000.0f);
+
     for (int i = 1; i <= m_zones.NumObjects(); i++) {
         const BeliefZone& zone = m_zones.ObjectAt(i);
+
+        // Skip zones that are currently path-blocked
+        if (zone.pathBlockedTime > 0 && level.inttime - zone.pathBlockedTime < pathBlockDuration) {
+            continue;
+        }
 
         // Novelty bonus: attract to never-visited zones (even if belief is 0)
         float noveltyBonus = (zone.visitCount == 0) ? g_bot_belief_novelty_bonus->value : 0.0f;
@@ -564,4 +573,29 @@ void BotBeliefMap::ResetVisitsOnSighting(Vector pos)
 
     BeliefZone& zone = m_zones.ObjectAt(zoneIndex + 1);
     zone.visitCount  = 0;
+}
+
+/*
+====================
+MarkPathBlocked
+
+// Added in OPM
+//  Mark a zone as unreachable when the bot fails to path there after
+//  repeated attempts. The zone will be skipped in GetBestZone() until
+//  the block duration expires.
+====================
+*/
+void BotBeliefMap::MarkPathBlocked(Vector pos)
+{
+    if (!m_bInitialized) {
+        return;
+    }
+
+    int zoneIndex = FindZoneForPos(pos);
+    if (zoneIndex < 0 || zoneIndex >= m_zones.NumObjects()) {
+        return;
+    }
+
+    BeliefZone& zone     = m_zones.ObjectAt(zoneIndex + 1);
+    zone.pathBlockedTime = level.inttime;
 }

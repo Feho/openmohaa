@@ -303,6 +303,13 @@ void BotController::UpdateBotStates(void)
     CheckStates();
 
     movement.MoveThink(m_botCmd);
+
+    // Added in OPM
+    //  If movement gave up trying to reach a destination, mark that zone as path-blocked
+    if (movement.DidGiveUpPath()) {
+        beliefMap.MarkPathBlocked(movement.GetBlockedDestination());
+    }
+
     rotation.TurnThink(m_botCmd, m_botEyes);
     CheckUse();
 
@@ -967,12 +974,24 @@ void BotController::setControlledEntity(Player *player)
                 PlayerStart *spawn = teams[t]->m_spawnpoints.ObjectAt(i);
                 Vector       pos   = spawn->origin;
 
-                if (pos.x < mapMins.x) mapMins.x = pos.x;
-                if (pos.y < mapMins.y) mapMins.y = pos.y;
-                if (pos.z < mapMins.z) mapMins.z = pos.z;
-                if (pos.x > mapMaxs.x) mapMaxs.x = pos.x;
-                if (pos.y > mapMaxs.y) mapMaxs.y = pos.y;
-                if (pos.z > mapMaxs.z) mapMaxs.z = pos.z;
+                if (pos.x < mapMins.x) {
+                    mapMins.x = pos.x;
+                }
+                if (pos.y < mapMins.y) {
+                    mapMins.y = pos.y;
+                }
+                if (pos.z < mapMins.z) {
+                    mapMins.z = pos.z;
+                }
+                if (pos.x > mapMaxs.x) {
+                    mapMaxs.x = pos.x;
+                }
+                if (pos.y > mapMaxs.y) {
+                    mapMaxs.y = pos.y;
+                }
+                if (pos.z > mapMaxs.z) {
+                    mapMaxs.z = pos.z;
+                }
                 totalSpawns++;
             }
         }
