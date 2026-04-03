@@ -140,7 +140,7 @@ public:
     );
     void MoveNear(Vector vNear, float fRadius, float *vLeashHome = NULL, float fLeashRadius = 0.0f);
     void MoveTo(Vector vPos, float *vLeashHome = NULL, float fLeashRadius = 0.0f);
-    bool MoveToBestAttractivePoint(int iMinPriority = 0);
+    bool MoveToBestAttractivePoint(const BotBeliefMap *beliefMap = NULL, int iMinPriority = 0);
 
     bool   CanMoveTo(Vector vPos) const;
     bool   MoveDone() const;

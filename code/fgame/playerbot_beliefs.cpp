@@ -599,3 +599,28 @@ void BotBeliefMap::MarkPathBlocked(Vector pos)
     BeliefZone& zone     = m_zones.ObjectAt(zoneIndex + 1);
     zone.pathBlockedTime = level.inttime;
 }
+
+/*
+====================
+IsPathBlocked
+
+// Added in OPM
+//  Check if a position is in a path-blocked zone.
+====================
+*/
+bool BotBeliefMap::IsPathBlocked(Vector pos) const
+{
+    if (!m_bInitialized) {
+        return false;
+    }
+
+    int zoneIndex = FindZoneForPos(pos);
+    if (zoneIndex < 0 || zoneIndex >= m_zones.NumObjects()) {
+        return false;
+    }
+
+    const BeliefZone& zone              = m_zones.ObjectAt(zoneIndex + 1);
+    int               pathBlockDuration = (int)(g_bot_belief_path_block_time->value * 1000.0f);
+
+    return zone.pathBlockedTime > 0 && level.inttime - zone.pathBlockedTime < pathBlockDuration;
+}

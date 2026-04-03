@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // playerbot_movement.cpp: Manages bot movements
 
 #include "playerbot.h"
+#include "playerbot_beliefs.h"
 #include "debuglines.h"
 #include "gamecvars.h"
 
@@ -747,7 +748,7 @@ Move to the nearest attractive point with a minimum priority
 Returns true if no attractive point was found
 ====================
 */
-bool BotMovement::MoveToBestAttractivePoint(int iMinPriority)
+bool BotMovement::MoveToBestAttractivePoint(const BotBeliefMap *beliefMap, int iMinPriority)
 {
     Container<AttractiveNode *> list;
     AttractiveNode             *bestNode;
@@ -818,6 +819,20 @@ bool BotMovement::MoveToBestAttractivePoint(int iMinPriority)
         }
 
         if (!CanMoveTo(node->origin)) {
+            continue;
+        }
+
+        // Added in OPM
+        //  Skip attractive nodes in path-blocked zones
+        if (beliefMap && beliefMap->IsPathBlocked(node->origin)) {
+            if (g_bot_debug_state->integer >= 2) {
+                gi.Printf(
+                    "BOT %s: Skipping attractive node at (%.0f, %.0f) - zone is path-blocked\n",
+                    controlledEntity->client->pers.netname,
+                    node->origin.x,
+                    node->origin.y
+                );
+            }
             continue;
         }
 

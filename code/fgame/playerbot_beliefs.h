@@ -49,6 +49,7 @@ public:
     //  Path-blocked zone tracking: when a bot fails to reach a zone after
     //  repeated attempts, mark it as blocked so the bot stops trying.
     void MarkPathBlocked(Vector pos);
+    bool IsPathBlocked(Vector pos) const;
 
     // Changed in OPM
     //  Zone selection now considers distance from bot position and uses
