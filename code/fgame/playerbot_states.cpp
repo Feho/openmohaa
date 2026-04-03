@@ -420,11 +420,11 @@ void BotController::State_Curious(void)
         }
 
         // Added in OPM
-        //  Don't investigate if path would go through a stuck point
-        if (targetPos != vec_zero && beliefMap.IsInBlockedDirection(controlledEnt->origin, targetPos)) {
+        //  Don't investigate sounds near failed target positions (unreachable areas)
+        if (targetPos != vec_zero && beliefMap.IsNearFailedTarget(targetPos)) {
             if (g_bot_debug_state->integer >= 2) {
                 gi.Printf(
-                    "BOT %s: Curious - ignoring sound at (%.0f, %.0f) - path through stuck point\n",
+                    "BOT %s: Curious - ignoring sound at (%.0f, %.0f) - near failed target\n",
                     controlledEnt->client->pers.netname,
                     targetPos.x,
                     targetPos.y
@@ -463,8 +463,25 @@ void BotController::State_Curious(void)
     if (movement.MoveDone()) {
         float distToTarget = (m_curious.targetPos - controlledEnt->origin).length();
 
-        // If we arrived close to the target, clear curious
-        if (distToTarget < 256) {
+        // Added in OPM
+        //  If we finished moving but are still far from the target, the target is
+        //  probably unreachable (behind a wall). Mark it as failed to prevent
+        //  the bot from repeatedly trying to investigate sounds from that area.
+        //  Also set a cooldown to ignore ALL sounds for a few seconds - this
+        //  handles moving enemies generating sounds from many positions.
+        if (distToTarget > 100) {
+            if (g_bot_debug_state->integer >= 2) {
+                gi.Printf(
+                    "BOT %s: Curious target unreachable (dist=%.0f) - marking as failed, 5s cooldown\n",
+                    controlledEnt->client->pers.netname,
+                    distToTarget
+                );
+            }
+            beliefMap.AddFailedTarget(m_curious.targetPos);
+            m_curious.time         = 0;
+            m_curious.cooldownTime = level.inttime + 5000; // 5 second cooldown
+        } else {
+            // Actually arrived close to target
             if (g_bot_debug_state->integer >= 2) {
                 gi.Printf(
                     "BOT %s: Curious arrived at target (dist=%.0f)\n", controlledEnt->client->pers.netname, distToTarget
@@ -472,19 +489,6 @@ void BotController::State_Curious(void)
             }
             beliefMap.ClearZone(controlledEnt->origin);
             m_curious.time = 0;
-        } else if (!movement.IsMoving()) {
-            // Can't path to target - stay alert briefly (3 seconds) then resume normal behavior
-            // This gives time to spot an enemy while not freezing the bot
-            if (level.inttime + 17000 > m_curious.time) {
-                if (g_bot_debug_state->integer >= 2) {
-                    gi.Printf(
-                        "BOT %s: Curious can't reach target (dist=%.0f) - resuming patrol\n",
-                        controlledEnt->client->pers.netname,
-                        distToTarget
-                    );
-                }
-                m_curious.time = 0;
-            }
         }
     }
 }

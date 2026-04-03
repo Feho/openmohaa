@@ -24,11 +24,10 @@ struct BeliefZone {
 };
 
 // Added in OPM
-//  Stuck point: a position where the bot got stuck trying to reach a destination.
-//  Used to avoid paths that would pass through this area.
-struct StuckPoint {
-    Vector pos;       // Where the bot got stuck
-    Vector targetDir; // Normalized direction toward the unreachable target
+//  Failed target: a position the bot tried to reach but couldn't.
+//  Any destination near this position will be rejected.
+struct FailedTarget {
+    Vector pos; // The unreachable target position
     int    time;
 };
 
@@ -61,10 +60,10 @@ public:
     bool IsPathBlocked(Vector pos) const;
 
     // Added in OPM
-    //  Stuck point tracking: record where the bot got stuck and what direction
-    //  it was trying to go. Reject destinations in that blocked direction.
-    void AddStuckPoint(Vector stuckPos, Vector targetPos);
-    bool IsInBlockedDirection(Vector from, Vector to) const;
+    //  Failed target tracking: record targets the bot couldn't reach.
+    //  Reject any destination near a failed target.
+    void AddFailedTarget(Vector targetPos);
+    bool IsNearFailedTarget(Vector pos) const;
 
     // Changed in OPM
     //  Zone selection now considers distance from bot position and uses
@@ -84,10 +83,10 @@ private:
     void  AddBelief(int zoneIndex, float amount);
     float GetDeathDecayRate() const;
 
-    Container<BeliefZone> m_zones;
-    Container<StuckPoint> m_stuckPoints;
-    bool                  m_bInitialized;
-    int                   m_iVisClearIndex;
+    Container<BeliefZone>   m_zones;
+    Container<FailedTarget> m_failedTargets;
+    bool                    m_bInitialized;
+    int                     m_iVisClearIndex;
 
     // Grid parameters
     Vector m_vWorldMins;

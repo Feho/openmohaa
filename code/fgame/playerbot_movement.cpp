@@ -837,11 +837,11 @@ bool BotMovement::MoveToBestAttractivePoint(const BotBeliefMap *beliefMap, int i
         }
 
         // Added in OPM
-        //  Skip attractive nodes if path would go through a stuck point
-        if (beliefMap && beliefMap->IsInBlockedDirection(controlledEntity->origin, node->origin)) {
+        //  Skip attractive nodes near failed targets
+        if (beliefMap && beliefMap->IsNearFailedTarget(node->origin)) {
             if (g_bot_debug_state->integer >= 2) {
                 gi.Printf(
-                    "BOT %s: Skipping attractive node at (%.0f, %.0f) - path through stuck point\n",
+                    "BOT %s: Skipping attractive node at (%.0f, %.0f) - near failed target\n",
                     controlledEntity->client->pers.netname,
                     node->origin.x,
                     node->origin.y

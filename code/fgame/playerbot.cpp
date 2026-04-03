@@ -305,10 +305,10 @@ void BotController::UpdateBotStates(void)
     movement.MoveThink(m_botCmd);
 
     // Added in OPM
-    //  If movement gave up trying to reach a destination, record where the bot got stuck
-    //  and what direction it was trying to go. Also mark the destination zone as path-blocked.
+    //  If movement gave up trying to reach a destination, record that target as unreachable.
+    //  Any future destination near that target will be rejected.
     if (movement.DidGiveUpPath()) {
-        beliefMap.AddStuckPoint(controlledEnt->origin, movement.GetBlockedDestination());
+        beliefMap.AddFailedTarget(movement.GetBlockedDestination());
         beliefMap.MarkPathBlocked(movement.GetBlockedDestination());
     }
 
@@ -566,7 +566,7 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     //  Early exit for sounds from blocked areas - don't update belief map
     //  and don't set curious. This prevents bots from clustering near walls
     //  trying to investigate unreachable sounds.
-    if (beliefMap.IsPathBlocked(vPos) || beliefMap.IsInBlockedDirection(controlledEnt->origin, vPos)) {
+    if (beliefMap.IsPathBlocked(vPos) || beliefMap.IsNearFailedTarget(vPos)) {
         if (g_bot_debug_state->integer >= 2) {
             gi.Printf(
                 "BOT %s: NoticeEvent ignoring blocked sound at (%.0f,%.0f,%.0f)\n",
@@ -574,6 +574,20 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
                 vPos.x,
                 vPos.y,
                 vPos.z
+            );
+        }
+        return;
+    }
+
+    // Added in OPM
+    //  If we recently failed to reach a curious target, ignore all sounds for a few seconds.
+    //  This prevents the bot from immediately chasing new sounds from the same unreachable area.
+    if (m_curious.cooldownTime > level.inttime) {
+        if (g_bot_debug_state->integer >= 2) {
+            gi.Printf(
+                "BOT %s: NoticeEvent ignoring sound - curious cooldown active (%.1fs remaining)\n",
+                controlledEnt->client->pers.netname,
+                (m_curious.cooldownTime - level.inttime) / 1000.0f
             );
         }
         return;

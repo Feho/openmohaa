@@ -754,7 +754,7 @@ void CVAR_Init(void)
     g_bot_belief_visit_decay     = gi.Cvar_Get("g_bot_belief_visit_decay", "300", 0);
     g_bot_belief_path_block_time = gi.Cvar_Get("g_bot_belief_path_block_time", "60", 0);
     g_bot_progress_stall_time    = gi.Cvar_Get("g_bot_progress_stall_time", "15", 0);
-    g_bot_stuck_radius           = gi.Cvar_Get("g_bot_stuck_radius", "256", 0);
+    g_bot_stuck_radius           = gi.Cvar_Get("g_bot_stuck_radius", "512", 0);
     g_bot_stuck_time             = gi.Cvar_Get("g_bot_stuck_time", "60", 0);
     g_bot_debug_beliefs          = gi.Cvar_Get("g_bot_debug_beliefs", "0", 0);
     g_bot_debug_reaction         = gi.Cvar_Get("g_bot_debug_reaction", "0", 0);

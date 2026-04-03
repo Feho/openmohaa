@@ -310,15 +310,17 @@ struct BotEnemyState {
  * @brief Curious state for investigating sounds/events.
  */
 struct BotCuriousState {
-    int    time;      // When curious state should expire
-    Vector lastPos;   // Last curious position investigated
-    Vector targetPos; // Current position to investigate
+    int    time;         // When curious state should expire
+    int    cooldownTime; // When cooldown ends (ignore all sounds until then)
+    Vector lastPos;      // Last curious position investigated
+    Vector targetPos;    // Current position to investigate
 
     void reset()
     {
-        time      = 0;
-        lastPos   = vec_zero;
-        targetPos = vec_zero;
+        time         = 0;
+        cooldownTime = 0;
+        lastPos      = vec_zero;
+        targetPos    = vec_zero;
     }
 };
 
