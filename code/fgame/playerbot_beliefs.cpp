@@ -370,11 +370,18 @@ int BotBeliefMap::GetBestZone(Vector myPos)
         return -1;
     }
 
+    // Path block duration in milliseconds (needed for hysteresis check)
+    int pathBlockDuration = (int)(g_bot_belief_path_block_time->value * 1000.0f);
+
     // Hysteresis: if we have a current target and it still has belief, stick with it
     // for a minimum time to avoid flip-flopping
     if (m_iCurrentTargetZone >= 0 && m_iCurrentTargetZone < m_zones.NumObjects()) {
         const BeliefZone& currentZone = m_zones.ObjectAt(m_iCurrentTargetZone + 1);
-        if (currentZone.belief >= g_bot_belief_min_patrol->value && level.inttime < m_iTargetLockTime) {
+        // Fixed in OPM
+        //  Check if zone is path-blocked before returning it - don't keep targeting unreachable zones
+        bool isBlocked =
+            currentZone.pathBlockedTime > 0 && level.inttime - currentZone.pathBlockedTime < pathBlockDuration;
+        if (!isBlocked && currentZone.belief >= g_bot_belief_min_patrol->value && level.inttime < m_iTargetLockTime) {
             return m_iCurrentTargetZone;
         }
     }
@@ -390,9 +397,6 @@ int BotBeliefMap::GetBestZone(Vector myPos)
 
     // Visit decay time in milliseconds
     int visitDecayTime = (int)(g_bot_belief_visit_decay->value * 1000.0f);
-
-    // Path block duration in milliseconds
-    int pathBlockDuration = (int)(g_bot_belief_path_block_time->value * 1000.0f);
 
     for (int i = 1; i <= m_zones.NumObjects(); i++) {
         const BeliefZone& zone = m_zones.ObjectAt(i);
