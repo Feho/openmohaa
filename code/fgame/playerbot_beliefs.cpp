@@ -426,8 +426,7 @@ int BotBeliefMap::GetBestZone(Vector myPos)
         // Calculate distance factor: closer zones score higher
         // Range: 1.0 (at bot position) to 0.3 (at max distance)
         Vector delta     = zone.centroid - myPos;
-        delta.z          = 0; // 2D distance
-        float dist       = delta.length();
+        float dist       = delta.lengthXY();
         float distFactor = 1.0f - (dist / maxDist) * 0.7f;
 
         // Calculate effective visit count after decay
@@ -661,10 +660,10 @@ void BotBeliefMap::AddFailedTarget(Vector targetPos)
     }
 
     // Check if we already have a failed target nearby (avoid duplicates)
+    float radiusSq = radius * radius;
     for (int i = 1; i <= m_failedTargets.NumObjects(); i++) {
         Vector delta = m_failedTargets.ObjectAt(i).pos - targetPos;
-        delta.z      = 0;
-        if (delta.length() < radius) {
+        if (delta.lengthXYSquared() < radiusSq) {
             // Update existing entry's time
             m_failedTargets.ObjectAt(i).time = level.inttime;
             return;
@@ -694,7 +693,7 @@ bool BotBeliefMap::IsNearFailedTarget(Vector pos) const
     }
 
     int   stuckTime = (int)(g_bot_stuck_time->value * 1000.0f);
-    float radius    = g_bot_stuck_radius->value;
+    float radiusSq  = g_bot_stuck_radius->value * g_bot_stuck_radius->value;
 
     for (int i = 1; i <= m_failedTargets.NumObjects(); i++) {
         const FailedTarget& ft = m_failedTargets.ObjectAt(i);
@@ -704,10 +703,8 @@ bool BotBeliefMap::IsNearFailedTarget(Vector pos) const
             continue;
         }
 
-        // Check 2D distance
         Vector delta = ft.pos - pos;
-        delta.z      = 0;
-        if (delta.length() < radius) {
+        if (delta.lengthXYSquared() < radiusSq) {
             return true;
         }
     }

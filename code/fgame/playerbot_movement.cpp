@@ -42,9 +42,6 @@ BotMovement::BotMovement()
     m_collision.reset();
     m_jump.reset();
     m_progress.reset();
-
-    // Added in OPM
-    //  Path blocking state
     m_bGaveUpPath  = false;
     m_vBlockedDest = vec_zero;
 }
@@ -65,8 +62,6 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
     Vector vWishDir;
     Vector vDelta;
 
-    // Added in OPM
-    //  Clear give-up flag at start of each frame
     m_bGaveUpPath = false;
 
     CheckAttractiveNodes();
@@ -91,19 +86,19 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
         float targetDelta = (m_vTargetPos - m_progress.targetPos).lengthSquared();
         if (targetDelta > Square(64)) {
             // New destination, reset tracking
-            float initialDist       = (controlledEntity->origin - m_vTargetPos).length();
+            float initialDistSq     = (controlledEntity->origin - m_vTargetPos).lengthSquared();
             m_progress.targetPos    = m_vTargetPos;
             m_progress.startTime    = level.inttime;
-            m_progress.bestDist     = initialDist;
+            m_progress.bestDist     = initialDistSq;
             m_progress.lastProgress = level.inttime;
         } else {
             // Same destination, check if we're making progress
-            float currentDist = (controlledEntity->origin - m_vTargetPos).length();
+            float currentDistSq = (controlledEntity->origin - m_vTargetPos).lengthSquared();
 
             // Allow some tolerance (32 units) to avoid noise from small movements
-            if (currentDist < m_progress.bestDist - 32.0f) {
+            if (currentDistSq < m_progress.bestDist - Square(32)) {
                 // Made progress
-                m_progress.bestDist     = currentDist;
+                m_progress.bestDist     = currentDistSq;
                 m_progress.lastProgress = level.inttime;
             }
 
@@ -1152,7 +1147,3 @@ Vector BotMovement::GetBlockedDestination() const
     return m_vBlockedDest;
 }
 
-void BotMovement::ClearGiveUpFlag()
-{
-    m_bGaveUpPath = false;
-}

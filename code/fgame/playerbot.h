@@ -109,7 +109,7 @@ struct BotJumpState {
 struct BotProgressState {
     Vector targetPos;    // The destination we're tracking progress toward
     int    startTime;    // When we started trying to reach this destination
-    float  bestDist;     // Closest distance we've achieved
+    float  bestDist;     // Closest squared distance we've achieved
     int    lastProgress; // Last time we made progress (got closer)
 
     void reset()
@@ -154,7 +154,6 @@ public:
     //  return the blocked position so the belief map can mark it unreachable
     bool   DidGiveUpPath() const;
     Vector GetBlockedDestination() const;
-    void   ClearGiveUpFlag();
 
 private:
     Vector CalculateDir(const Vector& delta) const;
