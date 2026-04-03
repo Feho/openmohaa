@@ -392,7 +392,12 @@ int BotBeliefMap::GetBestZone(Vector myPos)
 
     for (int i = 1; i <= m_zones.NumObjects(); i++) {
         const BeliefZone& zone = m_zones.ObjectAt(i);
-        if (zone.belief < minBelief) {
+
+        // Novelty bonus: attract to never-visited zones (even if belief is 0)
+        float noveltyBonus = (zone.visitCount == 0) ? g_bot_belief_novelty_bonus->value : 0.0f;
+
+        // Skip zones with no belief AND no novelty bonus
+        if (zone.belief < minBelief && noveltyBonus <= 0.0f) {
             continue;
         }
 
@@ -413,9 +418,6 @@ int BotBeliefMap::GetBestZone(Vector myPos)
 
         // Visit penalty: diminishing returns for repeated visits
         float visitPenalty = 1.0f / (1.0f + effectiveVisits * g_bot_belief_visit_penalty->value);
-
-        // Novelty bonus: attract to never-visited zones
-        float noveltyBonus = (zone.visitCount == 0) ? g_bot_belief_novelty_bonus->value : 0.0f;
 
         // Jitter: prevent teammate clustering by adding random variance
         float jitter = G_CRandom(g_bot_belief_score_jitter->value);
