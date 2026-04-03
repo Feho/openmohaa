@@ -255,6 +255,7 @@ void BotController::State_Idle(void)
 
             if (movement.MoveDone()) {
                 beliefMap.ClearZone(beliefPos);
+                beliefMap.MarkVisited(beliefPos);
             }
         } else if (m_enemy.deathPos != vec_zero) {
             movement.MoveTo(m_enemy.deathPos);
@@ -592,8 +593,10 @@ bool BotController::CheckCondition_Attack(void)
         m_combat.attackTime = level.inttime + 500 + (int)G_Random(1000);
 
         // Added in OPM
-        //  Update belief map with direct sighting
+        //  Update belief map with direct sighting and reset visit count
+        //  so this zone becomes attractive again (enemy was found here).
         beliefMap.UpdateFromSighting(m_enemy.enemy->origin);
+        beliefMap.ResetVisitsOnSighting(m_enemy.enemy->origin);
 
         return true;
     }

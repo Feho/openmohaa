@@ -62,6 +62,8 @@ void BotBeliefMap::Init(const Vector& worldMins, const Vector& worldMaxs, float 
             zone.centroid.z     = (worldMins.z + worldMaxs.z) * 0.5f;
             zone.belief         = 0.0f;
             zone.lastUpdateTime = 0;
+            zone.visitCount     = 0;
+            zone.lastVisitTime  = 0;
             m_zones.AddObject(zone);
         }
     }
@@ -264,7 +266,7 @@ void BotBeliefMap::SeedFromSpawnPoints(Player *player)
         }
 
         for (int i = 1; i <= enemyTeam->m_spawnpoints.NumObjects(); i++) {
-            PlayerStart *spawn    = enemyTeam->m_spawnpoints.ObjectAt(i);
+            PlayerStart *spawn     = enemyTeam->m_spawnpoints.ObjectAt(i);
             int          zoneIndex = FindZoneForPos(spawn->origin);
             // Seed all spawn points regardless of m_bForbidSpawns — disabled
             // spawns may be enabled later (objective mode) and still represent
@@ -277,7 +279,7 @@ void BotBeliefMap::SeedFromSpawnPoints(Player *player)
         int      myZone     = FindZoneForPos(player->origin);
 
         for (int i = 1; i <= freeForAll->m_spawnpoints.NumObjects(); i++) {
-            PlayerStart *spawn    = freeForAll->m_spawnpoints.ObjectAt(i);
+            PlayerStart *spawn     = freeForAll->m_spawnpoints.ObjectAt(i);
             int          zoneIndex = FindZoneForPos(spawn->origin);
             // Skip the zone the bot is currently in
             if (zoneIndex != myZone) {
@@ -352,8 +354,13 @@ Return the index of the best zone to investigate, considering both
 belief level and distance from the bot. Uses hysteresis to prevent
 flip-flopping between zones.
 
-Score = belief * distanceFactor
-Where distanceFactor favors closer zones (1.0 at 0 distance, 0.3 at max distance)
+// Changed in OPM
+//  Now applies visit-based belief suppression: zones that have been
+//  searched repeatedly without finding enemies become less attractive.
+//  Also adds novelty bonus for unvisited zones and random jitter to
+//  prevent teammate clustering.
+
+Score = (belief * visitPenalty * distanceFactor) + noveltyBonus + jitter
 ====================
 */
 int BotBeliefMap::GetBestZone(Vector myPos)
@@ -373,12 +380,15 @@ int BotBeliefMap::GetBestZone(Vector myPos)
 
     float minBelief = g_bot_belief_min_patrol->value;
     int   bestIndex = -1;
-    float bestScore = 0.0f;
+    float bestScore = -999.0f;
 
     // Calculate max distance for normalization (diagonal of world)
     float worldWidth  = m_vWorldMaxs.x - m_vWorldMins.x;
     float worldHeight = m_vWorldMaxs.y - m_vWorldMins.y;
     float maxDist     = sqrtf(worldWidth * worldWidth + worldHeight * worldHeight);
+
+    // Visit decay time in milliseconds
+    int visitDecayTime = (int)(g_bot_belief_visit_decay->value * 1000.0f);
 
     for (int i = 1; i <= m_zones.NumObjects(); i++) {
         const BeliefZone& zone = m_zones.ObjectAt(i);
@@ -393,7 +403,25 @@ int BotBeliefMap::GetBestZone(Vector myPos)
         float dist       = delta.length();
         float distFactor = 1.0f - (dist / maxDist) * 0.7f;
 
-        float score = zone.belief * distFactor;
+        // Calculate effective visit count after decay
+        int effectiveVisits = zone.visitCount;
+        if (visitDecayTime > 0 && zone.lastVisitTime > 0) {
+            int timeSinceVisit = level.inttime - zone.lastVisitTime;
+            int decayedVisits  = timeSinceVisit / visitDecayTime;
+            effectiveVisits    = Q_max(0, zone.visitCount - decayedVisits);
+        }
+
+        // Visit penalty: diminishing returns for repeated visits
+        float visitPenalty = 1.0f / (1.0f + effectiveVisits * g_bot_belief_visit_penalty->value);
+
+        // Novelty bonus: attract to never-visited zones
+        float noveltyBonus = (zone.visitCount == 0) ? g_bot_belief_novelty_bonus->value : 0.0f;
+
+        // Jitter: prevent teammate clustering by adding random variance
+        float jitter = G_CRandom(g_bot_belief_score_jitter->value);
+
+        // Final score
+        float score = (zone.belief * visitPenalty * distFactor) + noveltyBonus + jitter;
 
         if (score > bestScore) {
             bestScore = score;
@@ -484,4 +512,54 @@ const Container<BeliefZone>& BotBeliefMap::GetZones() const
 bool BotBeliefMap::IsInitialized() const
 {
     return m_bInitialized;
+}
+
+/*
+====================
+MarkVisited
+
+// Added in OPM
+//  Increment visit count for a zone when the bot searches it and finds
+//  no enemies. Higher visit counts reduce the zone's attractiveness,
+//  encouraging exploration of new areas.
+====================
+*/
+void BotBeliefMap::MarkVisited(Vector pos)
+{
+    if (!m_bInitialized) {
+        return;
+    }
+
+    int zoneIndex = FindZoneForPos(pos);
+    if (zoneIndex < 0 || zoneIndex >= m_zones.NumObjects()) {
+        return;
+    }
+
+    BeliefZone& zone = m_zones.ObjectAt(zoneIndex + 1);
+    zone.visitCount++;
+    zone.lastVisitTime = level.inttime;
+}
+
+/*
+====================
+ResetVisitsOnSighting
+
+// Added in OPM
+//  Reset visit count for a zone when an enemy is actually found there.
+//  This makes the zone attractive again since it proved to be dangerous.
+====================
+*/
+void BotBeliefMap::ResetVisitsOnSighting(Vector pos)
+{
+    if (!m_bInitialized) {
+        return;
+    }
+
+    int zoneIndex = FindZoneForPos(pos);
+    if (zoneIndex < 0 || zoneIndex >= m_zones.NumObjects()) {
+        return;
+    }
+
+    BeliefZone& zone = m_zones.ObjectAt(zoneIndex + 1);
+    zone.visitCount  = 0;
 }

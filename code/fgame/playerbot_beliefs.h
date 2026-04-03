@@ -18,6 +18,8 @@ struct BeliefZone {
     Vector centroid;
     float  belief;
     int    lastUpdateTime;
+    int    visitCount;    // Times searched without finding enemy
+    int    lastVisitTime; // For visit decay
 };
 
 class BotBeliefMap
@@ -34,6 +36,13 @@ public:
     void SeedFromSpawnPoints(Player *player);
     void ClearZone(Vector pos);
     void ClearZonesVisibleFrom(Player *player);
+
+    // Added in OPM
+    //  Visit-based belief suppression: tracks how many times a zone was
+    //  searched without finding enemies. Repeated visits reduce effective
+    //  belief, encouraging exploration of new areas.
+    void MarkVisited(Vector pos);
+    void ResetVisitsOnSighting(Vector pos);
 
     // Changed in OPM
     //  Zone selection now considers distance from bot position and uses
