@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "playerbot.h"
 #include "debuglines.h"
+#include "gamecvars.h"
 
 static int maxFallHeight = 400;
 
@@ -89,10 +90,22 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
         float targetDelta = (m_vTargetPos - m_progress.targetPos).lengthSquared();
         if (targetDelta > Square(64)) {
             // New destination, reset tracking
+            float initialDist       = (controlledEntity->origin - m_vTargetPos).length();
             m_progress.targetPos    = m_vTargetPos;
             m_progress.startTime    = level.inttime;
-            m_progress.bestDist     = (controlledEntity->origin - m_vTargetPos).length();
+            m_progress.bestDist     = initialDist;
             m_progress.lastProgress = level.inttime;
+
+            if (g_bot_debug_state->integer >= 2) {
+                gi.Printf(
+                    "BOT %s: Progress tracking - new target at (%.0f, %.0f, %.0f), dist=%.0f\n",
+                    controlledEntity->client->pers.netname,
+                    m_vTargetPos.x,
+                    m_vTargetPos.y,
+                    m_vTargetPos.z,
+                    initialDist
+                );
+            }
         } else {
             // Same destination, check if we're making progress
             float currentDist = (controlledEntity->origin - m_vTargetPos).length();
@@ -100,14 +113,49 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
             // Allow some tolerance (32 units) to avoid noise from small movements
             if (currentDist < m_progress.bestDist - 32.0f) {
                 // Made progress
+                if (g_bot_debug_state->integer >= 2) {
+                    gi.Printf(
+                        "BOT %s: Progress tracking - got closer: %.0f -> %.0f (best)\n",
+                        controlledEntity->client->pers.netname,
+                        m_progress.bestDist,
+                        currentDist
+                    );
+                }
                 m_progress.bestDist     = currentDist;
                 m_progress.lastProgress = level.inttime;
             }
 
             // Check if we've stalled for too long (no progress for N seconds)
-            int stallTime = (int)(g_bot_progress_stall_time->value * 1000.0f);
-            if (level.inttime - m_progress.lastProgress > stallTime) {
+            int stallTime         = (int)(g_bot_progress_stall_time->value * 1000.0f);
+            int timeSinceProgress = level.inttime - m_progress.lastProgress;
+
+            // Periodic stall warning (every 3 seconds)
+            if (g_bot_debug_state->integer >= 2 && timeSinceProgress > 3000) {
+                static int lastWarnTime = 0;
+                if (level.inttime - lastWarnTime > 3000) {
+                    lastWarnTime = level.inttime;
+                    gi.Printf(
+                        "BOT %s: Progress tracking - STALLED for %.1fs, dist=%.0f, best=%.0f, timeout=%.1fs\n",
+                        controlledEntity->client->pers.netname,
+                        timeSinceProgress / 1000.0f,
+                        currentDist,
+                        m_progress.bestDist,
+                        stallTime / 1000.0f
+                    );
+                }
+            }
+
+            if (timeSinceProgress > stallTime) {
                 // Stalled too long - give up and mark as blocked
+                if (g_bot_debug_state->integer) {
+                    gi.Printf(
+                        "BOT %s: Progress tracking - GAVE UP after %.1fs, marking zone at (%.0f, %.0f) as blocked\n",
+                        controlledEntity->client->pers.netname,
+                        timeSinceProgress / 1000.0f,
+                        m_vTargetPos.x,
+                        m_vTargetPos.y
+                    );
+                }
                 m_vBlockedDest = m_vTargetPos;
                 m_bGaveUpPath  = true;
                 ClearMove();
@@ -180,6 +228,15 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
         if (m_blocked.numBlocks >= 5) {
             // Added in OPM
             //  Store blocked destination before clearing so belief map can mark it
+            if (g_bot_debug_state->integer) {
+                gi.Printf(
+                    "BOT %s: Block detection - GAVE UP after %d blocks, marking zone at (%.0f, %.0f) as blocked\n",
+                    controlledEntity->client->pers.netname,
+                    m_blocked.numBlocks,
+                    m_vTargetPos.x,
+                    m_vTargetPos.y
+                );
+            }
             m_vBlockedDest = m_vTargetPos;
             m_bGaveUpPath  = true;
             // Give up
@@ -216,6 +273,14 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
             m_blocked.state = 2;
             m_blocked.time  = level.inttime;
             m_blocked.numBlocks++;
+
+            if (g_bot_debug_state->integer >= 2) {
+                gi.Printf(
+                    "BOT %s: Block detection - blocked %d/5 times\n",
+                    controlledEntity->client->pers.netname,
+                    m_blocked.numBlocks
+                );
+            }
 
             // Try to backward a little
             if (m_pPath->GetNodeCount()) {
