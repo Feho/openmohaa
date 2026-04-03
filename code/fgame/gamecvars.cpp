@@ -312,6 +312,7 @@ cvar_t *g_bot_belief_novelty_bonus;
 cvar_t *g_bot_belief_score_jitter;
 cvar_t *g_bot_belief_visit_decay;
 cvar_t *g_bot_belief_path_block_time;
+cvar_t *g_bot_progress_stall_time;
 cvar_t *g_bot_debug_beliefs;
 cvar_t *g_bot_debug_reaction;
 cvar_t *g_bot_debug_state;
@@ -750,6 +751,7 @@ void CVAR_Init(void)
     g_bot_belief_score_jitter    = gi.Cvar_Get("g_bot_belief_score_jitter", "0.1", 0);
     g_bot_belief_visit_decay     = gi.Cvar_Get("g_bot_belief_visit_decay", "300", 0);
     g_bot_belief_path_block_time = gi.Cvar_Get("g_bot_belief_path_block_time", "60", 0);
+    g_bot_progress_stall_time    = gi.Cvar_Get("g_bot_progress_stall_time", "15", 0);
     g_bot_debug_beliefs          = gi.Cvar_Get("g_bot_debug_beliefs", "0", 0);
     g_bot_debug_reaction         = gi.Cvar_Get("g_bot_debug_reaction", "0", 0);
     g_bot_debug_state            = gi.Cvar_Get("g_bot_debug_state", "0", 0);

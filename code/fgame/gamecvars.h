@@ -354,6 +354,7 @@ extern "C" {
     extern cvar_t *g_bot_belief_score_jitter;
     extern cvar_t *g_bot_belief_visit_decay;
     extern cvar_t *g_bot_belief_path_block_time;
+    extern cvar_t *g_bot_progress_stall_time;
     extern cvar_t *g_bot_debug_beliefs;
 
     extern cvar_t *g_bot_debug_reaction;

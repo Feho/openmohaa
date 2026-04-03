@@ -99,6 +99,28 @@ struct BotJumpState {
     }
 };
 
+// Added in OPM
+/**
+ * @brief Progress tracking state for detecting oscillating/stuck bots.
+ *
+ * Tracks whether the bot is making progress toward its destination.
+ * If the bot hasn't gotten closer for a configurable time, it's considered stuck.
+ */
+struct BotProgressState {
+    Vector targetPos;    // The destination we're tracking progress toward
+    int    startTime;    // When we started trying to reach this destination
+    float  bestDist;     // Closest distance we've achieved
+    int    lastProgress; // Last time we made progress (got closer)
+
+    void reset()
+    {
+        targetPos    = vec_zero;
+        startTime    = 0;
+        bestDist     = 999999.0f;
+        lastProgress = 0;
+    }
+};
+
 class BotMovement
 {
 public:
@@ -173,6 +195,7 @@ private:
     BotBlockedState   m_blocked;
     BotCollisionState m_collision;
     BotJumpState      m_jump;
+    BotProgressState  m_progress;
 
     // Added in OPM
     //  Path blocking: track when we give up on a destination

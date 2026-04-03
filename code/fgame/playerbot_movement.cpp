@@ -39,6 +39,7 @@ BotMovement::BotMovement()
     m_blocked.reset();
     m_collision.reset();
     m_jump.reset();
+    m_progress.reset();
 
     // Added in OPM
     //  Path blocking state
@@ -79,6 +80,40 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
 
     if (m_pPath->GetNodeCount()) {
         m_vTargetPos = m_pPath->GetDestination();
+    }
+
+    // Added in OPM
+    //  Progress tracking: detect if bot is oscillating without getting closer
+    {
+        // Check if destination changed - reset progress tracking
+        float targetDelta = (m_vTargetPos - m_progress.targetPos).lengthSquared();
+        if (targetDelta > Square(64)) {
+            // New destination, reset tracking
+            m_progress.targetPos    = m_vTargetPos;
+            m_progress.startTime    = level.inttime;
+            m_progress.bestDist     = (controlledEntity->origin - m_vTargetPos).length();
+            m_progress.lastProgress = level.inttime;
+        } else {
+            // Same destination, check if we're making progress
+            float currentDist = (controlledEntity->origin - m_vTargetPos).length();
+
+            // Allow some tolerance (32 units) to avoid noise from small movements
+            if (currentDist < m_progress.bestDist - 32.0f) {
+                // Made progress
+                m_progress.bestDist     = currentDist;
+                m_progress.lastProgress = level.inttime;
+            }
+
+            // Check if we've stalled for too long (no progress for N seconds)
+            int stallTime = (int)(g_bot_progress_stall_time->value * 1000.0f);
+            if (level.inttime - m_progress.lastProgress > stallTime) {
+                // Stalled too long - give up and mark as blocked
+                m_vBlockedDest = m_vTargetPos;
+                m_bGaveUpPath  = true;
+                ClearMove();
+                return;
+            }
+        }
     }
 
     if (m_pPath->IsQuerying()) {
@@ -1061,6 +1096,7 @@ void BotMovement::ClearMove()
 {
     m_bPathing = false;
     m_blocked.reset();
+    m_progress.reset();
 
     if (m_pPath) {
         m_pPath->Clear();
