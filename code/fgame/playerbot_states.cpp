@@ -394,6 +394,21 @@ void BotController::State_Curious(void)
         Vector beliefPos = beliefMap.GetHighestBeliefPos(controlledEnt->origin);
         Vector targetPos = (m_curious.targetPos != vec_zero) ? m_curious.targetPos : beliefPos;
 
+        // Added in OPM
+        //  Don't try to investigate path-blocked zones - we already know we can't reach them
+        if (targetPos != vec_zero && beliefMap.IsPathBlocked(targetPos)) {
+            if (g_bot_debug_state->integer >= 2) {
+                gi.Printf(
+                    "BOT %s: Curious - ignoring sound at (%.0f, %.0f) - zone is path-blocked\n",
+                    controlledEnt->client->pers.netname,
+                    targetPos.x,
+                    targetPos.y
+                );
+            }
+            m_curious.time = 0;
+            return;
+        }
+
         if (targetPos != vec_zero && m_curious.lastPos != targetPos) {
             movement.MoveNear(targetPos, 512);
             m_curious.lastPos = targetPos;
