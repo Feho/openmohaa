@@ -606,20 +606,11 @@ void BotBeliefMap::MarkPathBlocked(Vector pos)
 
     int zoneIndex = FindZoneForPos(pos);
     if (zoneIndex < 0 || zoneIndex >= m_zones.NumObjects()) {
-        if (g_bot_debug_state->integer) {
-            gi.Printf("BOT: MarkPathBlocked - pos (%.0f, %.0f) not in any zone!\n", pos.x, pos.y);
-        }
         return;
     }
 
     BeliefZone& zone     = m_zones.ObjectAt(zoneIndex + 1);
     zone.pathBlockedTime = level.inttime;
-
-    if (g_bot_debug_state->integer) {
-        gi.Printf(
-            "BOT: MarkPathBlocked - zone %d at (%.0f, %.0f) blocked\n", zoneIndex, zone.centroid.x, zone.centroid.y
-        );
-    }
 }
 
 /*
@@ -685,16 +676,6 @@ void BotBeliefMap::AddFailedTarget(Vector targetPos)
     ft.pos  = targetPos;
     ft.time = level.inttime;
     m_failedTargets.AddObject(ft);
-
-    if (g_bot_debug_state->integer) {
-        gi.Printf(
-            "BOT: AddFailedTarget - can't reach (%.0f, %.0f), blocking %d-unit radius, total=%d\n",
-            targetPos.x,
-            targetPos.y,
-            (int)radius,
-            m_failedTargets.NumObjects()
-        );
-    }
 }
 
 /*

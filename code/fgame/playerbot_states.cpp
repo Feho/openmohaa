@@ -315,45 +315,18 @@ void BotController::State_BeginCurious(void)
     }
     if (targetPos != vec_zero) {
         rotation.AimAt(targetPos);
-
-        if (g_bot_debug_state->integer) {
-            float dist = (targetPos - controlledEnt->origin).length();
-            gi.Printf(
-                "BOT %s: Curious - investigating position (%.0f, %.0f, %.0f) dist=%.0f\n",
-                controlledEnt->client->pers.netname,
-                targetPos.x,
-                targetPos.y,
-                targetPos.z,
-                dist
-            );
-        }
     }
 }
 
 bool BotController::CheckCondition_Curious(void)
 {
     if (m_combat.attackTime) {
-        if (g_bot_debug_state->integer >= 2 && m_curious.time) {
-            gi.Printf(
-                "BOT %s: Curious blocked - in combat (attackTime=%dms)\n",
-                controlledEnt->client->pers.netname,
-                m_combat.attackTime - level.inttime
-            );
-        }
         m_curious.time = 0;
         return false;
     }
 
     if (level.inttime > m_curious.time) {
         if (m_curious.time) {
-            if (g_bot_debug_state->integer >= 2) {
-                gi.Printf(
-                    "BOT %s: Curious expired (curiousTime=%d, inttime=%d)\n",
-                    controlledEnt->client->pers.netname,
-                    m_curious.time,
-                    level.inttime
-                );
-            }
             movement.ClearMove();
             m_curious.time = 0;
         }
@@ -405,31 +378,8 @@ void BotController::State_Curious(void)
         Vector targetPos = (m_curious.targetPos != vec_zero) ? m_curious.targetPos : beliefPos;
 
         // Added in OPM
-        //  Don't try to investigate path-blocked zones - we already know we can't reach them
-        if (targetPos != vec_zero && beliefMap.IsPathBlocked(targetPos)) {
-            if (g_bot_debug_state->integer >= 2) {
-                gi.Printf(
-                    "BOT %s: Curious - ignoring sound at (%.0f, %.0f) - zone is path-blocked\n",
-                    controlledEnt->client->pers.netname,
-                    targetPos.x,
-                    targetPos.y
-                );
-            }
-            m_curious.time = 0;
-            return;
-        }
-
-        // Added in OPM
-        //  Don't investigate sounds near failed target positions (unreachable areas)
-        if (targetPos != vec_zero && beliefMap.IsNearFailedTarget(targetPos)) {
-            if (g_bot_debug_state->integer >= 2) {
-                gi.Printf(
-                    "BOT %s: Curious - ignoring sound at (%.0f, %.0f) - near failed target\n",
-                    controlledEnt->client->pers.netname,
-                    targetPos.x,
-                    targetPos.y
-                );
-            }
+        //  Don't try to investigate path-blocked zones or failed targets
+        if (targetPos != vec_zero && (beliefMap.IsPathBlocked(targetPos) || beliefMap.IsNearFailedTarget(targetPos))) {
             m_curious.time = 0;
             return;
         }
@@ -437,26 +387,6 @@ void BotController::State_Curious(void)
         if (targetPos != vec_zero && m_curious.lastPos != targetPos) {
             movement.MoveNear(targetPos, 512);
             m_curious.lastPos = targetPos;
-
-            if (g_bot_debug_state->integer >= 2) {
-                if (movement.IsMoving()) {
-                    gi.Printf(
-                        "BOT %s: Curious moving to investigate (%.0f, %.0f, %.0f)\n",
-                        controlledEnt->client->pers.netname,
-                        targetPos.x,
-                        targetPos.y,
-                        targetPos.z
-                    );
-                } else {
-                    gi.Printf(
-                        "BOT %s: Curious can't path to (%.0f, %.0f, %.0f) - will look toward it\n",
-                        controlledEnt->client->pers.netname,
-                        targetPos.x,
-                        targetPos.y,
-                        targetPos.z
-                    );
-                }
-            }
         }
     }
 
@@ -470,23 +400,11 @@ void BotController::State_Curious(void)
         //  Also set a cooldown to ignore ALL sounds for a few seconds - this
         //  handles moving enemies generating sounds from many positions.
         if (distToTarget > 100) {
-            if (g_bot_debug_state->integer >= 2) {
-                gi.Printf(
-                    "BOT %s: Curious target unreachable (dist=%.0f) - marking as failed, 5s cooldown\n",
-                    controlledEnt->client->pers.netname,
-                    distToTarget
-                );
-            }
             beliefMap.AddFailedTarget(m_curious.targetPos);
             m_curious.time         = 0;
             m_curious.cooldownTime = level.inttime + 5000; // 5 second cooldown
         } else {
             // Actually arrived close to target
-            if (g_bot_debug_state->integer >= 2) {
-                gi.Printf(
-                    "BOT %s: Curious arrived at target (dist=%.0f)\n", controlledEnt->client->pers.netname, distToTarget
-                );
-            }
             beliefMap.ClearZone(controlledEnt->origin);
             m_curious.time = 0;
         }

@@ -168,33 +168,6 @@ void BotController::DrawDebugBeliefs()
             G_DebugArrow(botPos, dir, len, 0.0f, 1.0f, 1.0f, 1.0f);
         }
     }
-
-    // Periodic console summary (every 2 seconds)
-    static int lastPrintTime = 0;
-    if (level.inttime - lastPrintTime >= 2000) {
-        lastPrintTime = level.inttime;
-
-        gi.Printf(
-            "--- Belief Map [%s]: %d/%d active zones ---\n",
-            controlledEnt->client->pers.netname,
-            activeCount,
-            zones.NumObjects()
-        );
-
-        if (bestZone >= 0 && bestZone < zones.NumObjects()) {
-            const BeliefZone& target = zones.ObjectAt(bestZone + 1);
-            gi.Printf(
-                "  Target zone %d: belief=%.2f pos=(%.0f, %.0f, %.0f)\n",
-                bestZone,
-                target.belief,
-                target.centroid.x,
-                target.centroid.y,
-                target.centroid.z
-            );
-        } else {
-            gi.Printf("  No target zone (all beliefs below threshold)\n");
-        }
-    }
 }
 
 void BotController::Init(void)
@@ -567,15 +540,6 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     //  and don't set curious. This prevents bots from clustering near walls
     //  trying to investigate unreachable sounds.
     if (beliefMap.IsPathBlocked(vPos) || beliefMap.IsNearFailedTarget(vPos)) {
-        if (g_bot_debug_state->integer >= 2) {
-            gi.Printf(
-                "BOT %s: NoticeEvent ignoring blocked sound at (%.0f,%.0f,%.0f)\n",
-                controlledEnt->client->pers.netname,
-                vPos.x,
-                vPos.y,
-                vPos.z
-            );
-        }
         return;
     }
 
@@ -583,13 +547,6 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     //  If we recently failed to reach a curious target, ignore all sounds for a few seconds.
     //  This prevents the bot from immediately chasing new sounds from the same unreachable area.
     if (m_curious.cooldownTime > level.inttime) {
-        if (g_bot_debug_state->integer >= 2) {
-            gi.Printf(
-                "BOT %s: NoticeEvent ignoring sound - curious cooldown active (%.1fs remaining)\n",
-                controlledEnt->client->pers.netname,
-                (m_curious.cooldownTime - level.inttime) / 1000.0f
-            );
-        }
         return;
     }
 
@@ -655,16 +612,6 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     default:
         m_curious.time      = level.inttime + 20000;
         m_curious.targetPos = vPos;
-        if (g_bot_debug_state->integer >= 2) {
-            gi.Printf(
-                "BOT %s: NoticeEvent set curious (time=%d, pos=(%.0f,%.0f,%.0f))\n",
-                controlledEnt->client->pers.netname,
-                m_curious.time,
-                vPos.x,
-                vPos.y,
-                vPos.z
-            );
-        }
         break;
     }
 
