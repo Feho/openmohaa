@@ -23,6 +23,15 @@ struct BeliefZone {
     int    pathBlockedTime; // When path to this zone was marked blocked (0 = not blocked)
 };
 
+// Added in OPM
+//  Stuck point: a position where the bot got stuck trying to reach a destination.
+//  Used to avoid paths that would pass through this area.
+struct StuckPoint {
+    Vector pos;       // Where the bot got stuck
+    Vector targetDir; // Normalized direction toward the unreachable target
+    int    time;
+};
+
 class BotBeliefMap
 {
 public:
@@ -51,6 +60,12 @@ public:
     void MarkPathBlocked(Vector pos);
     bool IsPathBlocked(Vector pos) const;
 
+    // Added in OPM
+    //  Stuck point tracking: record where the bot got stuck and what direction
+    //  it was trying to go. Reject destinations in that blocked direction.
+    void AddStuckPoint(Vector stuckPos, Vector targetPos);
+    bool IsInBlockedDirection(Vector from, Vector to) const;
+
     // Changed in OPM
     //  Zone selection now considers distance from bot position and uses
     //  hysteresis to prevent flip-flopping between zones.
@@ -70,6 +85,7 @@ private:
     float GetDeathDecayRate() const;
 
     Container<BeliefZone> m_zones;
+    Container<StuckPoint> m_stuckPoints;
     bool                  m_bInitialized;
     int                   m_iVisClearIndex;
 

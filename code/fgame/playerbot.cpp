@@ -305,8 +305,10 @@ void BotController::UpdateBotStates(void)
     movement.MoveThink(m_botCmd);
 
     // Added in OPM
-    //  If movement gave up trying to reach a destination, mark that zone as path-blocked
+    //  If movement gave up trying to reach a destination, record where the bot got stuck
+    //  and what direction it was trying to go. Also mark the destination zone as path-blocked.
     if (movement.DidGiveUpPath()) {
+        beliefMap.AddStuckPoint(controlledEnt->origin, movement.GetBlockedDestination());
         beliefMap.MarkPathBlocked(movement.GetBlockedDestination());
     }
 
@@ -558,6 +560,23 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
                 return;
             }
         }
+    }
+
+    // Added in OPM
+    //  Early exit for sounds from blocked areas - don't update belief map
+    //  and don't set curious. This prevents bots from clustering near walls
+    //  trying to investigate unreachable sounds.
+    if (beliefMap.IsPathBlocked(vPos) || beliefMap.IsInBlockedDirection(controlledEnt->origin, vPos)) {
+        if (g_bot_debug_state->integer >= 2) {
+            gi.Printf(
+                "BOT %s: NoticeEvent ignoring blocked sound at (%.0f,%.0f,%.0f)\n",
+                controlledEnt->client->pers.netname,
+                vPos.x,
+                vPos.y,
+                vPos.z
+            );
+        }
+        return;
     }
 
     // Changed in OPM

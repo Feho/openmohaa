@@ -251,6 +251,16 @@ void BotController::State_Idle(void)
     if (!movement.MoveToBestAttractivePoint(&beliefMap) && !movement.IsMoving()) {
         Vector beliefPos = beliefMap.GetHighestBeliefPos(controlledEnt->origin);
         if (beliefPos != vec_zero) {
+            // Debug: log when setting new patrol destination
+            if (g_bot_debug_state->integer >= 2) {
+                gi.Printf(
+                    "BOT %s: Patrol - moving to belief zone at (%.0f, %.0f), blocked=%d\n",
+                    controlledEnt->client->pers.netname,
+                    beliefPos.x,
+                    beliefPos.y,
+                    beliefMap.IsPathBlocked(beliefPos) ? 1 : 0
+                );
+            }
             movement.MoveTo(beliefPos);
 
             if (movement.MoveDone()) {
@@ -400,6 +410,21 @@ void BotController::State_Curious(void)
             if (g_bot_debug_state->integer >= 2) {
                 gi.Printf(
                     "BOT %s: Curious - ignoring sound at (%.0f, %.0f) - zone is path-blocked\n",
+                    controlledEnt->client->pers.netname,
+                    targetPos.x,
+                    targetPos.y
+                );
+            }
+            m_curious.time = 0;
+            return;
+        }
+
+        // Added in OPM
+        //  Don't investigate if path would go through a stuck point
+        if (targetPos != vec_zero && beliefMap.IsInBlockedDirection(controlledEnt->origin, targetPos)) {
+            if (g_bot_debug_state->integer >= 2) {
+                gi.Printf(
+                    "BOT %s: Curious - ignoring sound at (%.0f, %.0f) - path through stuck point\n",
                     controlledEnt->client->pers.netname,
                     targetPos.x,
                     targetPos.y

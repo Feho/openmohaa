@@ -381,7 +381,10 @@ int BotBeliefMap::GetBestZone(Vector myPos)
         //  Check if zone is path-blocked before returning it - don't keep targeting unreachable zones
         bool isBlocked =
             currentZone.pathBlockedTime > 0 && level.inttime - currentZone.pathBlockedTime < pathBlockDuration;
-        if (!isBlocked && currentZone.belief >= g_bot_belief_min_patrol->value && level.inttime < m_iTargetLockTime) {
+        // Also check if path would go through a stuck point
+        bool pathThroughStuck = IsInBlockedDirection(myPos, currentZone.centroid);
+        if (!isBlocked && !pathThroughStuck && currentZone.belief >= g_bot_belief_min_patrol->value
+            && level.inttime < m_iTargetLockTime) {
             return m_iCurrentTargetZone;
         }
     }
@@ -403,6 +406,12 @@ int BotBeliefMap::GetBestZone(Vector myPos)
 
         // Skip zones that are currently path-blocked
         if (zone.pathBlockedTime > 0 && level.inttime - zone.pathBlockedTime < pathBlockDuration) {
+            continue;
+        }
+
+        // Added in OPM
+        //  Skip zones if the path would go through a stuck point
+        if (IsInBlockedDirection(myPos, zone.centroid)) {
             continue;
         }
 
@@ -597,11 +606,20 @@ void BotBeliefMap::MarkPathBlocked(Vector pos)
 
     int zoneIndex = FindZoneForPos(pos);
     if (zoneIndex < 0 || zoneIndex >= m_zones.NumObjects()) {
+        if (g_bot_debug_state->integer) {
+            gi.Printf("BOT: MarkPathBlocked - pos (%.0f, %.0f) not in any zone!\n", pos.x, pos.y);
+        }
         return;
     }
 
     BeliefZone& zone     = m_zones.ObjectAt(zoneIndex + 1);
     zone.pathBlockedTime = level.inttime;
+
+    if (g_bot_debug_state->integer) {
+        gi.Printf(
+            "BOT: MarkPathBlocked - zone %d at (%.0f, %.0f) blocked\n", zoneIndex, zone.centroid.x, zone.centroid.y
+        );
+    }
 }
 
 /*
@@ -627,4 +645,132 @@ bool BotBeliefMap::IsPathBlocked(Vector pos) const
     int               pathBlockDuration = (int)(g_bot_belief_path_block_time->value * 1000.0f);
 
     return zone.pathBlockedTime > 0 && level.inttime - zone.pathBlockedTime < pathBlockDuration;
+}
+
+/*
+====================
+AddStuckPoint
+
+// Added in OPM
+//  Record where the bot got stuck AND what direction it was trying to go.
+//  Used to reject future destinations in that same blocked direction.
+====================
+*/
+void BotBeliefMap::AddStuckPoint(Vector stuckPos, Vector targetPos)
+{
+    int stuckTime = (int)(g_bot_stuck_time->value * 1000.0f);
+
+    // Remove expired stuck points
+    for (int i = m_stuckPoints.NumObjects(); i >= 1; i--) {
+        if (level.inttime - m_stuckPoints.ObjectAt(i).time > stuckTime) {
+            m_stuckPoints.RemoveObjectAt(i);
+        }
+    }
+
+    // Calculate direction to target (2D, normalized)
+    Vector dir = targetPos - stuckPos;
+    dir.z      = 0;
+    float len  = dir.length();
+    if (len < 1.0f) {
+        return; // Too close, can't determine direction
+    }
+    dir *= 1.0f / len;
+
+    // Check if we already have a stuck point with similar direction
+    for (int i = 1; i <= m_stuckPoints.NumObjects(); i++) {
+        StuckPoint& existing = m_stuckPoints.ObjectAt(i);
+        Vector      delta    = existing.pos - stuckPos;
+        delta.z              = 0;
+
+        // If nearby and similar direction, update it
+        if (delta.length() < g_bot_stuck_radius->value) {
+            float dot = DotProduct(existing.targetDir, dir);
+            if (dot > 0.7f) { // Within ~45 degrees
+                existing.time = level.inttime;
+                return;
+            }
+        }
+    }
+
+    // Add new stuck point with direction
+    StuckPoint sp;
+    sp.pos       = stuckPos;
+    sp.targetDir = dir;
+    sp.time      = level.inttime;
+    m_stuckPoints.AddObject(sp);
+
+    if (g_bot_debug_state->integer) {
+        gi.Printf(
+            "BOT: AddStuckPoint - stuck at (%.0f, %.0f) trying to reach (%.0f, %.0f), dir=(%.2f, %.2f), total=%d\n",
+            stuckPos.x,
+            stuckPos.y,
+            targetPos.x,
+            targetPos.y,
+            dir.x,
+            dir.y,
+            m_stuckPoints.NumObjects()
+        );
+    }
+}
+
+/*
+====================
+IsInBlockedDirection
+
+// Added in OPM
+//  Check if going from 'from' to 'to' would be in a blocked direction.
+//  A direction is blocked if we previously got stuck near 'from' while
+//  trying to go in a similar direction.
+====================
+*/
+bool BotBeliefMap::IsInBlockedDirection(Vector from, Vector to) const
+{
+    if (m_stuckPoints.NumObjects() == 0) {
+        return false;
+    }
+
+    int   stuckTime = (int)(g_bot_stuck_time->value * 1000.0f);
+    float radius    = g_bot_stuck_radius->value;
+
+    // Calculate direction we want to go (2D, normalized)
+    Vector wantDir = to - from;
+    wantDir.z      = 0;
+    float wantLen  = wantDir.length();
+    if (wantLen < 1.0f) {
+        return false;
+    }
+    wantDir *= 1.0f / wantLen;
+
+    for (int i = 1; i <= m_stuckPoints.NumObjects(); i++) {
+        const StuckPoint& sp = m_stuckPoints.ObjectAt(i);
+
+        // Skip expired points
+        if (level.inttime - sp.time > stuckTime) {
+            continue;
+        }
+
+        // Check if we're near where we got stuck before
+        Vector delta = sp.pos - from;
+        delta.z      = 0;
+        if (delta.length() > radius) {
+            continue;
+        }
+
+        // Check if we're trying to go in the same direction we failed before
+        float dot = DotProduct(sp.targetDir, wantDir);
+        if (dot > 0.5f) { // Within ~60 degrees of blocked direction
+            if (g_bot_debug_state->integer >= 2) {
+                gi.Printf(
+                    "BOT: Blocked direction - trying to go (%.2f, %.2f) but (%.2f, %.2f) is blocked\n",
+                    wantDir.x,
+                    wantDir.y,
+                    sp.targetDir.x,
+                    sp.targetDir.y
+                );
+            }
+            return true;
+        }
+    }
+
+    return false;
 }
