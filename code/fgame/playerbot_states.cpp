@@ -734,9 +734,11 @@ void BotController::State_Attack(void)
                 //
 
                 if (pWeap->IsSemiAuto()) {
-                    if (controlledEnt->client->ps.iViewModelAnim != VM_ANIM_IDLE
+                    bool bWeaponBusy = controlledEnt->client->ps.iViewModelAnim != VM_ANIM_IDLE
                         && (controlledEnt->client->ps.iViewModelAnim < VM_ANIM_IDLE_0
-                            || controlledEnt->client->ps.iViewModelAnim > VM_ANIM_IDLE_2)) {
+                            || controlledEnt->client->ps.iViewModelAnim > VM_ANIM_IDLE_2);
+
+                    if (bWeaponBusy) {
                         if (g_bot_debug_state->integer >= 2) {
                             gi.Printf(
                                 "BOT %s: Attack - waiting for weapon idle (anim=%d)\n",
@@ -745,7 +747,13 @@ void BotController::State_Attack(void)
                             );
                         }
                         m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
-                        controlledEnt->ZoomOff();
+
+                        // Changed in OPM
+                        //  Don't unzoom during bolt cycle for scoped weapons.
+                        //  Stay scoped so we can fire immediately when idle.
+                        if (!pWeap->GetZoom()) {
+                            controlledEnt->ZoomOff();
+                        }
                     } else {
                         // Changed in OPM
                         //  For zoom weapons (snipers): scope in first, then fire.
