@@ -34,10 +34,9 @@ static float  botInitTime          = 0;
 Container<str> alliedModelList;
 Container<str> germanModelList;
 
-saved_bot_t::saved_bot_t()
-    : userinfo {0}
-    , personalityIndex(-1)
-{}
+saved_bot_t::saved_bot_t() {
+    memset(userinfo, 0, sizeof(userinfo));
+}
 
 static void G_ReadBotSessionData();
 static unsigned int G_GetNumBotsToSpawn();
@@ -166,11 +165,6 @@ Begin spawning a new bot entity
 */
 void G_BotBegin(gentity_t *ent)
 {
-    G_BotBeginWithPersonality(ent, -1);
-}
-
-void G_BotBeginWithPersonality(gentity_t *ent, int personalityIndex)
-{
     Player        *player;
     BotController *controller;
 
@@ -180,14 +174,10 @@ void G_BotBeginWithPersonality(gentity_t *ent, int personalityIndex)
     G_ClientBegin(ent, NULL);
 
     // Added in OPM
-    //  Look up personality from pool by index, or use random default
-    const BotPersonality& personality =
-        (personalityIndex >= 0 && personalityIndex < botPersonalityPoolSize)
-            ? botPersonalityPool[personalityIndex]
-            : G_GetRandomBotPersonality();
+    //  Assign a random personality from the preset pool
+    const BotPersonality& personality = G_GetRandomBotPersonality();
 
-    controller = botManager.getControllerManager().createController(player, personality, personalityIndex);
-    //player->setController(controller);
+    controller = botManager.getControllerManager().createController(player, personality);
 }
 
 /*
@@ -502,35 +492,15 @@ gentity_t *G_AddBot(const bot_info_t *info)
 
     Info_SetValueForKey(userinfo, "name", botName);
 
-    // Added in OPM
-    //  Assign a random personality and use its model preference
-    int                   personalityIndex = rand() % botPersonalityPoolSize;
-    const BotPersonality& personality      = botPersonalityPool[personalityIndex];
-
-    const char *alliedModel = NULL;
-    const char *germanModel = NULL;
-
-    if (personality.alliedModel) {
-        alliedModel = G_FindModelBySubstring(alliedModelList, personality.alliedModel);
-    }
-    if (personality.germanModel) {
-        germanModel = G_FindModelBySubstring(germanModelList, personality.germanModel);
-    }
-
-    Info_SetValueForKey(
-        userinfo, "dm_playermodel", alliedModel ? alliedModel : G_GetRandomAlliedPlayerModel()
-    );
-    Info_SetValueForKey(
-        userinfo, "dm_playergermanmodel", germanModel ? germanModel : G_GetRandomGermanPlayerModel()
-    );
-
+    Info_SetValueForKey(userinfo, "dm_playermodel", G_GetRandomAlliedPlayerModel());
+    Info_SetValueForKey(userinfo, "dm_playergermanmodel", G_GetRandomGermanPlayerModel());
     Info_SetValueForKey(userinfo, "fov", "80");
     Info_SetValueForKey(userinfo, "ip", "localhost");
 
     // Connect the bot for the first time
     // setup user info and stuff
     G_BotConnect(clientNum, qtrue, userinfo);
-    G_BotBeginWithPersonality(e, personalityIndex);
+    G_BotBegin(e);
 
     return e;
 }
@@ -554,7 +524,7 @@ gentity_t *G_RestoreBot(const saved_bot_t& saved)
     }
 
     G_BotConnect(e - g_entities, qfalse, saved.userinfo);
-    G_BotBeginWithPersonality(e, saved.personalityIndex);
+    G_BotBegin(e);
 
     return e;
 }
@@ -712,7 +682,6 @@ void G_SaveBots()
 
         saved_bot_t& saved = saved_bots[num_saved_bots++];
         memcpy(saved.userinfo, player->client->pers.userinfo, sizeof(saved.userinfo));
-        saved.personalityIndex = controller->GetPersonalityIndex();
     }
 }
 

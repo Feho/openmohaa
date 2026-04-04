@@ -182,9 +182,8 @@ BotController::BotController()
     m_grenade.reset();
     m_idle.reset();
 
-    m_iNextTauntTime   = 0;
-    m_iLastFireTime    = 0;
-    m_personalityIndex = -1;
+    m_iNextTauntTime = 0;
+    m_iLastFireTime  = 0;
 
     m_StateFlags = 0;
 }
@@ -214,15 +213,9 @@ const BotPersonality& BotController::GetPersonality() const
     return m_personality;
 }
 
-int BotController::GetPersonalityIndex() const
+void BotController::SetPersonality(const BotPersonality& personality)
 {
-    return m_personalityIndex;
-}
-
-void BotController::SetPersonality(const BotPersonality& personality, int index)
-{
-    m_personality      = personality;
-    m_personalityIndex = index;
+    m_personality = personality;
 }
 
 // Added in OPM
@@ -1192,10 +1185,10 @@ Player *BotController::getControlledEntity() const
     return controlledEnt;
 }
 
-BotController *BotControllerManager::createController(Player *player, const BotPersonality& personality, int personalityIndex)
+BotController *BotControllerManager::createController(Player *player, const BotPersonality& personality)
 {
     BotController *controller = new BotController();
-    controller->SetPersonality(personality, personalityIndex);
+    controller->SetPersonality(personality);
     controller->setControlledEntity(player);
 
     controllers.AddObject(controller);

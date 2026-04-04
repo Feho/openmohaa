@@ -24,7 +24,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 struct saved_bot_t {
     char userinfo[MAX_INFO_STRING];
-    int  personalityIndex;
 
     saved_bot_t();
 };
@@ -34,7 +33,6 @@ struct bot_info_t {
 };
 
 void         G_BotBegin(gentity_t *ent);
-void         G_BotBeginWithPersonality(gentity_t *ent, int personalityIndex);
 void         G_BotThink(gentity_t *ent, int msec);
 void         G_BotShift(int clientNum);
 gentity_t   *G_GetFirstBot();

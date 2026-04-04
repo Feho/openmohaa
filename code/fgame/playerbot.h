@@ -452,7 +452,6 @@ private:
 
     BotParams       m_params;
     BotPersonality  m_personality;
-    int             m_personalityIndex;
     BotMovement     movement;
     BotRotation  rotation;
     BotBeliefMap beliefMap;
@@ -558,9 +557,8 @@ public:
     BotMovement&        GetMovement();
     BotBeliefMap&       GetBeliefMap();
     const BotPersonality& GetPersonality() const;
-    int                   GetPersonalityIndex() const;
 
-    void SetPersonality(const BotPersonality& personality, int index);
+    void SetPersonality(const BotPersonality& personality);
     void DrawDebugBeliefs();
 
 public:
@@ -579,7 +577,7 @@ public:
 public:
     ~BotControllerManager();
 
-    BotController                    *createController(Player *player, const BotPersonality& personality, int personalityIndex);
+    BotController                    *createController(Player *player, const BotPersonality& personality);
     void                              removeController(BotController *controller);
     BotController                    *findController(Entity *ent);
     const Container<BotController *>& getControllers() const;
