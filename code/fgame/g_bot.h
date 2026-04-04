@@ -56,3 +56,7 @@ void         G_BotPostInit();
 void         G_SpawnBots();
 const char  *G_GetRandomAlliedPlayerModel();
 const char  *G_GetRandomGermanPlayerModel();
+const char  *G_FindModelBySubstring(const Container<str>& modelList, const char *substring);
+
+extern Container<str> alliedModelList;
+extern Container<str> germanModelList;

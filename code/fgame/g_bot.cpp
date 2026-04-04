@@ -436,7 +436,7 @@ const char *G_GetRandomGermanPlayerModel()
 // Added in OPM
 //  Find a model from the list that contains the given substring.
 //  Returns the matching model name, or falls back to random if no match.
-static const char *G_FindModelBySubstring(const Container<str>& modelList, const char *substring)
+const char *G_FindModelBySubstring(const Container<str>& modelList, const char *substring)
 {
     if (!substring || !modelList.NumObjects()) {
         return NULL;

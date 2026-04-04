@@ -63,6 +63,26 @@ const BotPersonality& G_GetRandomBotPersonality()
 }
 
 // Added in OPM
+//  Map a WEAPON_CLASS_* bitmask to the primary DM weapon string.
+//  Returns NULL if no single primary class matches (caller should use "auto").
+static const char *WeaponClassToPrimaryDMWeapon(int weaponClass)
+{
+    if (weaponClass & WEAPON_CLASS_RIFLE) {
+        return "sniper";
+    }
+    if (weaponClass & WEAPON_CLASS_SMG) {
+        return "smg";
+    }
+    if (weaponClass & WEAPON_CLASS_MG) {
+        return "mg";
+    }
+    if (weaponClass & WEAPON_CLASS_HEAVY) {
+        return "heavy";
+    }
+    return NULL;
+}
+
+// Added in OPM
 //  Initialize per-bot parameters from global cvars.
 void BotParams::InitFromCvars()
 {
@@ -313,10 +333,12 @@ void BotController::UpdateBotStates(void)
         Event *event;
 
         //
-        // Primary weapon
+        // Primary weapon — use personality preference if available
         //
+        const char *primaryWeapon = WeaponClassToPrimaryDMWeapon(m_personality.preferredWeaponClass);
+
         event = new Event(EV_Player_PrimaryDMWeapon);
-        event->AddString("auto");
+        event->AddString(primaryWeapon ? primaryWeapon : "auto");
 
         controlledEnt->ProcessEvent(event);
     }
@@ -950,20 +972,38 @@ void BotController::Killed(const Event& ev)
         m_enemy.deathPos = vec_zero;
     }
 
-    // Choose a new random primary weapon
+    // Choose primary weapon — use personality preference if available
+    const char *primaryWeapon = WeaponClassToPrimaryDMWeapon(m_personality.preferredWeaponClass);
+
     Event event(EV_Player_PrimaryDMWeapon);
-    event.AddString("auto");
+    event.AddString(primaryWeapon ? primaryWeapon : "auto");
 
     controlledEnt->ProcessEvent(event);
 
     //
-    // This is useful to change nationality in Spearhead and Breakthrough
-    // this allows the AI to use more weapons
+    // Only update the model if the personality has an explicit preference.
+    // Otherwise keep the model assigned at initial spawn (persists across deaths).
     //
-    Info_SetValueForKey(controlledEnt->client->pers.userinfo, "dm_playermodel", G_GetRandomAlliedPlayerModel());
-    Info_SetValueForKey(controlledEnt->client->pers.userinfo, "dm_playergermanmodel", G_GetRandomGermanPlayerModel());
+    if (m_personality.alliedModel || m_personality.germanModel) {
+        const char *alliedModel = NULL;
+        const char *germanModel = NULL;
 
-    G_ClientUserinfoChanged(controlledEnt->edict, controlledEnt->client->pers.userinfo);
+        if (m_personality.alliedModel) {
+            alliedModel = G_FindModelBySubstring(alliedModelList, m_personality.alliedModel);
+        }
+        if (m_personality.germanModel) {
+            germanModel = G_FindModelBySubstring(germanModelList, m_personality.germanModel);
+        }
+
+        if (alliedModel) {
+            Info_SetValueForKey(controlledEnt->client->pers.userinfo, "dm_playermodel", alliedModel);
+        }
+        if (germanModel) {
+            Info_SetValueForKey(controlledEnt->client->pers.userinfo, "dm_playergermanmodel", germanModel);
+        }
+
+        G_ClientUserinfoChanged(controlledEnt->edict, controlledEnt->client->pers.userinfo);
+    }
 }
 
 // Added in OPM
