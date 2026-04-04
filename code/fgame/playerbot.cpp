@@ -138,6 +138,11 @@ void BotParams::InitFromCvars()
 
     instamsgChance = g_bot_instamsg_chance->integer;
     instamsgDelay  = g_bot_instamsg_delay->value;
+
+    // Combat positioning defaults
+    standStillDistance = 400;
+    engageDistanceMin  = 128;
+    strafeChance       = 100;
 }
 
 // Added in OPM
@@ -168,6 +173,14 @@ void BotParams::ApplyPersonality(const BotPersonality& personality)
 
     // Stealth: higher = more crouching
     crouchChance = (int)(crouchChance * (0.5f + personality.stealth));
+
+    // Patience: higher = stands still from shorter distance, keeps enemies farther away, strafes less
+    //  standStillDistance: default 400 → sniper(0.9) = 160, rusher(0.1) = 560
+    //  engageDistanceMin:  default 128 → sniper(0.9) = 512, rusher(0.1) = 48
+    //  strafeChance:       default 100 → sniper(0.9) = 20,  rusher(0.1) = 100
+    standStillDistance = standStillDistance * (1.5f - personality.patience);
+    engageDistanceMin  = 128 + 960 * personality.patience * personality.patience;
+    strafeChance       = (int)(100 * (1.0f - personality.patience * 0.9f));
 }
 
 BotController::botfunc_t BotController::botfuncs[MAX_BOT_FUNCTIONS];

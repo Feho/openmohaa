@@ -49,6 +49,11 @@ struct BotParams {
     float attackSpreadMult;
     int   crouchChance;
 
+    // Combat positioning
+    float standStillDistance;   // Distance above which bot stops to shoot
+    float engageDistanceMin;   // Minimum distance to maintain from enemies
+    int   strafeChance;        // Chance (0-100) to strafe while firing
+
     // Grenade avoidance
     float grenadeAvoidRadius;
 

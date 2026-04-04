@@ -901,17 +901,18 @@ void BotController::State_Attack(void)
 
     //
     // Added in OPM
-    //  Stand still to aim at long range targets (more accurate)
-    //  At close range, keep moving
+    //  Stand still to aim at long range targets (more accurate).
+    //  standStillDistance is modulated by personality: patient bots (snipers)
+    //  stop moving at shorter distances, aggressive bots keep pushing.
     //
-    const float longRangeThreshold = 800 * 800;
-    const float midRangeThreshold  = 400 * 400;
+    const float standStillSq    = m_params.standStillDistance * m_params.standStillDistance;
+    const float longRangeThreshold = (m_params.standStillDistance * 2) * (m_params.standStillDistance * 2);
 
     if (bCanSee && bFiring && fEnemyDistanceSquared > longRangeThreshold) {
-        // Long range: stop forward movement, strafing handled separately
+        // Long range: always stop
         m_combat.standingStill = true;
         movement.ClearMove();
-    } else if (bCanSee && bFiring && fEnemyDistanceSquared > midRangeThreshold) {
+    } else if (bCanSee && bFiring && fEnemyDistanceSquared > standStillSq) {
         // Mid range: stop periodically to aim, then move
         if (rand() % 100 < 30) {
             m_combat.standingStill = true;
@@ -980,7 +981,14 @@ void BotController::State_Attack(void)
     //  Mix of quick direction changes, longer holds, and brief pauses
     //  so the pattern is never consistent.
     if (bCanSee && !bMelee) {
-        if (level.inttime >= m_combat.strafeTime) {
+        // Added in OPM
+        //  strafeChance controls whether the bot strafes at all during combat.
+        //  Patient bots (snipers/campers) strafe less to stay accurate.
+        //  In close combat (< engageDistanceMin), always strafe for survival.
+        bool bShouldStrafe = (rand() % 100 < m_params.strafeChance)
+            || fEnemyDistanceSquared < m_params.engageDistanceMin * m_params.engageDistanceMin;
+
+        if (bShouldStrafe && level.inttime >= m_combat.strafeTime) {
             int roll = rand() % 10;
 
             if (roll < 2) {
@@ -1000,6 +1008,8 @@ void BotController::State_Attack(void)
                 m_combat.strafeTime = level.inttime + 100 + (int)G_Random(200);
                 m_combat.strafeDir  = m_combat.strafeDir > 0 ? -127 : 127;
             }
+        } else if (!bShouldStrafe) {
+            m_combat.strafeDir = 0;
         }
 
         m_botCmd.rightmove = m_combat.strafeDir;
@@ -1014,8 +1024,19 @@ void BotController::State_Attack(void)
     //  Don't continue walking toward navigation goals - that makes bots
     //  walk right up to enemies instead of engaging from a distance.
     //  Only advance when the enemy is not visible or when using melee.
-    if (bCanSee && bCanAttack && !bMelee) {
-        // Can see and shoot — stop and fight, let strafing handle lateral movement
+    //  engageDistanceMin: patient bots (snipers) back away when enemies get too close.
+    const float engageMinSq = m_params.engageDistanceMin * m_params.engageDistanceMin;
+
+    if (bCanSee && bCanAttack && !bMelee && fEnemyDistanceSquared < engageMinSq) {
+        // Too close — back away from enemy
+        Vector awayDir = controlledEnt->origin - m_enemy.enemy->origin;
+        awayDir.z = 0;
+        if (awayDir.lengthSquared() > 1) {
+            awayDir.normalize();
+        }
+        movement.MoveTo(controlledEnt->origin + awayDir * m_params.engageDistanceMin);
+    } else if (bCanSee && bCanAttack && !bMelee) {
+        // In range — stop and fight, let strafing handle lateral movement
         movement.ClearMove();
     } else if ((!movement.MoveToBestAttractivePoint(&beliefMap, 5) && !movement.IsMoving())
                || (m_enemy.oldPos != m_enemy.lastPos && !movement.MoveDone())) {
