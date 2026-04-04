@@ -46,20 +46,40 @@ CLASS_DECLARATION(Listener, BotController, NULL) {
 //  Personality preset pool. Each bot draws one randomly at spawn.
 //  Traits are 0.0-1.0 floats. Model strings are substrings matched
 //  against the model list; NULL means random.
+//  Weight controls relative spawn frequency (higher = more common).
 const BotPersonality botPersonalityPool[] = {
-    // name        accuracy  aggression  patience  stealth  weaponClass            alliedModel  germanModel
-    {"default",    0.5f,     0.5f,       0.5f,     0.0f,    0,                     NULL,        NULL       },
-    {"sniper",     0.8f,     0.3f,       0.9f,     0.3f,    WEAPON_CLASS_RIFLE,    NULL,        NULL       },
-    {"rusher",     0.4f,     0.9f,       0.1f,     0.0f,    WEAPON_CLASS_SMG,      NULL,        NULL       },
-    {"gunner",     0.5f,     0.6f,       0.6f,     0.0f,    WEAPON_CLASS_MG,       NULL,        NULL       },
-    {"stealth",    0.6f,     0.4f,       0.5f,     0.9f,    WEAPON_CLASS_SMG,      NULL,        NULL       },
+    // name        accuracy  aggression  patience  stealth  weaponClass            alliedModel  germanModel  weight
+    {"default",    0.5f,     0.5f,       0.5f,     0.0f,    0,                     NULL,        NULL,        3},
+    {"sniper",     0.8f,     0.3f,       0.9f,     0.3f,    WEAPON_CLASS_RIFLE,    NULL,        NULL,        2},
+    {"rusher",     0.4f,     0.9f,       0.1f,     0.0f,    WEAPON_CLASS_SMG,      NULL,        NULL,        2},
+    {"gunner",     0.5f,     0.6f,       0.6f,     0.0f,    WEAPON_CLASS_MG,       NULL,        NULL,        2},
+    {"stealth",    0.6f,     0.4f,       0.5f,     0.9f,    WEAPON_CLASS_SMG,      NULL,        NULL,        2},
+    {"camper",     0.7f,     0.2f,       1.0f,     0.5f,    WEAPON_CLASS_RIFLE,    NULL,        NULL,        2},
+    {"elite",      0.95f,    0.7f,       0.6f,     0.3f,    0,                     NULL,        NULL,        1},
 };
 
 const int botPersonalityPoolSize = sizeof(botPersonalityPool) / sizeof(botPersonalityPool[0]);
 
+static int botPersonalityTotalWeight = 0;
+
 const BotPersonality& G_GetRandomBotPersonality()
 {
-    return botPersonalityPool[rand() % botPersonalityPoolSize];
+    // Compute total weight once
+    if (!botPersonalityTotalWeight) {
+        for (int i = 0; i < botPersonalityPoolSize; i++) {
+            botPersonalityTotalWeight += botPersonalityPool[i].weight;
+        }
+    }
+
+    int roll = rand() % botPersonalityTotalWeight;
+    for (int i = 0; i < botPersonalityPoolSize; i++) {
+        roll -= botPersonalityPool[i].weight;
+        if (roll < 0) {
+            return botPersonalityPool[i];
+        }
+    }
+
+    return botPersonalityPool[0];
 }
 
 // Added in OPM

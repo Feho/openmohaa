@@ -178,6 +178,8 @@ void G_BotBegin(gentity_t *ent)
     const BotPersonality& personality = G_GetRandomBotPersonality();
 
     controller = botManager.getControllerManager().createController(player, personality);
+
+    gi.DPrintf("Bot %s assigned personality: %s\n", player->client->pers.netname, personality.name);
 }
 
 /*

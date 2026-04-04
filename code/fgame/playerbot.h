@@ -93,6 +93,9 @@ struct BotPersonality {
     int         preferredWeaponClass; // WEAPON_CLASS_* bitmask, 0 = no preference
     const char *alliedModel;          // Substring to match in model list, NULL = random
     const char *germanModel;          // Substring to match in model list, NULL = random
+
+    // Selection weight (higher = more likely to be picked)
+    int weight;
 };
 
 extern const BotPersonality  botPersonalityPool[];
