@@ -42,6 +42,94 @@ CLASS_DECLARATION(Listener, BotController, NULL) {
     {NULL, NULL}
 };
 
+// Added in OPM
+//  Personality preset pool. Each bot draws one randomly at spawn.
+//  Traits are 0.0-1.0 floats. Model strings are substrings matched
+//  against the model list; NULL means random.
+const BotPersonality botPersonalityPool[] = {
+    // name        accuracy  aggression  patience  stealth  weaponClass            alliedModel  germanModel
+    {"default",    0.5f,     0.5f,       0.5f,     0.0f,    0,                     NULL,        NULL       },
+    {"sniper",     0.8f,     0.3f,       0.9f,     0.3f,    WEAPON_CLASS_RIFLE,    NULL,        NULL       },
+    {"rusher",     0.4f,     0.9f,       0.1f,     0.0f,    WEAPON_CLASS_SMG,      NULL,        NULL       },
+    {"gunner",     0.5f,     0.6f,       0.6f,     0.0f,    WEAPON_CLASS_MG,       NULL,        NULL       },
+    {"stealth",    0.6f,     0.4f,       0.5f,     0.9f,    WEAPON_CLASS_SMG,      NULL,        NULL       },
+};
+
+const int botPersonalityPoolSize = sizeof(botPersonalityPool) / sizeof(botPersonalityPool[0]);
+
+const BotPersonality& G_GetRandomBotPersonality()
+{
+    return botPersonalityPool[rand() % botPersonalityPoolSize];
+}
+
+// Added in OPM
+//  Initialize per-bot parameters from global cvars.
+void BotParams::InitFromCvars()
+{
+    turnSpeed       = g_bot_turn_speed->integer;
+    aimOvershoot    = g_bot_aim_overshoot->value;
+    aimSettleSpeed  = g_bot_aim_settle_speed->value;
+    aimNoise        = g_bot_aim_noise->value;
+    aimLerpSpeed    = g_bot_aim_lerp_speed->value;
+
+    attackReactMinDelay          = g_bot_attack_react_min_delay->value;
+    attackReactRandomDelay       = g_bot_attack_react_random_delay->value;
+    attackBurstMinTime           = g_bot_attack_burst_min_time->value;
+    attackBurstRandomDelay       = g_bot_attack_burst_random_delay->value;
+    attackContinuousFireMinTime  = g_bot_attack_continuousfire_min_firetime->value;
+    attackContinuousFireRandomTime = g_bot_attack_continuousfire_random_firetime->value;
+    attackSpreadMult             = g_bot_attack_spreadmult->value;
+    crouchChance                 = g_bot_crouch_chance->integer;
+
+    grenadeAvoidRadius = g_bot_grenade_avoid_radius->value;
+
+    beliefDecay         = g_bot_belief_decay->value;
+    beliefEventWeight   = g_bot_belief_event_weight->value;
+    beliefMinPatrol     = g_bot_belief_min_patrol->value;
+    beliefVisitPenalty  = g_bot_belief_visit_penalty->value;
+    beliefNoveltyBonus  = g_bot_belief_novelty_bonus->value;
+    beliefScoreJitter   = g_bot_belief_score_jitter->value;
+    beliefVisitDecay    = g_bot_belief_visit_decay->value;
+    beliefPathBlockTime = g_bot_belief_path_block_time->value;
+
+    progressStallTime = g_bot_progress_stall_time->value;
+    stuckRadius       = g_bot_stuck_radius->value;
+    stuckTime         = g_bot_stuck_time->value;
+
+    instamsgChance = g_bot_instamsg_chance->integer;
+    instamsgDelay  = g_bot_instamsg_delay->value;
+}
+
+// Added in OPM
+//  Modulate parameters based on personality traits.
+//  Traits are 0.0-1.0 floats centered around 0.5 (default behavior).
+void BotParams::ApplyPersonality(const BotPersonality& personality)
+{
+    // Accuracy: higher = less noise, less spread, faster settle, less overshoot
+    float accuracyMult    = 1.5f - personality.accuracy;       // 1.0 at 0.5, 0.7 at 0.8
+    float accuracyInvMult = 0.5f + personality.accuracy;       // 1.0 at 0.5, 1.3 at 0.8
+    aimNoise         *= accuracyMult;
+    aimOvershoot     *= accuracyMult;
+    attackSpreadMult *= accuracyMult;
+    aimSettleSpeed   *= accuracyInvMult;
+
+    // Aggression: higher = faster reactions, shorter idle pauses
+    float aggroMult    = 1.5f - personality.aggression;        // 1.0 at 0.5, 0.6 at 0.9
+    float aggroInvMult = 0.5f + personality.aggression;        // 1.0 at 0.5, 1.4 at 0.9
+    attackReactMinDelay    *= aggroMult;
+    attackReactRandomDelay *= aggroMult;
+    beliefEventWeight      *= aggroInvMult;
+
+    // Patience: higher = longer idle behavior, more visit penalty (explores less)
+    // Lower patience = shorter burst pauses (more aggressive firing)
+    float patienceMult = 0.5f + personality.patience;          // 1.0 at 0.5, 1.4 at 0.9
+    beliefVisitPenalty *= 1.5f - personality.patience;
+    beliefNoveltyBonus *= 1.5f - personality.patience;
+
+    // Stealth: higher = more crouching
+    crouchChance = (int)(crouchChance * (0.5f + personality.stealth));
+}
+
 BotController::botfunc_t BotController::botfuncs[MAX_BOT_FUNCTIONS];
 
 BotController::BotController()
@@ -74,8 +162,9 @@ BotController::BotController()
     m_grenade.reset();
     m_idle.reset();
 
-    m_iNextTauntTime = 0;
-    m_iLastFireTime  = 0;
+    m_iNextTauntTime   = 0;
+    m_iLastFireTime    = 0;
+    m_personalityIndex = -1;
 
     m_StateFlags = 0;
 }
@@ -98,6 +187,22 @@ BotMovement& BotController::GetMovement()
 BotBeliefMap& BotController::GetBeliefMap()
 {
     return beliefMap;
+}
+
+const BotPersonality& BotController::GetPersonality() const
+{
+    return m_personality;
+}
+
+int BotController::GetPersonalityIndex() const
+{
+    return m_personalityIndex;
+}
+
+void BotController::SetPersonality(const BotPersonality& personality, int index)
+{
+    m_personality      = personality;
+    m_personalityIndex = index;
 }
 
 // Added in OPM
@@ -665,7 +770,47 @@ Weapon *BotController::FindWeaponWithAmmo()
 
     n = inventory.NumObjects();
 
-    // Search until we find the best weapon with ammo
+    // Added in OPM
+    //  First pass: try to find a weapon matching the personality's preferred class
+    int preferredClass = m_personality.preferredWeaponClass;
+    if (preferredClass) {
+        bestweapon = NULL;
+        bestrank   = -999999;
+
+        for (j = 1; j <= n; j++) {
+            next = (Weapon *)G_GetEntity(inventory.ObjectAt(j));
+
+            assert(next);
+            if (!next->IsSubclassOfWeapon() || next->IsSubclassOfInventoryItem()) {
+                continue;
+            }
+
+            if (!(next->GetWeaponClass() & preferredClass)) {
+                continue;
+            }
+
+            if (next->GetWeaponClass() & WEAPON_CLASS_THROWABLE) {
+                continue;
+            }
+
+            if (next->GetRank() < bestrank) {
+                continue;
+            }
+
+            if (!next->HasAmmo(FIRE_PRIMARY)) {
+                continue;
+            }
+
+            bestweapon = (Weapon *)next;
+            bestrank   = bestweapon->GetRank();
+        }
+
+        if (bestweapon) {
+            return bestweapon;
+        }
+    }
+
+    // Fallback: search for the best weapon with ammo regardless of class
     bestweapon = NULL;
     bestrank   = -999999;
 
@@ -907,8 +1052,8 @@ void BotController::GotKill(const Event& ev)
         m_combat.attackTime = level.inttime + 500 + (int)G_Random(1000);
     }
 
-    if (g_bot_instamsg_chance->integer && level.inttime >= m_iNextTauntTime
-        && (rand() % g_bot_instamsg_chance->integer) == 0) {
+    if (m_params.instamsgChance && level.inttime >= m_iNextTauntTime
+        && (rand() % m_params.instamsgChance) == 0) {
         //
         // Randomly play a taunt
         //
@@ -924,7 +1069,7 @@ void BotController::GotKill(const Event& ev)
 
         controlledEnt->ProcessEvent(event);
 
-        m_iNextTauntTime = level.inttime + g_bot_instamsg_delay->integer;
+        m_iNextTauntTime = level.inttime + (int)(m_params.instamsgDelay);
     }
 }
 
@@ -936,8 +1081,12 @@ void BotController::EventStuffText(const str& text)
 void BotController::setControlledEntity(Player *player)
 {
     controlledEnt = player;
-    movement.SetControlledEntity(player);
-    rotation.SetControlledEntity(player);
+
+    m_params.InitFromCvars();
+    m_params.ApplyPersonality(m_personality);
+    movement.SetControlledEntity(player, &m_params);
+    rotation.SetControlledEntity(player, &m_params);
+    beliefMap.SetParams(&m_params);
 
     // Added in OPM
     //  Initialize belief map from spawn point bounds. We use spawn points
@@ -1003,9 +1152,10 @@ Player *BotController::getControlledEntity() const
     return controlledEnt;
 }
 
-BotController *BotControllerManager::createController(Player *player)
+BotController *BotControllerManager::createController(Player *player, const BotPersonality& personality, int personalityIndex)
 {
     BotController *controller = new BotController();
+    controller->SetPersonality(personality, personalityIndex);
     controller->setControlledEntity(player);
 
     controllers.AddObject(controller);

@@ -31,6 +31,7 @@ static int maxFallHeight = 400;
 BotMovement::BotMovement()
 {
     controlledEntity = NULL;
+    m_pParams        = NULL;
 
     m_pPath          = NULL;
     m_iLastMoveTime  = 0;
@@ -51,9 +52,10 @@ BotMovement::~BotMovement()
     delete m_pPath;
 }
 
-void BotMovement::SetControlledEntity(Player *newEntity)
+void BotMovement::SetControlledEntity(Player *newEntity, const BotParams *params)
 {
     controlledEntity = newEntity;
+    m_pParams        = params;
 }
 
 void BotMovement::MoveThink(usercmd_t& botcmd)
@@ -103,7 +105,7 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
             }
 
             // Check if we've stalled for too long (no progress for N seconds)
-            int stallTime         = (int)(g_bot_progress_stall_time->value * 1000.0f);
+            int stallTime         = (int)(m_pParams->progressStallTime * 1000.0f);
             int timeSinceProgress = level.inttime - m_progress.lastProgress;
 
             if (timeSinceProgress > stallTime) {

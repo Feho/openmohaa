@@ -652,8 +652,8 @@ void BotController::State_Attack(void)
         bCanAttack = true;
         if (m_combat.lastUnseenTime) {
             const float        reactionTime = Q_min(1000 * Q_min(1, fDistanceSquared / Square(2048)), 1000);
-            const unsigned int minDelay     = g_bot_attack_react_min_delay->value * 1000;
-            const unsigned int randomDelay  = g_bot_attack_react_random_delay->value * 1000;
+            const unsigned int minDelay     = m_params.attackReactMinDelay * 1000;
+            const unsigned int randomDelay  = m_params.attackReactRandomDelay * 1000;
             if (level.inttime <= m_combat.lastUnseenTime + minDelay + G_Random(randomDelay)) {
                 if (g_bot_debug_state->integer >= 2) {
                     gi.Printf(
@@ -676,10 +676,10 @@ void BotController::State_Attack(void)
             float     fSecondaryBulletRange        = pWeap->GetBulletRange(FIRE_SECONDARY);
             float     fSecondaryBulletRangeSquared = fSecondaryBulletRange * fSecondaryBulletRange;
 
-            const int maxcontinuousFireTime = fireDelay + g_bot_attack_continuousfire_min_firetime->value * 1000
-                                            + G_Random(g_bot_attack_continuousfire_random_firetime->value * 1000);
-            const int maxBurstTime = fireDelay + g_bot_attack_burst_min_time->value * 1000
-                                   + G_Random(g_bot_attack_burst_random_delay->value * 1000);
+            const int maxcontinuousFireTime = fireDelay + m_params.attackContinuousFireMinTime * 1000
+                                            + G_Random(m_params.attackContinuousFireRandomTime * 1000);
+            const int maxBurstTime = fireDelay + m_params.attackBurstMinTime * 1000
+                                   + G_Random(m_params.attackBurstRandomDelay * 1000);
 
             //
             // check the fire movement speed if the weapon has a max fire movement
@@ -876,7 +876,7 @@ void BotController::State_Attack(void)
 
         // Smoothly lerp current offset toward target offset
         {
-            float dt       = level.frametime * g_bot_aim_lerp_speed->value;
+            float dt       = level.frametime * m_params.aimLerpSpeed;
             float lerpFrac = Q_clamp_float(dt, 0.0, 1.0);
 
             m_combat.aimOffset[0] =
@@ -887,7 +887,7 @@ void BotController::State_Attack(void)
                 m_combat.aimOffset[2] + (m_combat.aimOffsetTarget[2] - m_combat.aimOffset[2]) * lerpFrac;
         }
 
-        rotation.AimAt(vTarget + m_combat.aimOffset * g_bot_attack_spreadmult->value);
+        rotation.AimAt(vTarget + m_combat.aimOffset * m_params.attackSpreadMult);
     } else {
         AimAtAimNode();
     }
@@ -954,7 +954,7 @@ void BotController::State_Attack(void)
     if (m_combat.standingStill) {
         if (!m_combat.crouching && !m_combat.crouchDecided) {
             m_combat.crouchDecided = true;
-            if (rand() % 100 < g_bot_crouch_chance->integer) {
+            if (rand() % 100 < m_params.crouchChance) {
                 m_combat.crouching = true;
             }
         }
@@ -1062,7 +1062,7 @@ bool BotController::CheckCondition_Grenade(void)
     //  Scan for nearby enemy projectiles (grenades) and flee from them
     if (m_grenade.grenade && m_grenade.grenade->IsSubclassOfProjectile()) {
         float distSq = (m_grenade.grenade->origin - controlledEnt->origin).lengthSquared();
-        float radius = g_bot_grenade_avoid_radius->value;
+        float radius = m_params.grenadeAvoidRadius;
 
         if (distSq < radius * radius) {
             return true;
@@ -1071,7 +1071,7 @@ bool BotController::CheckCondition_Grenade(void)
 
     m_grenade.grenade = NULL;
 
-    float      radiusSq = Square(g_bot_grenade_avoid_radius->value);
+    float      radiusSq = Square(m_params.grenadeAvoidRadius);
     gentity_t *edict;
     int        i;
 
@@ -1128,7 +1128,7 @@ void BotController::State_Grenade(void)
     Vector fleeDir    = controlledEnt->origin - grenadePos;
     VectorNormalizeFast(fleeDir);
 
-    movement.AvoidPath(grenadePos, g_bot_grenade_avoid_radius->value, fleeDir * 512);
+    movement.AvoidPath(grenadePos, m_params.grenadeAvoidRadius, fleeDir * 512);
 }
 
 /*

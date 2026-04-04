@@ -28,6 +28,78 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "navigation_path.h"
 #include "playerbot_beliefs.h"
 
+// Added in OPM
+//  Per-bot behavioral parameters. Initialized from cvars at spawn,
+//  later modulated by personality traits.
+struct BotParams {
+    // Aim dynamics
+    float turnSpeed;
+    float aimOvershoot;
+    float aimSettleSpeed;
+    float aimNoise;
+    float aimLerpSpeed;
+
+    // Attack behavior
+    float attackReactMinDelay;
+    float attackReactRandomDelay;
+    float attackBurstMinTime;
+    float attackBurstRandomDelay;
+    float attackContinuousFireMinTime;
+    float attackContinuousFireRandomTime;
+    float attackSpreadMult;
+    int   crouchChance;
+
+    // Grenade avoidance
+    float grenadeAvoidRadius;
+
+    // Belief map / patrol
+    float beliefDecay;
+    float beliefEventWeight;
+    float beliefMinPatrol;
+    float beliefVisitPenalty;
+    float beliefNoveltyBonus;
+    float beliefScoreJitter;
+    float beliefVisitDecay;
+    float beliefPathBlockTime;
+
+    // Movement / stuck detection
+    float progressStallTime;
+    float stuckRadius;
+    float stuckTime;
+
+    // Taunts
+    int   instamsgChance;
+    float instamsgDelay;
+
+    void InitFromCvars();
+    void ApplyPersonality(const struct BotPersonality& personality);
+};
+
+// Added in OPM
+//  Bot personality: a set of behavioral traits assigned once at spawn.
+//  Traits are floats in 0.0-1.0 range that modulate BotParams after
+//  initialization from cvars. Each bot draws a personality randomly
+//  from a preset pool and keeps it for the entire map.
+struct BotPersonality {
+    const char *name;
+
+    // Behavioral traits (0.0 to 1.0)
+    float accuracy;   // Higher = less aim noise, less spread, faster settle
+    float aggression; // Higher = faster reactions, pushes toward enemies
+    float patience;   // Higher = longer idle pauses, camps more
+    float stealth;    // Higher = walks more, crouches more
+
+    // Weapon and appearance
+    int         preferredWeaponClass; // WEAPON_CLASS_* bitmask, 0 = no preference
+    const char *alliedModel;          // Substring to match in model list, NULL = random
+    const char *germanModel;          // Substring to match in model list, NULL = random
+};
+
+extern const BotPersonality  botPersonalityPool[];
+extern const int             botPersonalityPoolSize;
+
+const BotPersonality& G_GetRandomBotPersonality();
+
 #define MAX_BOT_FUNCTIONS 5
 
 typedef struct nodeAttract_s {
@@ -127,7 +199,7 @@ public:
     BotMovement();
     ~BotMovement();
 
-    void SetControlledEntity(Player *newEntity);
+    void SetControlledEntity(Player *newEntity, const BotParams *params);
 
     void MoveThink(usercmd_t& botcmd);
 
@@ -200,6 +272,8 @@ private:
     //  Path blocking: track when we give up on a destination
     bool   m_bGaveUpPath;
     Vector m_vBlockedDest;
+
+    const BotParams *m_pParams;
 };
 
 class BotRotation
@@ -207,7 +281,7 @@ class BotRotation
 public:
     BotRotation();
 
-    void SetControlledEntity(Player *newEntity);
+    void SetControlledEntity(Player *newEntity, const BotParams *params);
 
     void          TurnThink(usercmd_t& botcmd, usereyes_t& eyeinfo);
     const Vector& GetTargetAngles() const;
@@ -229,6 +303,8 @@ private:
     float  m_fSettleFrac;     // 0..1 progress through settle phase
     float  m_fOvershootYaw;   // Overshoot amount applied to yaw
     float  m_fOvershootPitch; // Overshoot amount applied to pitch
+
+    const BotParams *m_pParams;
 };
 
 class BotState
@@ -374,7 +450,10 @@ public:
 private:
     static botfunc_t botfuncs[];
 
-    BotMovement  movement;
+    BotParams       m_params;
+    BotPersonality  m_personality;
+    int             m_personalityIndex;
+    BotMovement     movement;
     BotRotation  rotation;
     BotBeliefMap beliefMap;
 
@@ -476,9 +555,12 @@ public:
     void GotKill(const Event& ev);
     void EventStuffText(const str& text);
 
-    BotMovement&  GetMovement();
-    BotBeliefMap& GetBeliefMap();
+    BotMovement&        GetMovement();
+    BotBeliefMap&       GetBeliefMap();
+    const BotPersonality& GetPersonality() const;
+    int                   GetPersonalityIndex() const;
 
+    void SetPersonality(const BotPersonality& personality, int index);
     void DrawDebugBeliefs();
 
 public:
@@ -497,7 +579,7 @@ public:
 public:
     ~BotControllerManager();
 
-    BotController                    *createController(Player *player);
+    BotController                    *createController(Player *player, const BotPersonality& personality, int personalityIndex);
     void                              removeController(BotController *controller);
     BotController                    *findController(Entity *ent);
     const Container<BotController *>& getControllers() const;

@@ -7,6 +7,7 @@
 
 class Player;
 class DM_Team;
+struct BotParams;
 
 // Added in OPM
 //  Spatial belief map: a per-bot probability grid estimating where enemies
@@ -36,6 +37,7 @@ class BotBeliefMap
 public:
     BotBeliefMap();
 
+    void SetParams(const BotParams *params);
     void Init(const Vector& worldMins, const Vector& worldMaxs, float cellSize);
     void Decay(float dt);
 
@@ -98,4 +100,6 @@ private:
     // Hysteresis - prevent flip-flopping between zones
     int m_iCurrentTargetZone;
     int m_iTargetLockTime;
+
+    const BotParams *m_pParams;
 };

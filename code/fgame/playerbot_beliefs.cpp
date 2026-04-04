@@ -8,6 +8,7 @@
 //  reinforcement. Used to drive idle patrol, pre-aiming, and curious state.
 
 #include "g_local.h"
+#include "playerbot.h"
 #include "playerbot_beliefs.h"
 #include "gamecvars.h"
 #include "player.h"
@@ -23,7 +24,13 @@ BotBeliefMap::BotBeliefMap()
     , m_iGridHeight(0)
     , m_iCurrentTargetZone(-1)
     , m_iTargetLockTime(0)
+    , m_pParams(NULL)
 {}
+
+void BotBeliefMap::SetParams(const BotParams *params)
+{
+    m_pParams = params;
+}
 
 /*
 ====================
@@ -127,7 +134,7 @@ void BotBeliefMap::Decay(float dt)
         return;
     }
 
-    float decayRate = g_bot_belief_decay->value;
+    float decayRate = m_pParams->beliefDecay;
     float factor    = powf(decayRate, dt);
 
     for (int i = 1; i <= m_zones.NumObjects(); i++) {
@@ -188,7 +195,7 @@ void BotBeliefMap::UpdateFromEvent(Vector pos, int iType, float fRangeFactor)
         break;
     }
 
-    weight *= fRangeFactor * g_bot_belief_event_weight->value;
+    weight *= fRangeFactor * m_pParams->beliefEventWeight;
 
     int zoneIndex = FindZoneForPos(pos);
     AddBelief(zoneIndex, weight);
@@ -371,7 +378,7 @@ int BotBeliefMap::GetBestZone(Vector myPos)
     }
 
     // Path block duration in milliseconds (needed for hysteresis check)
-    int pathBlockDuration = (int)(g_bot_belief_path_block_time->value * 1000.0f);
+    int pathBlockDuration = (int)(m_pParams->beliefPathBlockTime * 1000.0f);
 
     // Hysteresis: if we have a current target and it still has belief, stick with it
     // for a minimum time to avoid flip-flopping
@@ -383,13 +390,13 @@ int BotBeliefMap::GetBestZone(Vector myPos)
             currentZone.pathBlockedTime > 0 && level.inttime - currentZone.pathBlockedTime < pathBlockDuration;
         // Also check if zone is near a failed target
         bool nearFailedTarget = IsNearFailedTarget(currentZone.centroid);
-        if (!isBlocked && !nearFailedTarget && currentZone.belief >= g_bot_belief_min_patrol->value
+        if (!isBlocked && !nearFailedTarget && currentZone.belief >= m_pParams->beliefMinPatrol
             && level.inttime < m_iTargetLockTime) {
             return m_iCurrentTargetZone;
         }
     }
 
-    float minBelief = g_bot_belief_min_patrol->value;
+    float minBelief = m_pParams->beliefMinPatrol;
     int   bestIndex = -1;
     float bestScore = -999.0f;
 
@@ -399,7 +406,7 @@ int BotBeliefMap::GetBestZone(Vector myPos)
     float maxDist     = sqrtf(worldWidth * worldWidth + worldHeight * worldHeight);
 
     // Visit decay time in milliseconds
-    int visitDecayTime = (int)(g_bot_belief_visit_decay->value * 1000.0f);
+    int visitDecayTime = (int)(m_pParams->beliefVisitDecay * 1000.0f);
 
     for (int i = 1; i <= m_zones.NumObjects(); i++) {
         const BeliefZone& zone = m_zones.ObjectAt(i);
@@ -416,7 +423,7 @@ int BotBeliefMap::GetBestZone(Vector myPos)
         }
 
         // Novelty bonus: attract to never-visited zones (even if belief is 0)
-        float noveltyBonus = (zone.visitCount == 0) ? g_bot_belief_novelty_bonus->value : 0.0f;
+        float noveltyBonus = (zone.visitCount == 0) ? m_pParams->beliefNoveltyBonus : 0.0f;
 
         // Skip zones with no belief AND no novelty bonus
         if (zone.belief < minBelief && noveltyBonus <= 0.0f) {
@@ -438,10 +445,10 @@ int BotBeliefMap::GetBestZone(Vector myPos)
         }
 
         // Visit penalty: diminishing returns for repeated visits
-        float visitPenalty = 1.0f / (1.0f + effectiveVisits * g_bot_belief_visit_penalty->value);
+        float visitPenalty = 1.0f / (1.0f + effectiveVisits * m_pParams->beliefVisitPenalty);
 
         // Jitter: prevent teammate clustering by adding random variance
-        float jitter = G_CRandom(g_bot_belief_score_jitter->value);
+        float jitter = G_CRandom(m_pParams->beliefScoreJitter);
 
         // Final score
         float score = (zone.belief * visitPenalty * distFactor) + noveltyBonus + jitter;
@@ -632,7 +639,7 @@ bool BotBeliefMap::IsPathBlocked(Vector pos) const
     }
 
     const BeliefZone& zone              = m_zones.ObjectAt(zoneIndex + 1);
-    int               pathBlockDuration = (int)(g_bot_belief_path_block_time->value * 1000.0f);
+    int               pathBlockDuration = (int)(m_pParams->beliefPathBlockTime * 1000.0f);
 
     return zone.pathBlockedTime > 0 && level.inttime - zone.pathBlockedTime < pathBlockDuration;
 }
@@ -649,8 +656,8 @@ AddFailedTarget
 */
 void BotBeliefMap::AddFailedTarget(Vector targetPos)
 {
-    int   stuckTime = (int)(g_bot_stuck_time->value * 1000.0f);
-    float radius    = g_bot_stuck_radius->value;
+    int   stuckTime = (int)(m_pParams->stuckTime * 1000.0f);
+    float radius    = m_pParams->stuckRadius;
 
     // Remove expired entries
     for (int i = m_failedTargets.NumObjects(); i >= 1; i--) {
@@ -692,8 +699,8 @@ bool BotBeliefMap::IsNearFailedTarget(Vector pos) const
         return false;
     }
 
-    int   stuckTime = (int)(g_bot_stuck_time->value * 1000.0f);
-    float radiusSq  = g_bot_stuck_radius->value * g_bot_stuck_radius->value;
+    int   stuckTime = (int)(m_pParams->stuckTime * 1000.0f);
+    float radiusSq  = m_pParams->stuckRadius * m_pParams->stuckRadius;
 
     for (int i = 1; i <= m_failedTargets.NumObjects(); i++) {
         const FailedTarget& ft = m_failedTargets.ObjectAt(i);
