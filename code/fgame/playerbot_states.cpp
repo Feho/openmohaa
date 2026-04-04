@@ -748,16 +748,22 @@ void BotController::State_Attack(void)
                         controlledEnt->ZoomOff();
                     } else {
                         // Changed in OPM
-                        //  Removed spread factor check - bots should fire while moving
-                        //  like real players do. The weapon's inherent spread handles accuracy.
-                        bFiring = true;
-                        m_botCmd.buttons ^= BUTTON_ATTACKLEFT;
+                        //  For zoom weapons (snipers): scope in first, then fire.
+                        //  Don't shoot until zoomed to avoid wasting the shot.
                         if (pWeap->GetZoom()) {
                             if (!controlledEnt->IsZoomed()) {
+                                // Zoom in first, don't fire yet
                                 m_botCmd.buttons |= BUTTON_ATTACKRIGHT;
+                                m_botCmd.buttons &= ~BUTTON_ATTACKLEFT;
                             } else {
+                                // Zoomed in — fire
+                                bFiring = true;
+                                m_botCmd.buttons ^= BUTTON_ATTACKLEFT;
                                 m_botCmd.buttons &= ~BUTTON_ATTACKRIGHT;
                             }
+                        } else {
+                            bFiring = true;
+                            m_botCmd.buttons ^= BUTTON_ATTACKLEFT;
                         }
                     }
                 } else {
