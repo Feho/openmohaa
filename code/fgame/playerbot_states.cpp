@@ -113,8 +113,10 @@ bool BotStateAttack::CheckCondition()
 
         float distSq = (sent->origin - c->controlledEnt->origin).lengthSquared();
 
-        // Use 360° FOV - detect enemies anywhere, not just where we're looking
-        if (c->controlledEnt->CanSee(sent, 360, maxDistance, false)) {
+        // Fixed in OPM
+        //  Use 160° FOV (wide peripheral vision) instead of 360° so bots
+        //  can't detect enemies directly behind them.
+        if (c->controlledEnt->CanSee(sent, 160, maxDistance, false)) {
             // Added in OPM
             //  Target scoring: base score is inverse distance (closer = higher).
             //  Stationary or slow-moving targets get a bonus scaled by the bot's
@@ -557,10 +559,15 @@ void BotStateAttack::Think()
 
         // Added in OPM
         //  Scoped accuracy: reduce aim spread when zoomed in, rewarding the
-        //  bot for taking time to scope. Scale is personality-driven (accuracy trait).
+        //  bot for taking time to scope. The benefit is reduced against fast-
+        //  moving targets — tracking a sprinting enemy through a scope is hard.
         float spreadMult = c->m_params.attackSpreadMult;
         if (c->controlledEnt->IsZoomed()) {
-            spreadMult *= c->m_params.scopedAimScale;
+            float targetSpeed = c->m_enemy.enemy->velocity.length();
+            // Full scoped benefit at speed 0, no benefit above 200 units/s
+            float movePenalty = Q_clamp_float(targetSpeed / 200.0f, 0.0f, 1.0f);
+            float scopeScale = c->m_params.scopedAimScale + (1.0f - c->m_params.scopedAimScale) * movePenalty;
+            spreadMult *= scopeScale;
         }
 
         c->rotation.AimAt(vTarget + c->m_combat.aimOffset * spreadMult);
