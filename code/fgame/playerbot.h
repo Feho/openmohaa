@@ -118,6 +118,7 @@ struct BotPersonality {
     float aggression; // Higher = faster reactions, pushes toward enemies
     float patience;   // Higher = longer idle pauses, camps more
     float stealth;    // Higher = walks more, crouches more
+    float strafing;   // Higher = more lateral movement during combat
 
     // Weapon and appearance
     int         preferredWeaponClass; // WEAPON_CLASS_* bitmask, 0 = no preference

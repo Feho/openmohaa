@@ -46,14 +46,14 @@ CLASS_DECLARATION(Listener, BotController, NULL) {
 //  against the model list; NULL means random.
 //  Weight controls relative spawn frequency (higher = more common).
 const BotPersonality botPersonalityPool[] = {
-    // name        accuracy  aggression  patience  stealth  weaponClass            alliedModel  germanModel  weight
-    {"default", 0.5f,  0.5f, 0.5f, 0.0f, 0,                  NULL, NULL, 3},
-    {"sniper",  0.8f,  0.3f, 0.9f, 0.3f, WEAPON_CLASS_RIFLE, NULL, NULL, 2},
-    {"rusher",  0.4f,  0.9f, 0.1f, 0.0f, WEAPON_CLASS_SMG,   NULL, NULL, 2},
-    {"gunner",  0.5f,  0.6f, 0.6f, 0.0f, WEAPON_CLASS_MG,    NULL, NULL, 2},
-    {"stealth", 0.6f,  0.4f, 0.5f, 0.9f, WEAPON_CLASS_SMG,   NULL, NULL, 2},
-    {"camper",  0.7f,  0.2f, 1.0f, 0.5f, WEAPON_CLASS_RIFLE, NULL, NULL, 2},
-    {"elite",   0.95f, 0.7f, 0.6f, 0.3f, 0,                  NULL, NULL, 1},
+    // name        accuracy  aggression  patience  stealth  strafing  weaponClass            alliedModel  germanModel  weight
+    {"default", 0.5f,  0.5f, 0.5f, 0.0f, 1.0f, 0,                  NULL, NULL, 3},
+    {"sniper",  0.8f,  0.3f, 0.9f, 0.3f, 0.1f, WEAPON_CLASS_RIFLE, NULL, NULL, 2},
+    {"rusher",  0.4f,  0.9f, 0.1f, 0.0f, 1.0f, WEAPON_CLASS_SMG,   NULL, NULL, 2},
+    {"gunner",  0.5f,  0.6f, 0.6f, 0.0f, 1.0f, WEAPON_CLASS_MG,    NULL, NULL, 2},
+    {"stealth", 0.6f,  0.4f, 0.5f, 0.9f, 0.6f, WEAPON_CLASS_SMG,   NULL, NULL, 2},
+    {"camper",  0.7f,  0.2f, 1.0f, 0.5f, 0.0f, WEAPON_CLASS_RIFLE, NULL, NULL, 2},
+    {"elite",   0.95f, 0.7f, 0.6f, 0.3f, 1.0f, 0,                  NULL, NULL, 1},
 };
 
 const int botPersonalityPoolSize = sizeof(botPersonalityPool) / sizeof(botPersonalityPool[0]);
@@ -231,13 +231,15 @@ void BotParams::ApplyPersonality(const BotPersonality& personality)
     curiosityDuration *= 1.5f - personality.aggression;
     revengeChance = (int)(20 + 80 * personality.aggression);
 
-    // Patience: higher = stands still from shorter distance, keeps enemies farther away, strafes less
+    // Patience: higher = stands still from shorter distance, keeps enemies farther away
     //  standStillDistance: default 400 → sniper(0.9) = 160, rusher(0.1) = 560
     //  engageDistanceMin:  default 128 → sniper(0.9) = 416, camper(1.0) = 448
-    //  strafeChance:       default 100 → sniper(0.9) = 19,  rusher(0.1) = 99, default(0.5) = 75
     standStillDistance = standStillDistance * (1.5f - personality.patience);
     engageDistanceMin  = 128 + 320 * personality.patience;
-    strafeChance       = (int)(100 * (1.0f - personality.patience * personality.patience));
+
+    // Strafing: directly from trait
+    //  strafeChance: sniper(0.1) = 10, rusher(0.9) = 90, default(0.7) = 70
+    strafeChance = (int)(100 * personality.strafing);
 
     // Sniper overwatch: patient bots hold position much longer after a kill
     //  sniperOverwatchMin:    patience=0.9 → 2.8s, patience=0.1 → 1.2s
