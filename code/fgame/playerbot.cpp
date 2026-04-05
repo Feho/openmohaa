@@ -766,32 +766,30 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
         }
     }
 
+    // Changed in OPM
+    //  Always update beliefs from enemy sounds regardless of distance,
+    //  blocked areas, or whether the bot is already investigating something else.
+    //  The belief map is the bot's spatial awareness — it should
+    //  accumulate all heard information. Only the curiosity trigger
+    //  (whether to actively investigate) is gated below.
+    beliefMap.UpdateFromEvent(vPos, iType, fRangeFactor);
+
+    //
+    // Curiosity trigger — gated by blocked areas, cooldown, and probability
+    //
+
     // Added in OPM
-    //  Early exit for sounds from blocked areas - don't update belief map
-    //  and don't set curious. This prevents bots from clustering near walls
-    //  trying to investigate unreachable sounds.
+    //  Don't investigate sounds from blocked/failed areas, but beliefs
+    //  were already updated above so spatial awareness is preserved.
     if (beliefMap.IsPathBlocked(vPos) || beliefMap.IsNearFailedTarget(vPos)) {
         return;
     }
 
     // Added in OPM
-    //  If we recently failed to reach a curious target, ignore all sounds for a few seconds.
-    //  This prevents the bot from immediately chasing new sounds from the same unreachable area.
+    //  If we recently failed to reach a curious target, ignore curiosity for a few seconds.
     if (m_curious.cooldownTime > level.inttime) {
         return;
     }
-
-    // Changed in OPM
-    //  Always update beliefs from enemy sounds regardless of distance
-    //  or whether the bot is already investigating something else.
-    //  The belief map is the bot's spatial awareness — it should
-    //  accumulate all heard information. Only the curiosity trigger
-    //  (whether to actively investigate) is gated by probability.
-    beliefMap.UpdateFromEvent(vPos, iType, fRangeFactor);
-
-    //
-    // Curiosity trigger — probability-gated
-    //
 
     // Already curious about a closer sound? Don't switch target.
     if (m_curious.time) {
