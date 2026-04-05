@@ -158,6 +158,10 @@ void BotParams::InitFromCvars()
     standStillDistance = 400;
     engageDistanceMin  = 128;
     strafeChance       = 100;
+
+    // Sniper overwatch defaults (before personality scaling)
+    sniperOverwatchMin    = 2.0f; // 2 seconds base
+    sniperOverwatchRandom = 4.0f; // + up to 4 seconds
 }
 
 // Added in OPM
@@ -230,6 +234,12 @@ void BotParams::ApplyPersonality(const BotPersonality& personality)
     standStillDistance = standStillDistance * (1.5f - personality.patience);
     engageDistanceMin  = 128 + 320 * personality.patience;
     strafeChance       = (int)(100 * (1.0f - personality.patience * 0.9f));
+
+    // Sniper overwatch: patient bots hold position much longer after a kill
+    //  sniperOverwatchMin:    patience=0.9 → 2.8s, patience=0.1 → 1.2s
+    //  sniperOverwatchRandom: patience=0.9 → 5.6s, patience=0.1 → 2.4s
+    sniperOverwatchMin *= patienceMult;
+    sniperOverwatchRandom *= patienceMult;
 }
 
 BotController::BotController()
@@ -1172,9 +1182,24 @@ void BotController::GotKill(const Event& ev)
     m_enemy.eyesTag = -1;
     m_curious.time  = 0;
 
-    // Extend attack time briefly to allow scanning for new targets
-    if (m_combat.attackTime) {
-        m_combat.attackTime = level.inttime + 500 + (int)G_Random(1000);
+    // Added in OPM
+    //  Sniper overwatch: after a kill, patient bots hold position and watch
+    //  the kill zone for additional targets (like a real sniper would).
+    //  Less patient bots still get a brief scan window.
+    {
+        int overwatchMs =
+            (int)(m_params.sniperOverwatchMin * 1000) + (int)G_Random(m_params.sniperOverwatchRandom * 1000);
+        m_combat.overwatchUntil = level.inttime + overwatchMs;
+        m_combat.attackTime     = m_combat.overwatchUntil;
+        m_combat.attackStopAimTime = m_combat.overwatchUntil;
+
+        if (g_bot_debug_state->integer) {
+            gi.Printf(
+                "BOT %s: Overwatch - holding position for %.1fs\n",
+                controlledEnt->client->pers.netname,
+                overwatchMs / 1000.0f
+            );
+        }
     }
 
     if (m_params.instamsgChance && level.inttime >= m_iNextTauntTime && (rand() % m_params.instamsgChance) == 0) {

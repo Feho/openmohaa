@@ -195,14 +195,15 @@ void BotStateAttack::End()
     }
 
     c->m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
-    c->m_botCmd.rightmove     = 0;
-    c->m_botCmd.upmove        = 0;
-    c->m_combat.strafeTime    = 0;
-    c->m_combat.strafeDir     = 0;
-    c->m_combat.standingStill = false;
-    c->m_combat.crouching     = false;
-    c->m_combat.crouchDecided = false;
-    c->m_idle.leanDir         = 0;
+    c->m_botCmd.rightmove      = 0;
+    c->m_botCmd.upmove         = 0;
+    c->m_combat.strafeTime     = 0;
+    c->m_combat.strafeDir      = 0;
+    c->m_combat.standingStill  = false;
+    c->m_combat.crouching      = false;
+    c->m_combat.crouchDecided  = false;
+    c->m_combat.overwatchUntil = 0;
+    c->m_idle.leanDir          = 0;
     c->controlledEnt->ZoomOff();
 }
 
@@ -221,15 +222,32 @@ void BotStateAttack::Think()
     // Changed in OPM
     //  When enemy is gone but we recently had one, keep looking at the last
     //  known position briefly instead of snapping away.
+    //  Sniper overwatch: hold position, stay crouched and scoped, watching
+    //  the kill zone for additional targets.
     if (!c->m_enemy.enemy || !c->IsValidEnemy(c->m_enemy.enemy)) {
         if (level.inttime < c->m_combat.attackStopAimTime && c->m_enemy.lastPos != vec_zero) {
             c->rotation.AimAt(c->m_enemy.lastPos);
             c->m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
+
+            // Added in OPM
+            //  Sniper overwatch: stay crouched, scoped, and stationary after a kill.
+            if (level.inttime < c->m_combat.overwatchUntil) {
+                c->m_botCmd.upmove    = -127; // Stay crouched
+                c->m_combat.crouching = true;
+                c->movement.ClearMove();
+
+                // Keep scoped in if weapon has zoom
+                if (pWeap && pWeap->GetZoom() && !c->controlledEnt->IsZoomed()) {
+                    c->m_botCmd.buttons |= BUTTON_ATTACKRIGHT;
+                }
+            }
+
             c->m_combat.attackTime = level.inttime + 200 + (int)G_Random(300);
             return;
         }
 
-        c->m_combat.attackTime = 0;
+        c->m_combat.attackTime     = 0;
+        c->m_combat.overwatchUntil = 0;
         return;
     }
 

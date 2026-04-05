@@ -89,6 +89,10 @@ struct BotParams {
     // Vision
     float visionDistance; // Max enemy detection range (units)
 
+    // Sniper overwatch: hold position after a kill to watch for more targets
+    float sniperOverwatchMin;    // Minimum overwatch duration (seconds)
+    float sniperOverwatchRandom; // Additional random overwatch time (seconds)
+
     // Taunts
     int   instamsgChance;
     float instamsgDelay;
@@ -371,6 +375,7 @@ struct BotCombatState {
     bool   standingStill;        // Standing still to aim
     bool   crouching;            // Currently crouching in combat
     bool   crouchDecided;        // Whether crouch decision was made
+    int    overwatchUntil;       // Hold position after kill until this time (sniper overwatch)
 
     void reset()
     {
@@ -390,6 +395,7 @@ struct BotCombatState {
         standingStill        = false;
         crouching            = false;
         crouchDecided        = false;
+        overwatchUntil       = 0;
     }
 };
 
