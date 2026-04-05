@@ -208,12 +208,10 @@ void BotStateAttack::End()
 
 void BotStateAttack::Think()
 {
-    BotController *c                   = m_controller;
-    bool           bMelee              = false;
-    bool           bCanSee             = false;
-    bool           bCanAttack          = false;
-    float          fMinDistance        = 128;
-    float          fMinDistanceSquared = fMinDistance * fMinDistance;
+    BotController *c          = m_controller;
+    bool           bMelee     = false;
+    bool           bCanSee    = false;
+    bool           bCanAttack = false;
     float          fEnemyDistanceSquared;
     Weapon        *pWeap          = c->controlledEnt->GetActiveWeapon(WEAPON_MAIN);
     bool           bNoMove        = false;
@@ -271,10 +269,12 @@ void BotStateAttack::Think()
 
         if (bCanAttack) {
             const int fireDelay                    = pWeap->FireDelay(FIRE_PRIMARY) * 1000;
-            float     fPrimaryBulletRange          = pWeap->GetBulletRange(FIRE_PRIMARY) / 1.25f;
-            float     fPrimaryBulletRangeSquared   = fPrimaryBulletRange * fPrimaryBulletRange;
             float     fSecondaryBulletRange        = pWeap->GetBulletRange(FIRE_SECONDARY);
             float     fSecondaryBulletRangeSquared = fSecondaryBulletRange * fSecondaryBulletRange;
+            // Removed in OPM
+            //  Artificial range check removed — bots fire regardless of distance;
+            //  the engine handles whether bullets reach the target.
+            bInWeaponRange = (fDistanceSquared <= Square(pWeap->GetBulletRange(FIRE_PRIMARY)));
 
             const int maxcontinuousFireTime = fireDelay + c->m_params.attackContinuousFireMinTime * 1000
                                             + G_Random(c->m_params.attackContinuousFireRandomTime * 1000);
@@ -292,14 +292,6 @@ void BotStateAttack::Think()
                 }
             }
 
-            fMinDistance = fPrimaryBulletRange;
-
-            if (fMinDistance > 256) {
-                fMinDistance = 256;
-            }
-
-            fMinDistanceSquared = fMinDistance * fMinDistance;
-
             if (c->controlledEnt->client->ps.stats[STAT_AMMO] <= 0
                 && c->controlledEnt->client->ps.stats[STAT_CLIPAMMO] <= 0) {
                 if (g_bot_debug_state->integer >= 2) {
@@ -315,26 +307,10 @@ void BotStateAttack::Think()
                     Event ev;
                     c->controlledEnt->SelectNextWeapon(&ev);
                 }
-            } else if (fDistanceSquared > fPrimaryBulletRangeSquared) {
-                if (g_bot_debug_state->integer >= 2) {
-                    gi.Printf(
-                        "BOT %s: Attack - out of range (dist=%.0f, range=%.0f)\n",
-                        c->controlledEnt->client->pers.netname,
-                        sqrtf(fDistanceSquared),
-                        fPrimaryBulletRange
-                    );
-                }
-                c->m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
-                c->controlledEnt->ZoomOff();
             } else {
                 //
                 // Attacking
                 //
-                // Fixed in OPM
-                //  Mark that the enemy is within weapon range so the movement
-                //  section can advance instead of standing still out of range.
-                bInWeaponRange = true;
-
                 if (pWeap->IsSemiAuto()) {
                     bool bWeaponBusy = c->controlledEnt->client->ps.iViewModelAnim != VM_ANIM_IDLE
                                     && (c->controlledEnt->client->ps.iViewModelAnim < VM_ANIM_IDLE_0
@@ -433,7 +409,6 @@ void BotStateAttack::Think()
         }
     } else {
         c->m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
-        fMinDistanceSquared = 0;
 
         if (level.inttime > c->m_combat.lastSeenTime + 2000) {
             c->m_combat.lastUnseenTime = level.inttime;
@@ -519,11 +494,11 @@ void BotStateAttack::Think()
     const float standStillSq       = c->m_params.standStillDistance * c->m_params.standStillDistance;
     const float longRangeThreshold = (c->m_params.standStillDistance * 2) * (c->m_params.standStillDistance * 2);
 
-    if (bCanSee && bFiring && fEnemyDistanceSquared > longRangeThreshold) {
+    if (bCanSee && bFiring && bInWeaponRange && fEnemyDistanceSquared > longRangeThreshold) {
         // Long range: always stop
         c->m_combat.standingStill = true;
         c->movement.ClearMove();
-    } else if (bCanSee && bFiring && fEnemyDistanceSquared > standStillSq) {
+    } else if (bCanSee && bFiring && bInWeaponRange && fEnemyDistanceSquared > standStillSq) {
         // Mid range: stop periodically to aim, then move
         if (rand() % 100 < 30) {
             c->m_combat.standingStill = true;
