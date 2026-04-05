@@ -20,8 +20,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 ===========================================================================
 */
 // playerbot.cpp: Multiplayer bot system.
-//
-// FIXME: Refactor code and use OOP-based state system
 
 #include "g_local.h"
 #include "actor.h"
@@ -49,13 +47,13 @@ CLASS_DECLARATION(Listener, BotController, NULL) {
 //  Weight controls relative spawn frequency (higher = more common).
 const BotPersonality botPersonalityPool[] = {
     // name        accuracy  aggression  patience  stealth  weaponClass            alliedModel  germanModel  weight
-    {"default",    0.5f,     0.5f,       0.5f,     0.0f,    0,                     NULL,        NULL,        3},
-    {"sniper",     0.8f,     0.3f,       0.9f,     0.3f,    WEAPON_CLASS_RIFLE,    NULL,        NULL,        2},
-    {"rusher",     0.4f,     0.9f,       0.1f,     0.0f,    WEAPON_CLASS_SMG,      NULL,        NULL,        2},
-    {"gunner",     0.5f,     0.6f,       0.6f,     0.0f,    WEAPON_CLASS_MG,       NULL,        NULL,        2},
-    {"stealth",    0.6f,     0.4f,       0.5f,     0.9f,    WEAPON_CLASS_SMG,      NULL,        NULL,        2},
-    {"camper",     0.7f,     0.2f,       1.0f,     0.5f,    WEAPON_CLASS_RIFLE,    NULL,        NULL,        2},
-    {"elite",      0.95f,    0.7f,       0.6f,     0.3f,    0,                     NULL,        NULL,        1},
+    {"default", 0.5f,  0.5f, 0.5f, 0.0f, 0,                  NULL, NULL, 3},
+    {"sniper",  0.8f,  0.3f, 0.9f, 0.3f, WEAPON_CLASS_RIFLE, NULL, NULL, 2},
+    {"rusher",  0.4f,  0.9f, 0.1f, 0.0f, WEAPON_CLASS_SMG,   NULL, NULL, 2},
+    {"gunner",  0.5f,  0.6f, 0.6f, 0.0f, WEAPON_CLASS_MG,    NULL, NULL, 2},
+    {"stealth", 0.6f,  0.4f, 0.5f, 0.9f, WEAPON_CLASS_SMG,   NULL, NULL, 2},
+    {"camper",  0.7f,  0.2f, 1.0f, 0.5f, WEAPON_CLASS_RIFLE, NULL, NULL, 2},
+    {"elite",   0.95f, 0.7f, 0.6f, 0.3f, 0,                  NULL, NULL, 1},
 };
 
 const int botPersonalityPoolSize = sizeof(botPersonalityPool) / sizeof(botPersonalityPool[0]);
@@ -106,20 +104,20 @@ static const char *WeaponClassToPrimaryDMWeapon(int weaponClass)
 //  Initialize per-bot parameters from global cvars.
 void BotParams::InitFromCvars()
 {
-    turnSpeed       = g_bot_turn_speed->integer;
-    aimOvershoot    = g_bot_aim_overshoot->value;
-    aimSettleSpeed  = g_bot_aim_settle_speed->value;
-    aimNoise        = g_bot_aim_noise->value;
-    aimLerpSpeed    = g_bot_aim_lerp_speed->value;
+    turnSpeed      = g_bot_turn_speed->integer;
+    aimOvershoot   = g_bot_aim_overshoot->value;
+    aimSettleSpeed = g_bot_aim_settle_speed->value;
+    aimNoise       = g_bot_aim_noise->value;
+    aimLerpSpeed   = g_bot_aim_lerp_speed->value;
 
-    attackReactMinDelay          = g_bot_attack_react_min_delay->value;
-    attackReactRandomDelay       = g_bot_attack_react_random_delay->value;
-    attackBurstMinTime           = g_bot_attack_burst_min_time->value;
-    attackBurstRandomDelay       = g_bot_attack_burst_random_delay->value;
-    attackContinuousFireMinTime  = g_bot_attack_continuousfire_min_firetime->value;
+    attackReactMinDelay            = g_bot_attack_react_min_delay->value;
+    attackReactRandomDelay         = g_bot_attack_react_random_delay->value;
+    attackBurstMinTime             = g_bot_attack_burst_min_time->value;
+    attackBurstRandomDelay         = g_bot_attack_burst_random_delay->value;
+    attackContinuousFireMinTime    = g_bot_attack_continuousfire_min_firetime->value;
     attackContinuousFireRandomTime = g_bot_attack_continuousfire_random_firetime->value;
-    attackSpreadMult             = g_bot_attack_spreadmult->value;
-    crouchChance                 = g_bot_crouch_chance->integer;
+    attackSpreadMult               = g_bot_attack_spreadmult->value;
+    crouchChance                   = g_bot_crouch_chance->integer;
 
     grenadeAvoidRadius = g_bot_grenade_avoid_radius->value;
 
@@ -151,23 +149,23 @@ void BotParams::InitFromCvars()
 void BotParams::ApplyPersonality(const BotPersonality& personality)
 {
     // Accuracy: higher = less noise, less spread, faster settle, less overshoot
-    float accuracyMult    = 1.5f - personality.accuracy;       // 1.0 at 0.5, 0.7 at 0.8
-    float accuracyInvMult = 0.5f + personality.accuracy;       // 1.0 at 0.5, 1.3 at 0.8
-    aimNoise         *= accuracyMult;
-    aimOvershoot     *= accuracyMult;
+    float accuracyMult    = 1.5f - personality.accuracy; // 1.0 at 0.5, 0.7 at 0.8
+    float accuracyInvMult = 0.5f + personality.accuracy; // 1.0 at 0.5, 1.3 at 0.8
+    aimNoise *= accuracyMult;
+    aimOvershoot *= accuracyMult;
     attackSpreadMult *= accuracyMult;
-    aimSettleSpeed   *= accuracyInvMult;
+    aimSettleSpeed *= accuracyInvMult;
 
     // Aggression: higher = faster reactions, shorter idle pauses
-    float aggroMult    = 1.5f - personality.aggression;        // 1.0 at 0.5, 0.6 at 0.9
-    float aggroInvMult = 0.5f + personality.aggression;        // 1.0 at 0.5, 1.4 at 0.9
-    attackReactMinDelay    *= aggroMult;
+    float aggroMult    = 1.5f - personality.aggression; // 1.0 at 0.5, 0.6 at 0.9
+    float aggroInvMult = 0.5f + personality.aggression; // 1.0 at 0.5, 1.4 at 0.9
+    attackReactMinDelay *= aggroMult;
     attackReactRandomDelay *= aggroMult;
-    beliefEventWeight      *= aggroInvMult;
+    beliefEventWeight *= aggroInvMult;
 
     // Patience: higher = longer idle behavior, more visit penalty (explores less)
     // Lower patience = shorter burst pauses (more aggressive firing)
-    float patienceMult = 0.5f + personality.patience;          // 1.0 at 0.5, 1.4 at 0.9
+    float patienceMult = 0.5f + personality.patience; // 1.0 at 0.5, 1.4 at 0.9
     beliefVisitPenalty *= 1.5f - personality.patience;
     beliefNoveltyBonus *= 1.5f - personality.patience;
 
@@ -183,13 +181,19 @@ void BotParams::ApplyPersonality(const BotPersonality& personality)
     strafeChance       = (int)(100 * (1.0f - personality.patience * 0.9f));
 }
 
-BotController::botfunc_t BotController::botfuncs[MAX_BOT_FUNCTIONS];
-
 BotController::BotController()
 {
     if (LoadingSavegame) {
         return;
     }
+
+    // Added in OPM
+    //  Zero the state array before calling InitStates so slots are clean
+    //  even if InitStates only fills some of them.
+    for (int i = 0; i < MAX_BOT_FUNCTIONS; i++) {
+        m_states[i] = nullptr;
+    }
+    InitStates();
 
     m_botCmd.serverTime = 0;
     m_botCmd.msec       = 0;
@@ -228,6 +232,13 @@ BotController::~BotController()
         controlledEnt->delegate_killed.Remove(delegateHandle_killed);
         controlledEnt->delegate_stufftext.Remove(delegateHandle_stufftext);
         controlledEnt->delegate_spawned.Remove(delegateHandle_spawned);
+    }
+
+    // Added in OPM
+    //  Delete state instances owned by this controller.
+    for (int i = 0; i < MAX_BOT_FUNCTIONS; i++) {
+        delete m_states[i];
+        m_states[i] = nullptr;
     }
 }
 
@@ -321,19 +332,10 @@ void BotController::DrawDebugBeliefs()
     }
 }
 
-void BotController::Init(void)
-{
-    for (int i = 0; i < MAX_BOT_FUNCTIONS; i++) {
-        botfuncs[i].BeginState = &BotController::State_DefaultBegin;
-        botfuncs[i].EndState   = &BotController::State_DefaultEnd;
-    }
-
-    InitState_Attack(&botfuncs[0]);
-    InitState_Curious(&botfuncs[1]);
-    InitState_Grenade(&botfuncs[2]);
-    InitState_Idle(&botfuncs[3]);
-    //InitState_Weapon(&botfuncs[4]);
-}
+// Added in OPM
+//  States are now created per-controller in InitStates() (playerbot_states.cpp).
+//  This static entry point is kept for call-site compatibility but does nothing.
+void BotController::Init(void) {}
 
 void BotController::GetUsercmd(usercmd_t *ucmd)
 {
@@ -1118,8 +1120,7 @@ void BotController::GotKill(const Event& ev)
         m_combat.attackTime = level.inttime + 500 + (int)G_Random(1000);
     }
 
-    if (m_params.instamsgChance && level.inttime >= m_iNextTauntTime
-        && (rand() % m_params.instamsgChance) == 0) {
+    if (m_params.instamsgChance && level.inttime >= m_iNextTauntTime && (rand() % m_params.instamsgChance) == 0) {
         //
         // Randomly play a taunt
         //

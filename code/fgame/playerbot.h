@@ -50,9 +50,9 @@ struct BotParams {
     int   crouchChance;
 
     // Combat positioning
-    float standStillDistance;   // Distance above which bot stops to shoot
-    float engageDistanceMin;   // Minimum distance to maintain from enemies
-    int   strafeChance;        // Chance (0-100) to strafe while firing
+    float standStillDistance; // Distance above which bot stops to shoot
+    float engageDistanceMin;  // Minimum distance to maintain from enemies
+    int   strafeChance;       // Chance (0-100) to strafe while firing
 
     // Grenade avoidance
     float grenadeAvoidRadius;
@@ -103,8 +103,8 @@ struct BotPersonality {
     int weight;
 };
 
-extern const BotPersonality  botPersonalityPool[];
-extern const int             botPersonalityPoolSize;
+extern const BotPersonality botPersonalityPool[];
+extern const int            botPersonalityPoolSize;
 
 const BotPersonality& G_GetRandomBotPersonality();
 
@@ -318,10 +318,17 @@ private:
 class BotState
 {
 public:
-    virtual bool CheckCondition() const = 0;
-    virtual void Begin()                = 0;
-    virtual void End()                  = 0;
-    virtual void Think()                = 0;
+    virtual ~BotState() {}
+
+    virtual const char *GetName() const { return "Unknown"; }
+
+    virtual bool CheckCondition() = 0;
+
+    virtual void Begin() {}
+
+    virtual void End() {}
+
+    virtual void Think() = 0;
 };
 
 // Added in OPM
@@ -445,24 +452,38 @@ struct BotIdleBehavior {
     }
 };
 
+// Added in OPM
+//  Forward declarations for concrete bot state classes.
+//  Defined in playerbot_states.cpp; BotController befriends them so they
+//  can access its private members directly.
+class BotStateIdle;
+class BotStateCurious;
+class BotStateAttack;
+class BotStateGrenade;
+class BotStateWeapon;
+
 class BotController : public Listener
 {
-public:
-    struct botfunc_t {
-        bool (BotController::*CheckCondition)(void);
-        void (BotController::*BeginState)(void);
-        void (BotController::*EndState)(void);
-        void (BotController::*ThinkState)(void);
-    };
+    // Added in OPM
+    //  Concrete state classes are defined in playerbot_states.cpp.
+    //  Friend access lets them read/write BotController internals directly
+    //  without exposing everything publicly.
+    friend class BotStateIdle;
+    friend class BotStateCurious;
+    friend class BotStateAttack;
+    friend class BotStateGrenade;
+    friend class BotStateWeapon;
 
 private:
-    static botfunc_t botfuncs[];
+    // Added in OPM
+    //  OOP state instances, one per slot. Created in InitStates(), deleted in destructor.
+    BotState *m_states[MAX_BOT_FUNCTIONS];
 
-    BotParams       m_params;
-    BotPersonality  m_personality;
-    BotMovement     movement;
-    BotRotation  rotation;
-    BotBeliefMap beliefMap;
+    BotParams      m_params;
+    BotPersonality m_personality;
+    BotMovement    movement;
+    BotRotation    rotation;
+    BotBeliefMap   beliefMap;
 
     // Grouped state structs (prevents partial-reset bugs)
     BotCombatState  m_combat;
@@ -500,36 +521,10 @@ private:
     bool CheckWindows(void);
     void CheckValidWeapon(void);
 
-    void State_DefaultBegin(void);
-    void State_DefaultEnd(void);
     void State_Reset(void);
+    bool IsValidEnemy(Sentient *sent) const;
 
-    static void InitState_Idle(botfunc_t *func);
-    bool        CheckCondition_Idle(void);
-    void        State_Idle(void);
-
-    static void InitState_Curious(botfunc_t *func);
-    bool        CheckCondition_Curious(void);
-    void        State_BeginCurious(void);
-    void        State_Curious(void);
-
-    static void InitState_Attack(botfunc_t *func);
-    bool        CheckCondition_Attack(void);
-    void        State_BeginAttack(void);
-    void        State_EndAttack(void);
-    void        State_Attack(void);
-    bool        IsValidEnemy(Sentient *sent) const;
-
-    static void InitState_Grenade(botfunc_t *func);
-    bool        CheckCondition_Grenade(void);
-    void        State_BeginGrenade(void);
-    void        State_Grenade(void);
-
-    static void InitState_Weapon(botfunc_t *func);
-    bool        CheckCondition_Weapon(void);
-    void        State_BeginWeapon(void);
-    void        State_Weapon(void);
-
+    void InitStates(void);
     void CheckStates(void);
 
 public:
@@ -562,8 +557,8 @@ public:
     void GotKill(const Event& ev);
     void EventStuffText(const str& text);
 
-    BotMovement&        GetMovement();
-    BotBeliefMap&       GetBeliefMap();
+    BotMovement&          GetMovement();
+    BotBeliefMap&         GetBeliefMap();
     const BotPersonality& GetPersonality() const;
 
     void SetPersonality(const BotPersonality& personality);
