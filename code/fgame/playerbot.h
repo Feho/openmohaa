@@ -93,6 +93,12 @@ struct BotParams {
     float sniperOverwatchMin;    // Minimum overwatch duration (seconds)
     float sniperOverwatchRandom; // Additional random overwatch time (seconds)
 
+    // Sniper behavior
+    float scopedAimScale;      // Aim noise/spread multiplier when zoomed (< 1 = tighter)
+    int   relocateKillThreshold; // Kills from same spot before relocating
+    float relocateRadius;      // How close kills must be to count as "same spot"
+    float scopeSettleDelay;    // Seconds to hold fire after scoping in for first shot
+
     // Taunts
     int   instamsgChance;
     float instamsgDelay;
@@ -376,6 +382,10 @@ struct BotCombatState {
     bool   crouching;            // Currently crouching in combat
     bool   crouchDecided;        // Whether crouch decision was made
     int    overwatchUntil;       // Hold position after kill until this time (sniper overwatch)
+    Vector sniperNestPos;        // Position where consecutive kills happened
+    int    sniperNestKills;      // Kill count from current nest position
+    bool   shouldRelocate;       // Flagged to relocate after too many kills from same spot
+    int    scopeInTime;          // When scope zoom-in completed (for settle delay)
 
     void reset()
     {
@@ -396,6 +406,10 @@ struct BotCombatState {
         crouching            = false;
         crouchDecided        = false;
         overwatchUntil       = 0;
+        sniperNestPos        = vec_zero;
+        sniperNestKills      = 0;
+        shouldRelocate       = false;
+        scopeInTime          = 0;
     }
 };
 

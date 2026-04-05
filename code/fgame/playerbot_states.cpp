@@ -84,9 +84,9 @@ bool BotStateAttack::CheckCondition()
 {
     BotController        *c           = m_controller;
     Container<Sentient *> sents       = SentientList;
-    float                 maxDistance = 0;
+    float                 maxDistance  = 0;
     Sentient             *bestEnemy   = NULL;
-    float                 bestDistSq  = 999999999.0f;
+    float                 bestScore   = -999999999.0f;
 
     bot_origin = c->controlledEnt->origin;
     sents.Sort(sentients_compare);
@@ -99,10 +99,10 @@ bool BotStateAttack::CheckCondition()
 
     //
     // Changed in OPM
-    //  Scan ALL visible enemies and pick the closest one, rather than
-    //  returning early when any enemy is found. Use 360° FOV so bots
-    //  detect enemies regardless of where they're currently looking -
-    //  a player would notice someone appearing in their peripheral vision.
+    //  Scan ALL visible enemies and score them. Scoring combines distance
+    //  (closer = better) with a bonus for stationary/crouching targets,
+    //  so snipers naturally pick the easiest shot when multiple enemies
+    //  are visible.
     //
     for (int i = 1; i <= sents.NumObjects(); i++) {
         Sentient *sent = sents.ObjectAt(i);
@@ -115,9 +115,24 @@ bool BotStateAttack::CheckCondition()
 
         // Use 360° FOV - detect enemies anywhere, not just where we're looking
         if (c->controlledEnt->CanSee(sent, 360, maxDistance, false)) {
-            if (distSq < bestDistSq) {
-                bestDistSq = distSq;
-                bestEnemy  = sent;
+            // Added in OPM
+            //  Target scoring: base score is inverse distance (closer = higher).
+            //  Stationary or slow-moving targets get a bonus scaled by the bot's
+            //  patience trait — patient bots (snipers) strongly prefer easy shots.
+            float score = -distSq;
+
+            float speed = sent->velocity.length();
+            if (speed < 20) {
+                // Standing still: large bonus
+                score += 500000 * c->m_personality.patience;
+            } else if (speed < 100) {
+                // Walking/slow: moderate bonus
+                score += 250000 * c->m_personality.patience;
+            }
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestEnemy = sent;
             }
         }
     }
@@ -230,10 +245,16 @@ void BotStateAttack::Think()
             c->m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
 
             // Added in OPM
-            //  Sniper overwatch: stay crouched, scoped, and stationary after a kill.
+            //  Sniper overwatch: stay scoped and stationary after a kill.
+            //  Crouch based on crouchChance (personality-scaled) rather than always.
             if (level.inttime < c->m_combat.overwatchUntil) {
-                c->m_botCmd.upmove    = -127; // Stay crouched
-                c->m_combat.crouching = true;
+                if (!c->m_combat.crouchDecided) {
+                    c->m_combat.crouchDecided = true;
+                    c->m_combat.crouching     = (rand() % 100 < c->m_params.crouchChance);
+                }
+                if (c->m_combat.crouching) {
+                    c->m_botCmd.upmove = -127;
+                }
                 c->movement.ClearMove();
 
                 // Keep scoped in if weapon has zoom
@@ -352,17 +373,32 @@ void BotStateAttack::Think()
                         }
                     } else {
                         // Changed in OPM
-                        //  For zoom weapons (snipers): scope in first, then fire.
+                        //  For zoom weapons (snipers): scope in first, wait for
+                        //  aim to settle, then fire. The settle delay gives the
+                        //  aim offset time to lerp toward center, making the
+                        //  first shot more accurate.
                         if (pWeap->GetZoom()) {
                             if (!c->controlledEnt->IsZoomed()) {
                                 // Zoom in first, don't fire yet
                                 c->m_botCmd.buttons |= BUTTON_ATTACKRIGHT;
                                 c->m_botCmd.buttons &= ~BUTTON_ATTACKLEFT;
+                                c->m_combat.scopeInTime = 0;
                             } else {
-                                // Zoomed in — fire
-                                bFiring = true;
-                                c->m_botCmd.buttons ^= BUTTON_ATTACKLEFT;
-                                c->m_botCmd.buttons &= ~BUTTON_ATTACKRIGHT;
+                                // Track when scope-in completed
+                                if (!c->m_combat.scopeInTime) {
+                                    c->m_combat.scopeInTime = level.inttime;
+                                }
+
+                                int settleMs = (int)(c->m_params.scopeSettleDelay * 1000);
+                                if (level.inttime < c->m_combat.scopeInTime + settleMs) {
+                                    // Settling — hold fire, let aim converge
+                                    c->m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
+                                } else {
+                                    // Settled — fire
+                                    bFiring = true;
+                                    c->m_botCmd.buttons ^= BUTTON_ATTACKLEFT;
+                                    c->m_botCmd.buttons &= ~BUTTON_ATTACKRIGHT;
+                                }
                             }
                         } else {
                             bFiring = true;
@@ -464,10 +500,38 @@ void BotStateAttack::Think()
             float fDist     = sqrt(fDistanceSquared);
             float distScale = Q_clamp_float((fDist - 256) / 768, 0.15, 1.0);
 
+            // Added in OPM
+            //  Detect head-only visibility: if the enemy's torso center is blocked
+            //  but the head (eyes bone) is visible, tighten the aim offset so the
+            //  bot doesn't scatter shots into cover below the head.
+            bool bHeadOnly = false;
+            if (bCanSee && c->m_enemy.eyesTag != -1) {
+                Vector torsoPos = c->m_enemy.enemy->origin;
+                torsoPos.z += c->m_enemy.enemy->viewheight * 0.5f;
+
+                bool bCanSeeTorso = G_SightTrace(
+                    c->controlledEnt->centroid,
+                    vec_zero,
+                    vec_zero,
+                    torsoPos,
+                    c->controlledEnt,
+                    c->m_enemy.enemy,
+                    MASK_CANSEE,
+                    qfalse,
+                    "BotStateAttack::HeadCheck"
+                );
+                bHeadOnly = !bCanSeeTorso;
+            }
+
             if (c->m_enemy.eyesTag != -1) {
                 c->m_combat.aimOffsetTarget[0] = G_CRandom(halfW) * distScale;
                 c->m_combat.aimOffsetTarget[1] = G_CRandom(halfD) * distScale;
-                c->m_combat.aimOffsetTarget[2] = -G_Random(c->m_enemy.enemy->maxs.z * 0.5) * distScale;
+                if (bHeadOnly) {
+                    // Head-only: minimal vertical scatter around the head
+                    c->m_combat.aimOffsetTarget[2] = G_CRandom(8) * distScale;
+                } else {
+                    c->m_combat.aimOffsetTarget[2] = -G_Random(c->m_enemy.enemy->maxs.z * 0.5) * distScale;
+                }
             } else {
                 c->m_combat.aimOffsetTarget[0] = G_CRandom(halfW) * distScale;
                 c->m_combat.aimOffsetTarget[1] = G_CRandom(halfD) * distScale;
@@ -491,7 +555,15 @@ void BotStateAttack::Think()
                 c->m_combat.aimOffset[2] + (c->m_combat.aimOffsetTarget[2] - c->m_combat.aimOffset[2]) * lerpFrac;
         }
 
-        c->rotation.AimAt(vTarget + c->m_combat.aimOffset * c->m_params.attackSpreadMult);
+        // Added in OPM
+        //  Scoped accuracy: reduce aim spread when zoomed in, rewarding the
+        //  bot for taking time to scope. Scale is personality-driven (accuracy trait).
+        float spreadMult = c->m_params.attackSpreadMult;
+        if (c->controlledEnt->IsZoomed()) {
+            spreadMult *= c->m_params.scopedAimScale;
+        }
+
+        c->rotation.AimAt(vTarget + c->m_combat.aimOffset * spreadMult);
     } else {
         c->AimAtAimNode();
     }
@@ -931,6 +1003,24 @@ bool BotStateIdle::CheckCondition()
 void BotStateIdle::Think()
 {
     BotController *c = m_controller;
+
+    // Added in OPM
+    //  Sniper relocation: after too many kills from the same spot, force
+    //  the bot to move to a new position via the belief map before resuming
+    //  normal idle behavior.
+    if (c->m_combat.shouldRelocate) {
+        if (c->movement.MoveToBestAttractivePoint(&c->beliefMap, 1)) {
+            c->m_combat.shouldRelocate = false;
+            c->m_idle.pausing          = false;
+
+            if (g_bot_debug_state->integer) {
+                gi.Printf("BOT %s: Relocating to new position\n", c->controlledEnt->client->pers.netname);
+            }
+        } else {
+            // No good point found, clear the flag to avoid being stuck
+            c->m_combat.shouldRelocate = false;
+        }
+    }
 
     if (c->CheckWindows()) {
         c->m_botCmd.buttons ^= BUTTON_ATTACKLEFT;
