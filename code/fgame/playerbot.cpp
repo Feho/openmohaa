@@ -234,10 +234,10 @@ void BotParams::ApplyPersonality(const BotPersonality& personality)
     // Patience: higher = stands still from shorter distance, keeps enemies farther away, strafes less
     //  standStillDistance: default 400 → sniper(0.9) = 160, rusher(0.1) = 560
     //  engageDistanceMin:  default 128 → sniper(0.9) = 416, camper(1.0) = 448
-    //  strafeChance:       default 100 → sniper(0.9) = 20,  rusher(0.1) = 100
+    //  strafeChance:       default 100 → sniper(0.9) = 19,  rusher(0.1) = 99, default(0.5) = 75
     standStillDistance = standStillDistance * (1.5f - personality.patience);
     engageDistanceMin  = 128 + 320 * personality.patience;
-    strafeChance       = (int)(100 * (1.0f - personality.patience * 0.9f));
+    strafeChance       = (int)(100 * (1.0f - personality.patience * personality.patience));
 
     // Sniper overwatch: patient bots hold position much longer after a kill
     //  sniperOverwatchMin:    patience=0.9 → 2.8s, patience=0.1 → 1.2s
