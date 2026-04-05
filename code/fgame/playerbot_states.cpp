@@ -91,7 +91,11 @@ bool BotStateAttack::CheckCondition()
     bot_origin = c->controlledEnt->origin;
     sents.Sort(sentients_compare);
 
-    maxDistance = Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828);
+    // Changed in OPM
+    //  Use per-bot vision distance (personality-scaled, cvar-overridable) instead
+    //  of the shared world AI distance. The fog cap (farplane_distance * 0.828)
+    //  is intentionally removed for bots.
+    maxDistance = c->m_params.visionDistance;
 
     //
     // Changed in OPM
@@ -237,9 +241,7 @@ void BotStateAttack::Think()
     // Changed in OPM
     //  Use 120° FOV instead of 20° so the bot recognizes enemies in peripheral
     //  vision.
-    bCanSee = c->controlledEnt->CanSee(
-        c->m_enemy.enemy, 120, Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828), false
-    );
+    bCanSee = c->controlledEnt->CanSee(c->m_enemy.enemy, 120, c->m_params.visionDistance, false);
 
     if (bCanSee) {
         if (!pWeap) {

@@ -151,6 +151,9 @@ void BotParams::InitFromCvars()
     // Death/revenge default (matched to original rand() % 5 == 0 → 20%)
     revengeChance = 20;
 
+    // Vision: use map's AI vision distance by default; cvar overrides when non-zero
+    visionDistance = (g_bot_vision_distance->value > 0) ? g_bot_vision_distance->value : world->m_fAIVisionDistance;
+
     // Combat positioning defaults
     standStillDistance = 400;
     engageDistanceMin  = 128;
@@ -169,6 +172,11 @@ void BotParams::ApplyPersonality(const BotPersonality& personality)
     aimOvershoot *= accuracyMult;
     attackSpreadMult *= accuracyMult;
     aimSettleSpeed *= accuracyInvMult;
+
+    // Added in OPM
+    //  Accurate bots (snipers) spot enemies from farther away.
+    //  visionDistance: accuracy=0.8 → 1.3x base, accuracy=0.2 → 0.7x base
+    visionDistance *= accuracyInvMult;
 
     // Aggression: higher = faster reactions, shorter idle pauses
     float aggroMult    = 1.5f - personality.aggression; // 1.0 at 0.5, 0.6 at 0.9

@@ -86,6 +86,9 @@ struct BotParams {
     // Death behavior
     int revengeChance; // 0-100 probability to hunt killer after death
 
+    // Vision
+    float visionDistance; // Max enemy detection range (units)
+
     // Taunts
     int   instamsgChance;
     float instamsgDelay;
