@@ -215,9 +215,10 @@ void BotStateAttack::Think()
     float          fMinDistance        = 128;
     float          fMinDistanceSquared = fMinDistance * fMinDistance;
     float          fEnemyDistanceSquared;
-    Weapon        *pWeap   = c->controlledEnt->GetActiveWeapon(WEAPON_MAIN);
-    bool           bNoMove = false;
-    bool           bFiring = false;
+    Weapon        *pWeap          = c->controlledEnt->GetActiveWeapon(WEAPON_MAIN);
+    bool           bNoMove        = false;
+    bool           bFiring        = false;
+    bool           bInWeaponRange = false;
 
     // Changed in OPM
     //  When enemy is gone but we recently had one, keep looking at the last
@@ -329,6 +330,10 @@ void BotStateAttack::Think()
                 //
                 // Attacking
                 //
+                // Fixed in OPM
+                //  Mark that the enemy is within weapon range so the movement
+                //  section can advance instead of standing still out of range.
+                bInWeaponRange = true;
 
                 if (pWeap->IsSemiAuto()) {
                     bool bWeaponBusy = c->controlledEnt->client->ps.iViewModelAnim != VM_ANIM_IDLE
@@ -632,8 +637,8 @@ void BotStateAttack::Think()
             awayDir.normalize();
         }
         c->movement.MoveTo(c->controlledEnt->origin + awayDir * c->m_params.engageDistanceMin);
-    } else if (bCanSee && bCanAttack && !bMelee) {
-        // In range — stop and fight, let strafing handle lateral movement
+    } else if (bCanSee && bCanAttack && !bMelee && bInWeaponRange) {
+        // In weapon range — stop and fight, let strafing handle lateral movement
         c->movement.ClearMove();
     } else if ((!c->movement.MoveToBestAttractivePoint(&c->beliefMap, 5) && !c->movement.IsMoving())
                || (c->m_enemy.oldPos != c->m_enemy.lastPos && !c->movement.MoveDone())) {
