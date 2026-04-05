@@ -72,6 +72,20 @@ struct BotParams {
     float stuckRadius;
     float stuckTime;
 
+    // Idle behavior pacing
+    int   idlePauseChance;     // 1-in-N chance per frame to start a pause (lower = more frequent)
+    float idlePauseMinTime;    // Minimum pause duration (seconds)
+    float idlePauseRandomTime; // Additional random pause time (seconds)
+    int   idleWalkChance;      // 1-in-N chance after a pause to start walking (lower = more frequent)
+    float idleWalkMinTime;     // Minimum walk duration (seconds)
+    float idleWalkRandomTime;  // Additional random walk time (seconds)
+
+    // Curiosity
+    float curiosityDuration; // How long (seconds) the bot stays curious after an event
+
+    // Death behavior
+    int revengeChance; // 0-100 probability to hunt killer after death
+
     // Taunts
     int   instamsgChance;
     float instamsgDelay;

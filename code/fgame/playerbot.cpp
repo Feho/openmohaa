@@ -137,6 +137,20 @@ void BotParams::InitFromCvars()
     instamsgChance = g_bot_instamsg_chance->integer;
     instamsgDelay  = g_bot_instamsg_delay->value;
 
+    // Idle behavior pacing defaults (matched to original hard-coded values)
+    idlePauseChance     = 400;  // rand() % 400 == 0  → ~0.25% per frame
+    idlePauseMinTime    = 1.5f; // 1500 ms
+    idlePauseRandomTime = 2.5f; // + up to 2500 ms
+    idleWalkChance      = 4;    // rand() % 4 == 0    → 25% after each pause
+    idleWalkMinTime     = 2.0f; // 2000 ms
+    idleWalkRandomTime  = 3.0f; // + up to 3000 ms
+
+    // Curiosity default (matched to original hard-coded 20 000 ms)
+    curiosityDuration = 20.0f;
+
+    // Death/revenge default (matched to original rand() % 5 == 0 → 20%)
+    revengeChance = 20;
+
     // Combat positioning defaults
     standStillDistance = 400;
     engageDistanceMin  = 128;
@@ -169,8 +183,37 @@ void BotParams::ApplyPersonality(const BotPersonality& personality)
     beliefVisitPenalty *= 1.5f - personality.patience;
     beliefNoveltyBonus *= 1.5f - personality.patience;
 
-    // Stealth: higher = more crouching
+    // Fixed in OPM
+    //  patienceMult was computed but never applied. Patient bots now hold
+    //  fire longer between bursts; rushers spray more continuously.
+    attackBurstMinTime *= patienceMult;
+    attackBurstRandomDelay *= patienceMult;
+
+    // Patience drives idle pause frequency and duration:
+    //  patient bots pause more often and longer (campers/snipers stop to scan)
+    //  idlePauseChance: patience=1.0→200 (2x more frequent), patience=0.1→560 (fewer)
+    idlePauseChance = Q_max(1, (int)(400 * (1.5f - personality.patience)));
+    idlePauseMinTime *= patienceMult;
+    idlePauseRandomTime *= patienceMult;
+
+    // Stealth: higher = more crouching, more frequent and longer walking
     crouchChance = (int)(crouchChance * (0.5f + personality.stealth));
+
+    // Fixed in OPM
+    //  stealth previously only affected crouchChance. Stealth bots now walk
+    //  far more often (lower idleWalkChance = higher probability) and longer.
+    //  idleWalkChance: stealth=0.9→2 (50% chance), stealth=0.0→6 (17% chance)
+    float stealthMult = 0.5f + personality.stealth;
+    idleWalkChance    = Q_max(1, (int)(4 * (1.5f - personality.stealth)));
+    idleWalkMinTime *= stealthMult;
+    idleWalkRandomTime *= stealthMult;
+
+    // Aggression drives curiosity duration and revenge probability:
+    //  aggressive bots investigate briefly (they'd rather fight) and always hunt killers
+    //  curiosityDuration: aggression=0.9→12s, aggression=0.1→28s
+    //  revengeChance:     aggression=0.9→92%, aggression=0.1→28%
+    curiosityDuration *= 1.5f - personality.aggression;
+    revengeChance = (int)(20 + 80 * personality.aggression);
 
     // Patience: higher = stands still from shorter distance, keeps enemies farther away, strafes less
     //  standStillDistance: default 400 → sniper(0.9) = 160, rusher(0.1) = 560
@@ -765,7 +808,10 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     case AI_EVENT_FOOTSTEP:
     case AI_EVENT_GRENADE:
     default:
-        m_curious.time      = level.inttime + 20000;
+        // Changed in OPM
+        //  Duration is now personality-driven: aggressive bots investigate briefly,
+        //  patient bots linger. See BotParams::curiosityDuration.
+        m_curious.time      = level.inttime + (int)(m_params.curiosityDuration * 1000);
         m_curious.targetPos = vPos;
         break;
     }
@@ -993,8 +1039,11 @@ void BotController::Killed(const Event& ev)
     //  Record death location in belief map — persists across respawn
     beliefMap.UpdateFromDeath(controlledEnt->origin);
 
-    if (attacker && rand() % 5 == 0) {
-        // 1/5 chance to go back to the attacker position
+    // Changed in OPM
+    //  Revenge probability is now personality-driven via revengeChance (0-100).
+    //  Aggressive bots almost always hunt their killer; patient bots rarely bother.
+    if (attacker && rand() % 100 < m_params.revengeChance) {
+        // Hunt the attacker position after respawn
         m_enemy.deathPos = attacker->origin;
     } else {
         m_enemy.deathPos = vec_zero;

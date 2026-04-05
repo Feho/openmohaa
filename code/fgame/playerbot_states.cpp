@@ -949,10 +949,13 @@ void BotStateIdle::Think()
         if (level.inttime >= c->m_idle.pauseTime) {
             // Done pausing, resume movement
             c->m_idle.pausing = false;
-            // Sometimes start walking instead of running after a pause
-            if (rand() % 4 == 0) {
+            // Changed in OPM
+            //  Walk frequency and duration are now personality-driven via
+            //  idleWalkChance/idleWalkMinTime/idleWalkRandomTime (stealth trait).
+            if (rand() % c->m_params.idleWalkChance == 0) {
                 c->m_idle.walking  = true;
-                c->m_idle.walkTime = level.inttime + 2000 + (int)G_Random(3000);
+                c->m_idle.walkTime = level.inttime + (int)(c->m_params.idleWalkMinTime * 1000)
+                                   + (int)G_Random(c->m_params.idleWalkRandomTime * 1000);
             }
         } else {
             // Look around periodically during pause
@@ -968,11 +971,14 @@ void BotStateIdle::Think()
             return;
         }
     } else {
-        // Check if we should start a pause
-        if (rand() % 400 == 0 && !c->movement.MoveToBestAttractivePoint(&c->beliefMap, 1)) {
+        // Changed in OPM
+        //  Pause frequency and duration are now personality-driven via
+        //  idlePauseChance/idlePauseMinTime/idlePauseRandomTime (patience trait).
+        if (rand() % c->m_params.idlePauseChance == 0 && !c->movement.MoveToBestAttractivePoint(&c->beliefMap, 1)) {
             c->m_idle.pausing   = true;
-            c->m_idle.pauseTime = level.inttime + 1500 + (int)G_Random(2500);
-            c->m_idle.lookTime  = level.inttime + 500;
+            c->m_idle.pauseTime = level.inttime + (int)(c->m_params.idlePauseMinTime * 1000)
+                                + (int)G_Random(c->m_params.idlePauseRandomTime * 1000);
+            c->m_idle.lookTime = level.inttime + 500;
             c->movement.ClearMove();
             return;
         }
