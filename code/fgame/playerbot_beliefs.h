@@ -78,6 +78,8 @@ public:
     int                          GetZoneCount() const;
     const Container<BeliefZone>& GetZones() const;
 
+    void PrintGrid(Vector botPos) const;
+
     bool IsInitialized() const;
 
 private:

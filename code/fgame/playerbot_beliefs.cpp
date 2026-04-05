@@ -718,3 +718,95 @@ bool BotBeliefMap::IsNearFailedTarget(Vector pos) const
 
     return false;
 }
+
+/*
+====================
+PrintGrid
+
+// Added in OPM
+//  Print the belief grid to the console as a text map.
+//  Each cell shows its belief intensity: . low, o medium, O high, X blocked.
+//  The bot's position is marked with @.
+====================
+*/
+void BotBeliefMap::PrintGrid(Vector botPos) const
+{
+    if (!m_bInitialized) {
+        gi.Printf("Belief map not initialized\n");
+        return;
+    }
+
+    int botZone = FindZoneForPos(botPos);
+    int botX    = (botZone >= 0) ? (botZone % m_iGridWidth) : -1;
+    int botY    = (botZone >= 0) ? (botZone / m_iGridWidth) : -1;
+
+    int   pathBlockDuration = (int)(m_pParams->beliefPathBlockTime * 1000.0f);
+    float maxBelief         = 0.0f;
+
+    for (int i = 1; i <= m_zones.NumObjects(); i++) {
+        if (m_zones.ObjectAt(i).belief > maxBelief) {
+            maxBelief = m_zones.ObjectAt(i).belief;
+        }
+    }
+
+    gi.Printf("Belief grid %dx%d  cell=%.0f  max=%.2f\n", m_iGridWidth, m_iGridHeight, m_fCellSize, maxBelief);
+
+    // Print top-down, Y descending so north is up
+    for (int y = m_iGridHeight - 1; y >= 0; y--) {
+        char line[256];
+        int  len = 0;
+
+        for (int x = 0; x < m_iGridWidth && len < 254; x++) {
+            int               idx  = y * m_iGridWidth + x;
+            const BeliefZone& zone = m_zones.ObjectAt(idx + 1);
+
+            bool isBlocked = zone.pathBlockedTime > 0
+                          && level.inttime - zone.pathBlockedTime < pathBlockDuration;
+            bool isFailed = IsNearFailedTarget(zone.centroid);
+
+            char c;
+            if (x == botX && y == botY) {
+                c = '@';
+            } else if (isBlocked) {
+                c = 'X';
+            } else if (isFailed) {
+                c = 'F';
+            } else if (zone.belief < 0.01f) {
+                c = '.';
+            } else if (zone.belief < 0.25f) {
+                c = 'o';
+            } else if (zone.belief < 0.5f) {
+                c = 'O';
+            } else {
+                c = '#';
+            }
+
+            line[len++] = c;
+            line[len++] = ' ';
+        }
+
+        line[len] = '\0';
+        gi.Printf("%s\n", line);
+    }
+
+    // Print failed targets
+    if (m_failedTargets.NumObjects() > 0) {
+        int stuckTime = (int)(m_pParams->stuckTime * 1000.0f);
+
+        gi.Printf("Failed targets:\n");
+        for (int i = 1; i <= m_failedTargets.NumObjects(); i++) {
+            const FailedTarget& ft      = m_failedTargets.ObjectAt(i);
+            int                 elapsed = level.inttime - ft.time;
+
+            if (elapsed < stuckTime) {
+                gi.Printf(
+                    "  (%.0f, %.0f) %ds ago, expires in %ds\n",
+                    ft.pos.x,
+                    ft.pos.y,
+                    elapsed / 1000,
+                    (stuckTime - elapsed) / 1000
+                );
+            }
+        }
+    }
+}

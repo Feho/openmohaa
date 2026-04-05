@@ -523,8 +523,18 @@ void BotController::UpdateBotStates(void)
 
     // Added in OPM
     //  Debug visualization of belief zones
+    //  Level 1: in-world debug shapes
+    //  Level 2: console grid printout (once per second)
     if (g_bot_debug_beliefs->integer) {
         DrawDebugBeliefs();
+
+        if (g_bot_debug_beliefs->integer >= 2) {
+            static int lastPrintTime = 0;
+            if (level.inttime - lastPrintTime >= 2000) {
+                lastPrintTime = level.inttime;
+                beliefMap.PrintGrid(controlledEnt->origin);
+            }
+        }
     }
 }
 
