@@ -1011,24 +1011,6 @@ void BotStateIdle::Think()
 {
     BotController *c = m_controller;
 
-    // Added in OPM
-    //  Sniper relocation: after too many kills from the same spot, force
-    //  the bot to move to a new position via the belief map before resuming
-    //  normal idle behavior.
-    if (c->m_combat.shouldRelocate) {
-        if (c->movement.MoveToBestAttractivePoint(&c->beliefMap, 1)) {
-            c->m_combat.shouldRelocate = false;
-            c->m_idle.pausing          = false;
-
-            if (g_bot_debug_state->integer) {
-                gi.Printf("BOT %s: Relocating to new position\n", c->controlledEnt->client->pers.netname);
-            }
-        } else {
-            // No good point found, clear the flag to avoid being stuck
-            c->m_combat.shouldRelocate = false;
-        }
-    }
-
     if (c->CheckWindows()) {
         c->m_botCmd.buttons ^= BUTTON_ATTACKLEFT;
         c->m_iLastFireTime = level.inttime;

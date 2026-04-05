@@ -164,10 +164,8 @@ void BotParams::InitFromCvars()
     sniperOverwatchRandom = 4.0f; // + up to 4 seconds
 
     // Sniper behavior defaults
-    scopedAimScale        = 0.5f; // 50% aim noise/spread when zoomed
-    relocateKillThreshold = 3;    // Relocate after 3 kills from same spot
-    relocateRadius        = 256;  // Kills within 256 units count as same spot
-    scopeSettleDelay      = 0.3f; // 300ms settle delay after scoping in
+    scopedAimScale   = 0.5f; // 50% aim noise/spread when zoomed
+    scopeSettleDelay = 0.3f; // 300ms settle delay after scoping in
 }
 
 // Added in OPM
@@ -255,9 +253,6 @@ void BotParams::ApplyPersonality(const BotPersonality& personality)
     //  scopeSettleDelay: patience=0.9 → 0.42s, patience=0.1 → 0.18s
     scopeSettleDelay *= patienceMult;
 
-    // Relocate threshold: patient bots are more cautious, relocate after fewer kills
-    //  relocateKillThreshold: patience=0.9 → 2, patience=0.1 → 4
-    relocateKillThreshold = Q_max(1, (int)(relocateKillThreshold * (1.5f - personality.patience)));
 }
 
 BotController::BotController()
@@ -1176,12 +1171,6 @@ void BotController::Damaged(const Event& ev)
         m_combat.attackStopAimTime = level.inttime + 2000;
         m_combat.lastUnseenTime    = level.inttime; // Start reaction delay - need time to aim
 
-        // Added in OPM
-        //  Taking damage means position is compromised — flag relocation
-        //  so the bot moves to a new spot after the fight.
-        m_combat.shouldRelocate  = true;
-        m_combat.sniperNestKills = 0;
-
         // Clear movement so we don't keep walking away from threat
         movement.ClearMove();
 
@@ -1207,35 +1196,9 @@ void BotController::GotKill(const Event& ev)
     m_curious.time  = 0;
 
     // Added in OPM
-    //  Sniper nest tracking: count kills from the same position. After
-    //  reaching the threshold, flag relocation so the bot moves to a new
-    //  vantage point instead of continuing overwatch.
-    {
-        float distFromNest = (controlledEnt->origin - m_combat.sniperNestPos).length();
-        if (distFromNest < m_params.relocateRadius && m_combat.sniperNestKills > 0) {
-            m_combat.sniperNestKills++;
-        } else {
-            m_combat.sniperNestPos   = controlledEnt->origin;
-            m_combat.sniperNestKills = 1;
-        }
-
-        if (m_combat.sniperNestKills >= m_params.relocateKillThreshold) {
-            m_combat.shouldRelocate  = true;
-            m_combat.sniperNestKills = 0;
-
-            if (g_bot_debug_state->integer) {
-                gi.Printf(
-                    "BOT %s: Relocating - too many kills from same spot\n", controlledEnt->client->pers.netname
-                );
-            }
-        }
-    }
-
-    // Added in OPM
     //  Sniper overwatch: after a kill, patient bots hold position and watch
     //  the kill zone for additional targets (like a real sniper would).
-    //  Skip overwatch if flagged to relocate — move immediately instead.
-    if (!m_combat.shouldRelocate) {
+    {
         int overwatchMs =
             (int)(m_params.sniperOverwatchMin * 1000) + (int)G_Random(m_params.sniperOverwatchRandom * 1000);
         m_combat.overwatchUntil    = level.inttime + overwatchMs;
@@ -1249,10 +1212,6 @@ void BotController::GotKill(const Event& ev)
                 overwatchMs / 1000.0f
             );
         }
-    } else {
-        // Relocate: brief scan then move
-        m_combat.attackTime        = level.inttime + 500;
-        m_combat.attackStopAimTime = level.inttime + 500;
     }
 
     if (m_params.instamsgChance && level.inttime >= m_iNextTauntTime && (rand() % m_params.instamsgChance) == 0) {
