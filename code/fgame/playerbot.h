@@ -270,9 +270,9 @@ private:
       );
 
 private:
-    SafePtr<Player>            controlledEntity;
-    IPather                   *m_pPath;
-    int                        m_iLastMoveTime;
+    SafePtr<Player> controlledEntity;
+    IPather        *m_pPath;
+    int             m_iLastMoveTime;
 
     // Core movement state
     Vector m_vCurrentOrigin;
@@ -438,16 +438,21 @@ struct BotIdleBehavior {
     int  leanDir;   // Current lean direction: -1 left, 0 none, 1 right
     bool pausing;   // Currently in idle pause
     bool walking;   // Currently walking instead of running
+    // Added in OPM
+    //  Throttle random-explore MoveTo calls when the belief map is empty and
+    //  pathfinding keeps failing, to avoid hammering the pathfinder every frame.
+    int exploreRetryTime; // Earliest time to issue the next random explore move
 
     void reset()
     {
-        pauseTime = 0;
-        lookTime  = 0;
-        walkTime  = 0;
-        leanTime  = 0;
-        leanDir   = 0;
-        pausing   = false;
-        walking   = false;
+        pauseTime        = 0;
+        lookTime         = 0;
+        walkTime         = 0;
+        leanTime         = 0;
+        leanDir          = 0;
+        pausing          = false;
+        walking          = false;
+        exploreRetryTime = 0;
     }
 };
 

@@ -712,8 +712,7 @@ void BotStateAttack::Think()
     } else if (bCanSee && bCanAttack && !bMelee && bInWeaponRange) {
         // In weapon range — stop and fight, let strafing handle lateral movement
         c->movement.ClearMove();
-    } else if (!c->movement.IsMoving()
-               || (c->m_enemy.oldPos != c->m_enemy.lastPos && !c->movement.MoveDone())) {
+    } else if (!c->movement.IsMoving() || (c->m_enemy.oldPos != c->m_enemy.lastPos && !c->movement.MoveDone())) {
         // Can't see enemy or using melee — close the distance
         c->movement.MoveTo(c->m_enemy.lastPos);
 
@@ -921,7 +920,11 @@ void BotStateIdle::Think()
         //  Idle pause gate no longer consults attractive nodes — belief spikes
         //  are handled by the m_bBeliefSpiked path below, and the unified
         //  belief map is the single source of truth for "busy area".
-        if (rand() % c->m_params.idlePauseChance == 0) {
+        // Fixed in OPM
+        //  Guard pause with !IsMoving(): before this commit MoveToBestAttractivePoint
+        //  acted as the gate (returning true = "issued a move, skip pause"). Without
+        //  that call the bot was pausing mid-patrol on every unlucky rand() roll.
+        if (!c->movement.IsMoving() && rand() % c->m_params.idlePauseChance == 0) {
             c->m_idle.pausing   = true;
             c->m_idle.pauseTime = level.inttime + (int)(c->m_params.idlePauseMinTime * 1000)
                                 + (int)G_Random(c->m_params.idlePauseRandomTime * 1000);
@@ -990,13 +993,28 @@ void BotStateIdle::Think()
                 c->m_enemy.deathPos = vec_zero;
             }
         } else {
-            Vector randomDir(G_CRandom(16), G_CRandom(16), G_CRandom(16));
-            Vector preferredDir;
-            float  radius = 512 + G_Random(2048);
+            // Fixed in OPM
+            //  Replaced AvoidPath with MoveTo + retry cooldown.
+            //  AvoidPath called NewMove() (m_bPathing = true) before checking
+            //  whether pathfinding succeeded, so when FindPathAway found no nodes
+            //  it left m_bPathing=true with a random 256-unit fallback goal.
+            //  MoveThink then unconditionally called ClearMove() (no path nodes)
+            //  but still applied forwardmove toward that goal for the frame —
+            //  causing the bot to twitch/run-in-place every frame.
+            //  MoveTo sets m_bPathing=false when no path is found, so MoveThink
+            //  exits early with forwardmove=0 and there is no visible artifact.
+            //  The cooldown prevents hammering the pathfinder on every frame when
+            //  the random destination is persistently unreachable.
+            if (level.inttime >= c->m_idle.exploreRetryTime) {
+                Vector randomDir(G_CRandom(1.0f), G_CRandom(1.0f), 0);
+                VectorNormalize2D(randomDir);
+                c->movement.MoveTo(c->controlledEnt->origin + randomDir * (512 + G_Random(1024)));
 
-            preferredDir += Vector(c->controlledEnt->orientation[0]) * (rand() % 5 ? 1024 : -1024);
-            preferredDir += Vector(c->controlledEnt->orientation[2]) * (rand() % 5 ? 1024 : -1024);
-            c->movement.AvoidPath(c->controlledEnt->origin + randomDir, radius, preferredDir);
+                if (!c->movement.IsMoving()) {
+                    // Path not found — back off and try a new direction later
+                    c->m_idle.exploreRetryTime = level.inttime + 500;
+                }
+            }
         }
     }
 }
