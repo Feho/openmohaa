@@ -65,6 +65,11 @@ public:
     void Decay(float dt);
 
     // Added in OPM
+    //  Set the owner name used to prefix debug output when
+    //  g_bot_debug_beliefs >= 3.
+    void SetDebugName(const char *name);
+
+    // Added in OPM
     //  Reset the shared visibility table on map reload.
     static void ClearSharedVisibility();
 
@@ -149,4 +154,9 @@ private:
     int m_iTargetLockTime;
 
     const BotParams *m_pParams;
+
+    // Added in OPM
+    //  Pointer to the owning bot's netname buffer for debug output prefixes.
+    //  Not owned — valid for the lifetime of the player entity.
+    const char *m_debugName;
 };

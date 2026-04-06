@@ -1237,6 +1237,7 @@ void BotController::setControlledEntity(Player *player)
     movement.SetControlledEntity(player, &m_params);
     rotation.SetControlledEntity(player, &m_params);
     beliefMap.SetParams(&m_params);
+    beliefMap.SetDebugName(player->client->pers.netname);
 
     // Added in OPM
     //  Initialize belief map from spawn point bounds. We use spawn points

@@ -146,6 +146,7 @@ BotBeliefMap::BotBeliefMap()
     , m_iCurrentTargetZone(-1)
     , m_iTargetLockTime(0)
     , m_pParams(NULL)
+    , m_debugName(NULL)
 {}
 
 // Added in OPM
@@ -158,6 +159,30 @@ void BotBeliefMap::ClearSharedVisibility()
 void BotBeliefMap::SetParams(const BotParams *params)
 {
     m_pParams = params;
+}
+
+// Added in OPM
+//  Human-readable name for an AI event type, used in belief debug output.
+static const char *AIEventTypeName(int type)
+{
+    switch (type) {
+    case AI_EVENT_WEAPON_FIRE:     return "WEAPON_FIRE";
+    case AI_EVENT_EXPLOSION:       return "EXPLOSION";
+    case AI_EVENT_FOOTSTEP:        return "FOOTSTEP";
+    case AI_EVENT_AMERICAN_VOICE:  return "AMERICAN_VOICE";
+    case AI_EVENT_GERMAN_VOICE:    return "GERMAN_VOICE";
+    case AI_EVENT_AMERICAN_URGENT: return "AMERICAN_URGENT";
+    case AI_EVENT_GERMAN_URGENT:   return "GERMAN_URGENT";
+    case AI_EVENT_GRENADE:         return "GRENADE";
+    case AI_EVENT_MISC:            return "MISC";
+    case AI_EVENT_MISC_LOUD:       return "MISC_LOUD";
+    default:                       return "UNKNOWN";
+    }
+}
+
+void BotBeliefMap::SetDebugName(const char *name)
+{
+    m_debugName = name;
 }
 
 /*
@@ -564,6 +589,20 @@ void BotBeliefMap::UpdateFromEvent(Vector pos, int iType, float fRangeFactor)
 
     int zoneIndex = FindZoneForPos(pos);
     AddBelief(zoneIndex, weight);
+
+    // Added in OPM
+    //  g_bot_debug_beliefs 3: log every significant belief update so the
+    //  player can see what the bot is hearing and how much it matters.
+    if (g_bot_debug_beliefs->integer >= 3 && m_debugName && zoneIndex >= 0 && weight >= 0.05f) {
+        const BeliefZone& zone = m_zones.ObjectAt(zoneIndex + 1);
+        gi.Printf(
+            "[%s] heard %-15s @ (%.0f %.0f %.0f)  zone %3d @ (%.0f %.0f %.0f)  +%.2f -> %.2f\n",
+            m_debugName, AIEventTypeName(iType),
+            pos.x, pos.y, pos.z,
+            zoneIndex, zone.centroid.x, zone.centroid.y, zone.centroid.z,
+            weight, zone.belief
+        );
+    }
 }
 
 /*
@@ -587,6 +626,15 @@ void BotBeliefMap::UpdateFromSighting(Vector pos)
     BeliefZone& zone    = m_zones.ObjectAt(zoneIndex + 1);
     zone.belief         = 1.0f;
     zone.lastUpdateTime = level.inttime;
+
+    // Added in OPM
+    if (g_bot_debug_beliefs->integer >= 3 && m_debugName) {
+        gi.Printf(
+            "[%s] SIGHTING @ (%.0f %.0f %.0f)  zone %3d @ (%.0f %.0f %.0f)  belief=1.00\n",
+            m_debugName, pos.x, pos.y, pos.z,
+            zoneIndex, zone.centroid.x, zone.centroid.y, zone.centroid.z
+        );
+    }
 
     // Added in OPM
     //  Seed adjacent visible zones with partial belief — an enemy that was
@@ -618,7 +666,19 @@ void BotBeliefMap::DiffuseFromZone(int zoneIndex, float baseAmount)
         }
         float dist        = (m_zones.ObjectAt(j + 1).centroid - m_zones.ObjectAt(zoneIndex + 1).centroid).length();
         float attenuation = 1.0f / (1.0f + dist / 1000.0f);
-        AddBelief(j, baseAmount * attenuation * 0.3f);
+        float amount      = baseAmount * attenuation * 0.3f;
+        AddBelief(j, amount);
+
+        // Added in OPM
+        if (g_bot_debug_beliefs->integer >= 3 && m_debugName && amount >= 0.02f) {
+            const BeliefZone& dst = m_zones.ObjectAt(j + 1);
+            gi.Printf(
+                "[%s] diffuse z%d -> z%d @ (%.0f %.0f %.0f)  +%.2f -> %.2f\n",
+                m_debugName, zoneIndex, j,
+                dst.centroid.x, dst.centroid.y, dst.centroid.z,
+                amount, dst.belief
+            );
+        }
     }
 }
 
@@ -841,6 +901,16 @@ int BotBeliefMap::GetBestZone(Vector myPos)
     //  Resolve bot zone once before the scoring loop for overwatch bonus.
     int botZone = s_visibility.IsInitialized() ? FindZoneForPos(myPos) : -1;
 
+    // Added in OPM
+    //  Track the winner's score components and runner-up for debug output.
+    bool  doDebug     = g_bot_debug_beliefs->integer >= 3 && m_debugName != NULL;
+    float winBelief   = 0, winDistFactor = 0, winVisitPenalty = 0;
+    float winNovelty  = 0, winJitter = 0;
+    int   winOverwatch = 0;
+
+    struct DebugRunner { int idx; float score; };
+    DebugRunner runner[2] = {{-1, -999.f}, {-1, -999.f}};
+
     for (int i = 1; i <= m_zones.NumObjects(); i++) {
         const BeliefZone& zone = m_zones.ObjectAt(i);
 
@@ -879,19 +949,66 @@ int BotBeliefMap::GetBestZone(Vector myPos)
         //  Overwatch bonus: zones from which many high-belief zones are
         //  visible score higher, encouraging bots to hold tactically
         //  dominant positions.
+        int oversight = 0;
         if (s_visibility.IsInitialized() && botZone >= 0) {
-            int oversight = s_visibility.CountOversightZones(i - 1, m_zones, 0.3f);
+            oversight = s_visibility.CountOversightZones(i - 1, m_zones, 0.3f);
             score += oversight * m_pParams->beliefOverwatchBonus;
         }
 
         if (score > bestScore) {
-            bestScore = score;
-            bestIndex = i - 1;
+            // Demote current winner to runner-up list before replacing it
+            if (doDebug && bestIndex >= 0) {
+                if (score > runner[0].score) {
+                    runner[1] = runner[0];
+                    runner[0] = {bestIndex, bestScore};
+                } else if (score > runner[1].score) {
+                    runner[1] = {bestIndex, bestScore};
+                }
+            }
+            bestScore       = score;
+            bestIndex       = i - 1;
+            winBelief       = zone.belief;
+            winDistFactor   = distFactor;
+            winVisitPenalty = visitPenalty;
+            winNovelty      = noveltyBonus;
+            winJitter       = jitter;
+            winOverwatch    = oversight;
+        } else if (doDebug) {
+            if (score > runner[0].score) {
+                runner[1] = runner[0];
+                runner[0] = {i - 1, score};
+            } else if (score > runner[1].score) {
+                runner[1] = {i - 1, score};
+            }
         }
     }
 
     // Update hysteresis state if we found a new target
     if (bestIndex >= 0 && bestIndex != m_iCurrentTargetZone) {
+        // Added in OPM
+        //  Print full scoring breakdown when the patrol target changes.
+        if (doDebug) {
+            const BeliefZone& wz = m_zones.ObjectAt(bestIndex + 1);
+            gi.Printf(
+                "[%s] patrol -> zone %3d @ (%.0f %.0f %.0f)  score=%.2f\n"
+                "  bel=%.2f  dist=%.2f  visitPen=%.2f  novelty=%.2f  jitter=%.2f  overwatch=%d\n",
+                m_debugName,
+                bestIndex, wz.centroid.x, wz.centroid.y, wz.centroid.z, bestScore,
+                winBelief, winDistFactor, winVisitPenalty, winNovelty, winJitter, winOverwatch
+            );
+            for (int r = 0; r < 2; r++) {
+                if (runner[r].idx < 0) {
+                    continue;
+                }
+                const BeliefZone& rz = m_zones.ObjectAt(runner[r].idx + 1);
+                gi.Printf(
+                    "  runner-up: zone %3d @ (%.0f %.0f %.0f)  score=%.2f  bel=%.2f\n",
+                    runner[r].idx, rz.centroid.x, rz.centroid.y, rz.centroid.z,
+                    runner[r].score, rz.belief
+                );
+            }
+        }
+
         m_iCurrentTargetZone = bestIndex;
         // Lock to this target for 2-4 seconds
         m_iTargetLockTime = level.inttime + 2000 + (int)G_Random(2000);
