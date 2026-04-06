@@ -955,9 +955,11 @@ void BotStateIdle::Think()
 
     // Changed in OPM
     //  Pre-aim toward highest-belief direction when not in combat.
+    //  No FOV restriction: the bot should turn toward where it heard something
+    //  regardless of current facing direction.
     {
         Vector beliefPos = c->beliefMap.GetHighestBeliefPos(c->controlledEnt->origin);
-        if (beliefPos != vec_zero && c->controlledEnt->CanSee(beliefPos, 120, 2048, false)) {
+        if (beliefPos != vec_zero) {
             c->rotation.AimAt(beliefPos);
         } else {
             c->AimAtAimNode();

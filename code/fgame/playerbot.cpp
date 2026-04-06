@@ -770,88 +770,30 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     }
 
     // Changed in OPM
-    //  Always update beliefs from enemy sounds. The belief map is the bot's
-    //  spatial awareness — it accumulates all heard information.
+    //  Bullet impacts indicate where the bullet hit, not the shooter position.
+    //  Ignore them — WEAPON_FIRE already gives the shooter's position.
+    if (iType == AI_EVENT_WEAPON_IMPACT) {
+        return;
+    }
+
+    // Changed in OPM
+    //  Uniform probability gate: range-scaled, same for all sound types.
+    //  Belief weights in UpdateFromEvent already encode relative importance
+    //  (weapon fire 0.6, footstep 0.2, etc.) so no per-type gate is needed here.
+    if (fRangeFactor < random()) {
+        return;
+    }
+
     beliefMap.UpdateFromEvent(vPos, iType, fRangeFactor);
 
-    //
     // Changed in OPM
-    //  Belief spike — gated by blocked areas and probability.
-    //  When a sound passes the gate, signal the idle state to immediately
-    //  re-evaluate its patrol target toward the new high-belief zone.
-    //
-
-    // Don't react to sounds from blocked areas
-    if (beliefMap.IsPathBlocked(vPos)) {
-        return;
-    }
-
-    // Close-range weapon fire and explosions bypass the probability gate
-    bool bypassProbability = false;
-    if (fRangeFactor > 0.7f) {
-        switch (iType) {
-        case AI_EVENT_WEAPON_FIRE:
-        case AI_EVENT_EXPLOSION:
-        case AI_EVENT_GRENADE:
-            bypassProbability = true;
-            break;
-        default:
-            break;
-        }
-    }
-
-    if (!bypassProbability && fRangeFactor < random()) {
-        return;
-    }
-
-    switch (iType) {
-    case AI_EVENT_MISC:
-    case AI_EVENT_MISC_LOUD:
-    case AI_EVENT_WEAPON_IMPACT:
-        // Ignore bullet impacts — react to WEAPON_FIRE for shooter position
-        break;
-    case AI_EVENT_WEAPON_FIRE:
-    case AI_EVENT_EXPLOSION:
-    case AI_EVENT_AMERICAN_VOICE:
-    case AI_EVENT_GERMAN_VOICE:
-    case AI_EVENT_AMERICAN_URGENT:
-    case AI_EVENT_GERMAN_URGENT:
-    case AI_EVENT_FOOTSTEP:
-    case AI_EVENT_GRENADE:
-    default:
-        // Changed in OPM
-        //  Signal the idle state to re-evaluate its patrol target.
-        //  The belief map already has the updated zone — breaking hysteresis
-        //  ensures GetBestZone picks the new high-belief zone immediately.
-        //  Cooldown prevents flip-flopping if sounds arrive from multiple
-        //  zones in quick succession: once fired, the bot commits to the
-        //  chosen zone for ~4 s before another spike can interrupt it.
-        if (level.inttime >= m_iBeliefSpikeCooldown) {
-            m_bBeliefSpiked        = true;
-            m_iBeliefSpikeCooldown = level.inttime + 4000;
-            beliefMap.ResetTargetLock();
-        }
-        break;
-    }
-
-    // Added in OPM
-    //  For close-range threat sounds, immediately turn toward the source.
-    //  A soldier would instinctively look toward nearby gunfire.
-    if (bypassProbability && !m_combat.attackTime) {
-        if (g_bot_debug_reaction->integer) {
-            gi.Printf(
-                "BOT %s: Immediate reaction to close-range sound (type=%d, rangeFactor=%.2f) at (%.0f, %.0f, %.0f)\n",
-                controlledEnt->client->pers.netname,
-                iType,
-                fRangeFactor,
-                vPos.x,
-                vPos.y,
-                vPos.z
-            );
-        }
-        rotation.AimAt(vPos);
-        movement.ClearMove();
-        m_idle.reset();
+    //  Signal the idle state to re-evaluate its patrol target toward the
+    //  new high-belief zone. Skip blocked areas (bot can't path there anyway).
+    //  Cooldown prevents flip-flopping when sounds arrive in quick succession.
+    if (!beliefMap.IsPathBlocked(vPos) && level.inttime >= m_iBeliefSpikeCooldown) {
+        m_bBeliefSpiked        = true;
+        m_iBeliefSpikeCooldown = level.inttime + 4000;
+        beliefMap.ResetTargetLock();
     }
 }
 
