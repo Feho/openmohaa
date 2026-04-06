@@ -442,6 +442,10 @@ struct BotIdleBehavior {
     //  Throttle random-explore MoveTo calls when the belief map is empty and
     //  pathfinding keeps failing, to avoid hammering the pathfinder every frame.
     int exploreRetryTime; // Earliest time to issue the next random explore move
+    // Added in OPM
+    //  Tracks when idle last reacted to a heard-sound spike so the same
+    //  event is not acted on more than once (replaces m_bBeliefSpiked flag).
+    int spikeActedTime;
 
     void reset()
     {
@@ -453,6 +457,35 @@ struct BotIdleBehavior {
         pausing          = false;
         walking          = false;
         exploreRetryTime = 0;
+        spikeActedTime   = 0;
+    }
+};
+
+// Added in OPM
+//  Single write target for all perception events.
+//  NoticeEvent and Damaged write here; state Think functions read and
+//  drive rotation/movement. No perception callback may call rotation.AimAt
+//  or movement.ClearMove directly.
+struct BotSenses {
+    Vector            heardPos;   // last significant sound position
+    int               heardType;  // AI_EVENT_* type
+    int               heardTime;  // level.inttime when heard (for decay)
+    float             heardRange; // 0-1 range factor
+
+    Vector            damagedFrom; // attacker centroid position
+    int               damagedTime; // level.inttime when hit
+    SafePtr<Sentient> damagedBy;   // attacker entity (may be NULL)
+
+    void reset()
+    {
+        heardPos   = vec_zero;
+        heardType  = 0;
+        heardTime  = 0;
+        heardRange = 0.0f;
+
+        damagedFrom = vec_zero;
+        damagedTime = 0;
+        damagedBy   = NULL;
     }
 };
 
@@ -494,15 +527,9 @@ private:
     BotIdleBehavior m_idle;
 
     // Added in OPM
-    //  Belief spike flag: set by NoticeEvent/Damaged when a sound passes the
-    //  probability gate. Tells idle patrol to immediately re-evaluate
-    //  its target instead of waiting for the current one to complete.
-    //  m_iBeliefSpikeCooldown prevents flip-flopping when sounds arrive
-    //  from multiple zones in quick succession — once a spike fires, the
-    //  bot commits to the chosen zone for ~4 seconds before another spike
-    //  can interrupt it.
-    bool m_bBeliefSpiked;
-    int  m_iBeliefSpikeCooldown;
+    //  Perception layer: all perception events write here only.
+    //  State Think functions read m_senses and own all rotation/movement writes.
+    BotSenses m_senses;
 
     // Input
     usercmd_t  m_botCmd;

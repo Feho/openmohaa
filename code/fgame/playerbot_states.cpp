@@ -160,6 +160,20 @@ bool BotStateAttack::CheckCondition()
         return true;
     }
 
+    // Added in OPM
+    //  No visible enemy — check if we were recently damaged by a valid enemy.
+    //  damagedBy is written by Damaged() into m_senses; Begin() will initialise
+    //  m_enemy and m_combat timers from it when the state is entered.
+    {
+        const BotSenses& senses = c->m_senses;
+        if (senses.damagedBy && c->IsValidEnemy(senses.damagedBy)
+            && level.inttime - senses.damagedTime < 5000
+            && !c->m_combat.attackTime) {
+            c->m_combat.attackTime = level.inttime + 100; // Begin will overwrite this
+            return true;
+        }
+    }
+
     // No visible enemy - check if we should keep hunting the last known position
     if (level.inttime > c->m_combat.attackTime) {
         if (c->m_combat.attackTime) {
@@ -180,6 +194,34 @@ void BotStateAttack::Begin()
     BotController *c = m_controller;
     c->movement.ClearMove();
     c->m_idle.reset();
+
+    // Added in OPM
+    //  Read m_senses.damagedBy to set the initial enemy when attack was
+    //  triggered by damage rather than by direct line-of-sight.
+    //  Only applies when we do not already have an enemy from CheckCondition's
+    //  visible-scan (m_enemy.enemy would already be set in that case).
+    if (!c->m_enemy.enemy) {
+        BotSenses& senses = c->m_senses;
+        if (senses.damagedBy && c->IsValidEnemy(senses.damagedBy)) {
+            if (g_bot_debug_reaction->integer) {
+                gi.Printf(
+                    "BOT %s: Attack triggered by damage from %s\n",
+                    c->controlledEnt->client->pers.netname,
+                    senses.damagedBy->IsSubclassOfPlayer()
+                        ? static_cast<Player *>(senses.damagedBy.Pointer())->client->pers.netname
+                        : senses.damagedBy->targetname.c_str()
+                );
+            }
+
+            c->m_enemy.enemy          = senses.damagedBy;
+            c->m_enemy.lastPos        = senses.damagedFrom;
+            c->m_enemy.eyesTag        = gi.Tag_NumForName(senses.damagedBy->edict->tiki, "eyes bone");
+            c->m_combat.attackTime        = senses.damagedTime + 5000;
+            c->m_combat.lastSeenTime      = level.inttime;
+            c->m_combat.attackStopAimTime = level.inttime + 2000;
+            c->m_combat.lastUnseenTime    = level.inttime;
+        }
+    }
 
     if (g_bot_debug_state->integer && c->m_enemy.enemy) {
         const char *enemyName = "unknown";
@@ -918,7 +960,7 @@ void BotStateIdle::Think()
         //  idlePauseChance/idlePauseMinTime/idlePauseRandomTime (patience trait).
         // Changed in OPM
         //  Idle pause gate no longer consults attractive nodes — belief spikes
-        //  are handled by the m_bBeliefSpiked path below, and the unified
+        //  are handled by the heard-sense path below, and the unified
         //  belief map is the single source of truth for "busy area".
         // Fixed in OPM
         //  Guard pause with !IsMoving(): before this commit MoveToBestAttractivePoint
@@ -942,15 +984,19 @@ void BotStateIdle::Think()
         c->m_idle.walking = false;
     }
 
-    // Added in OPM
-    //  Belief spike: a sound event passed the gate in NoticeEvent.
-    //  Interrupt whatever we're doing (pause or current move) and
-    //  immediately re-evaluate the patrol target so the bot reacts
-    //  without waiting for the current destination to be reached.
-    if (c->m_bBeliefSpiked) {
-        c->m_bBeliefSpiked = false;
-        c->m_idle.pausing  = false;
-        c->movement.ClearMove();
+    // Changed in OPM
+    //  React to heard-sound sense instead of m_bBeliefSpiked flag.
+    //  spikeActedTime gates repeated reactions to the same event:
+    //  fire once when heardTime is newer than the last time we acted,
+    //  and only while the sound is still recent (< 4 seconds old).
+    {
+        const BotSenses& senses = c->m_senses;
+        if (senses.heardTime > c->m_idle.spikeActedTime
+            && level.inttime - senses.heardTime < 4000) {
+            c->m_idle.spikeActedTime = level.inttime;
+            c->m_idle.pausing        = false;
+            c->movement.ClearMove();
+        }
     }
 
     // Changed in OPM
@@ -1104,8 +1150,7 @@ void BotController::State_Reset(void)
 {
     m_combat.reset();
     m_enemy.reset();
-    m_bBeliefSpiked        = false;
-    m_iBeliefSpikeCooldown = 0;
+    m_senses.reset();
 }
 
 bool BotController::IsValidEnemy(Sentient *sent) const

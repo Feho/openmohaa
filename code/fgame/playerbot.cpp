@@ -288,10 +288,9 @@ BotController::BotController()
     m_grenade.reset();
     m_idle.reset();
 
-    m_bBeliefSpiked        = false;
-    m_iBeliefSpikeCooldown = 0;
-    m_iNextTauntTime       = 0;
-    m_iLastFireTime        = 0;
+    m_senses.reset();
+    m_iNextTauntTime = 0;
+    m_iLastFireTime  = 0;
 
     m_StateFlags = 0;
 }
@@ -787,12 +786,14 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     beliefMap.UpdateFromEvent(vPos, iType, fRangeFactor);
 
     // Changed in OPM
-    //  Signal the idle state to re-evaluate its patrol target toward the
-    //  new high-belief zone. Skip blocked areas (bot can't path there anyway).
-    //  Cooldown prevents flip-flopping when sounds arrive in quick succession.
-    if (!beliefMap.IsPathBlocked(vPos) && level.inttime >= m_iBeliefSpikeCooldown) {
-        m_bBeliefSpiked        = true;
-        m_iBeliefSpikeCooldown = level.inttime + 4000;
+    //  Write to m_senses instead of m_bBeliefSpiked.
+    //  BotStateIdle::Think reacts based on heardTime age (spikeActedTime gate).
+    //  Skip path-blocked areas — the bot can't patrol there anyway.
+    if (!beliefMap.IsPathBlocked(vPos)) {
+        m_senses.heardPos   = vPos;
+        m_senses.heardType  = iType;
+        m_senses.heardTime  = level.inttime;
+        m_senses.heardRange = fRangeFactor;
         beliefMap.ResetTargetLock();
     }
 }
@@ -953,9 +954,8 @@ void BotController::UseWeaponWithAmmo()
 void BotController::Spawned(void)
 {
     ClearEnemy();
-    m_bBeliefSpiked        = false;
-    m_iBeliefSpikeCooldown = 0;
-    m_botCmd.buttons       = 0;
+    m_senses.reset();
+    m_botCmd.buttons = 0;
 
     // Added in OPM
     //  Seed belief map with enemy spawn points so bots patrol toward
@@ -1065,19 +1065,19 @@ void BotController::Damaged(const Event& ev)
     // Update belief map with attacker position - high confidence
     beliefMap.UpdateFromEvent(attacker->origin, AI_EVENT_WEAPON_FIRE, 1.0f);
 
-    // If we already have this enemy targeted and can see them, don't interrupt
+    // If we already have this enemy targeted and can see them, nothing new to report
     if (m_enemy.enemy == sentAttacker && m_combat.lastSeenTime == level.inttime) {
         return;
     }
 
-    // Immediately look toward the attacker
-    rotation.AimAt(attacker->centroid);
-
-    // If the attacker is a valid sentient enemy, enter attack mode
+    // Changed in OPM
+    //  Write to m_senses only — no rotation.AimAt, no movement.ClearMove.
+    //  BotStateAttack::CheckCondition detects damagedBy and triggers attack;
+    //  BotStateAttack::Begin reads m_senses to set up enemy tracking and timers.
     if (sentAttacker) {
         if (g_bot_debug_reaction->integer) {
             gi.Printf(
-                "BOT %s: Damaged by %s - entering attack mode, looking at (%.0f, %.0f, %.0f)\n",
+                "BOT %s: Damaged by %s at (%.0f, %.0f, %.0f) - storing in senses\n",
                 controlledEnt->client->pers.netname,
                 sentAttacker->IsSubclassOfPlayer() ? static_cast<Player *>(sentAttacker)->client->pers.netname
                                                    : sentAttacker->targetname.c_str(),
@@ -1087,29 +1087,17 @@ void BotController::Damaged(const Event& ev)
             );
         }
 
-        // Set up enemy tracking
-        m_enemy.enemy   = sentAttacker;
-        m_enemy.lastPos = sentAttacker->origin;
-        m_enemy.eyesTag = gi.Tag_NumForName(sentAttacker->edict->tiki, "eyes bone");
-
-        // Enter attack state - still need reaction time to aim before firing
-        // Being shot tells you where the threat is, but you still need to turn and aim
-        m_combat.attackTime        = level.inttime + 5000;
-        m_combat.lastSeenTime      = level.inttime;
-        m_combat.attackStopAimTime = level.inttime + 2000;
-        m_combat.lastUnseenTime    = level.inttime; // Start reaction delay - need time to aim
-
-        // Clear movement so we don't keep walking away from threat
-        movement.ClearMove();
-
-        // Clear belief spike - we have a real threat now
-        m_bBeliefSpiked = false;
+        m_senses.damagedFrom = attacker->centroid;
+        m_senses.damagedTime = level.inttime;
+        m_senses.damagedBy   = sentAttacker;
     } else {
-        // Non-sentient attacker (e.g., explosion, trap) - spike belief toward the position
+        // Non-sentient attacker (e.g., explosion, trap) — treat as a loud heard event
         beliefMap.UpdateFromEvent(attacker->origin, AI_EVENT_EXPLOSION, 1.0f);
-        if (level.inttime >= m_iBeliefSpikeCooldown) {
-            m_bBeliefSpiked        = true;
-            m_iBeliefSpikeCooldown = level.inttime + 4000;
+        if (!beliefMap.IsPathBlocked(attacker->origin)) {
+            m_senses.heardPos   = attacker->origin;
+            m_senses.heardType  = AI_EVENT_EXPLOSION;
+            m_senses.heardTime  = level.inttime;
+            m_senses.heardRange = 1.0f;
             beliefMap.ResetTargetLock();
         }
     }
