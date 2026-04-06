@@ -60,7 +60,6 @@ struct BotParams {
     // Belief map / patrol
     float beliefDecay;
     float beliefEventWeight;
-    float beliefMinPatrol;
     float beliefVisitPenalty;
     float beliefNoveltyBonus;
     float beliefScoreJitter;
@@ -69,8 +68,6 @@ struct BotParams {
 
     // Movement / stuck detection
     float progressStallTime;
-    float stuckRadius;
-    float stuckTime;
 
     // Idle behavior pacing
     int   idlePauseChance;     // 1-in-N chance per frame to start a pause (lower = more frequent)
@@ -79,9 +76,6 @@ struct BotParams {
     int   idleWalkChance;      // 1-in-N chance after a pause to start walking (lower = more frequent)
     float idleWalkMinTime;     // Minimum walk duration (seconds)
     float idleWalkRandomTime;  // Additional random walk time (seconds)
-
-    // Curiosity
-    float curiosityDuration; // How long (seconds) the bot stays curious after an event
 
     // Death behavior
     int revengeChance; // 0-100 probability to hunt killer after death
@@ -94,8 +88,8 @@ struct BotParams {
     float sniperOverwatchRandom; // Additional random overwatch time (seconds)
 
     // Sniper behavior
-    float scopedAimScale;      // Aim noise/spread multiplier when zoomed (< 1 = tighter)
-    float scopeSettleDelay;    // Seconds to hold fire after scoping in for first shot
+    float scopedAimScale;   // Aim noise/spread multiplier when zoomed (< 1 = tighter)
+    float scopeSettleDelay; // Seconds to hold fire after scoping in for first shot
 
     // Taunts
     int   instamsgChance;
@@ -427,24 +421,6 @@ struct BotEnemyState {
 };
 
 /**
- * @brief Curious state for investigating sounds/events.
- */
-struct BotCuriousState {
-    int    time;         // When curious state should expire
-    int    cooldownTime; // When cooldown ends (ignore all sounds until then)
-    Vector lastPos;      // Last curious position investigated
-    Vector targetPos;    // Current position to investigate
-
-    void reset()
-    {
-        time         = 0;
-        cooldownTime = 0;
-        lastPos      = vec_zero;
-        targetPos    = vec_zero;
-    }
-};
-
-/**
  * @brief Grenade avoidance state.
  */
 struct BotGrenadeState {
@@ -487,7 +463,6 @@ struct BotIdleBehavior {
 //  Defined in playerbot_states.cpp; BotController befriends them so they
 //  can access its private members directly.
 class BotStateIdle;
-class BotStateCurious;
 class BotStateAttack;
 class BotStateGrenade;
 class BotStateWeapon;
@@ -499,7 +474,6 @@ class BotController : public Listener
     //  Friend access lets them read/write BotController internals directly
     //  without exposing everything publicly.
     friend class BotStateIdle;
-    friend class BotStateCurious;
     friend class BotStateAttack;
     friend class BotStateGrenade;
     friend class BotStateWeapon;
@@ -518,9 +492,19 @@ private:
     // Grouped state structs (prevents partial-reset bugs)
     BotCombatState  m_combat;
     BotEnemyState   m_enemy;
-    BotCuriousState m_curious;
     BotGrenadeState m_grenade;
     BotIdleBehavior m_idle;
+
+    // Added in OPM
+    //  Belief spike flag: set by NoticeEvent/Damaged when a sound passes the
+    //  probability gate. Tells idle patrol to immediately re-evaluate
+    //  its target instead of waiting for the current one to complete.
+    //  m_iBeliefSpikeCooldown prevents flip-flopping when sounds arrive
+    //  from multiple zones in quick succession — once a spike fires, the
+    //  bot commits to the chosen zone for ~4 seconds before another spike
+    //  can interrupt it.
+    bool m_bBeliefSpiked;
+    int  m_iBeliefSpikeCooldown;
 
     // Input
     usercmd_t  m_botCmd;

@@ -123,7 +123,6 @@ void BotParams::InitFromCvars()
 
     beliefDecay         = g_bot_belief_decay->value;
     beliefEventWeight   = g_bot_belief_event_weight->value;
-    beliefMinPatrol     = g_bot_belief_min_patrol->value;
     beliefVisitPenalty  = g_bot_belief_visit_penalty->value;
     beliefNoveltyBonus  = g_bot_belief_novelty_bonus->value;
     beliefScoreJitter   = g_bot_belief_score_jitter->value;
@@ -131,8 +130,6 @@ void BotParams::InitFromCvars()
     beliefPathBlockTime = g_bot_belief_path_block_time->value;
 
     progressStallTime = g_bot_progress_stall_time->value;
-    stuckRadius       = g_bot_stuck_radius->value;
-    stuckTime         = g_bot_stuck_time->value;
 
     instamsgChance = g_bot_instamsg_chance->integer;
     instamsgDelay  = g_bot_instamsg_delay->value;
@@ -144,9 +141,6 @@ void BotParams::InitFromCvars()
     idleWalkChance      = 4;    // rand() % 4 == 0    → 25% after each pause
     idleWalkMinTime     = 2.0f; // 2000 ms
     idleWalkRandomTime  = 3.0f; // + up to 3000 ms
-
-    // Curiosity default (matched to original hard-coded 20 000 ms)
-    curiosityDuration = 20.0f;
 
     // Death/revenge default (matched to original rand() % 5 == 0 → 20%)
     revengeChance = 20;
@@ -224,11 +218,9 @@ void BotParams::ApplyPersonality(const BotPersonality& personality)
     idleWalkMinTime *= stealthMult;
     idleWalkRandomTime *= stealthMult;
 
-    // Aggression drives curiosity duration and revenge probability:
-    //  aggressive bots investigate briefly (they'd rather fight) and always hunt killers
-    //  curiosityDuration: aggression=0.9→12s, aggression=0.1→28s
-    //  revengeChance:     aggression=0.9→92%, aggression=0.1→28%
-    curiosityDuration *= 1.5f - personality.aggression;
+    // Aggression drives revenge probability:
+    //  aggressive bots always hunt killers
+    //  revengeChance: aggression=0.9→92%, aggression=0.1→28%
     revengeChance = (int)(20 + 80 * personality.aggression);
 
     // Patience: higher = stands still from shorter distance, keeps enemies farther away
@@ -254,7 +246,6 @@ void BotParams::ApplyPersonality(const BotPersonality& personality)
     // Scope settle delay: patient bots wait longer for aim to settle before first shot
     //  scopeSettleDelay: patience=0.9 → 0.42s, patience=0.1 → 0.18s
     scopeSettleDelay *= patienceMult;
-
 }
 
 BotController::BotController()
@@ -291,12 +282,13 @@ BotController::BotController()
     // Reset grouped state
     m_combat.reset();
     m_enemy.reset();
-    m_curious.reset();
     m_grenade.reset();
     m_idle.reset();
 
-    m_iNextTauntTime = 0;
-    m_iLastFireTime  = 0;
+    m_bBeliefSpiked        = false;
+    m_iBeliefSpikeCooldown = 0;
+    m_iNextTauntTime       = 0;
+    m_iLastFireTime        = 0;
 
     m_StateFlags = 0;
 }
@@ -508,11 +500,10 @@ void BotController::UpdateBotStates(void)
 
     movement.MoveThink(m_botCmd);
 
-    // Added in OPM
-    //  If movement gave up trying to reach a destination, record that target as unreachable.
-    //  Any future destination near that target will be rejected.
+    // Changed in OPM
+    //  If movement gave up trying to reach a destination, mark that zone as path-blocked.
+    //  AddFailedTarget removed — zone-level IsPathBlocked is sufficient.
     if (movement.DidGiveUpPath()) {
-        beliefMap.AddFailedTarget(movement.GetBlockedDestination());
         beliefMap.MarkPathBlocked(movement.GetBlockedDestination());
     }
 
@@ -731,7 +722,6 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
 {
     Sentient *pSentOwner;
     float     fRangeFactor;
-    Vector    delta1, delta2;
 
     fRangeFactor = 1.0 - (fDistanceSquared / fRadiusSquared);
     if (fRangeFactor < 0) {
@@ -777,47 +767,25 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     }
 
     // Changed in OPM
-    //  Always update beliefs from enemy sounds regardless of distance,
-    //  blocked areas, or whether the bot is already investigating something else.
-    //  The belief map is the bot's spatial awareness — it should
-    //  accumulate all heard information. Only the curiosity trigger
-    //  (whether to actively investigate) is gated below.
+    //  Always update beliefs from enemy sounds. The belief map is the bot's
+    //  spatial awareness — it accumulates all heard information.
     beliefMap.UpdateFromEvent(vPos, iType, fRangeFactor);
 
     //
-    // Curiosity trigger — gated by blocked areas, cooldown, and probability
+    // Changed in OPM
+    //  Belief spike — gated by blocked areas and probability.
+    //  When a sound passes the gate, signal the idle state to immediately
+    //  re-evaluate its patrol target toward the new high-belief zone.
     //
 
-    // Added in OPM
-    //  Don't investigate sounds from blocked/failed areas, but beliefs
-    //  were already updated above so spatial awareness is preserved.
-    if (beliefMap.IsPathBlocked(vPos) || beliefMap.IsNearFailedTarget(vPos)) {
+    // Don't react to sounds from blocked areas
+    if (beliefMap.IsPathBlocked(vPos)) {
         return;
     }
 
-    // Added in OPM
-    //  If we recently failed to reach a curious target, ignore curiosity for a few seconds.
-    if (m_curious.cooldownTime > level.inttime) {
-        return;
-    }
-
-    // Already curious about a closer sound? Don't switch target.
-    if (m_curious.time) {
-        delta1 = vPos - controlledEnt->origin;
-        delta2 = m_curious.targetPos - controlledEnt->origin;
-        if (delta1.lengthSquared() > delta2.lengthSquared()) {
-            return;
-        }
-    }
-
-    // Changed in OPM
-    //  Close-range weapon fire and explosions bypass the probability gate.
-    //  This ensures bots react immediately to nearby threats even if they
-    //  weren't directly hit. A soldier would always notice gunfire 10 feet away.
-    //  Note: WEAPON_IMPACT is excluded - we want the shooter position, not impact.
+    // Close-range weapon fire and explosions bypass the probability gate
     bool bypassProbability = false;
     if (fRangeFactor > 0.7f) {
-        // Close range (within ~30% of sound radius)
         switch (iType) {
         case AI_EVENT_WEAPON_FIRE:
         case AI_EVENT_EXPLOSION:
@@ -837,8 +805,7 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     case AI_EVENT_MISC:
     case AI_EVENT_MISC_LOUD:
     case AI_EVENT_WEAPON_IMPACT:
-        // Ignore bullet impacts - they indicate where the bullet hit, not where
-        // the shooter is. React to WEAPON_FIRE instead which gives shooter position.
+        // Ignore bullet impacts — react to WEAPON_FIRE for shooter position
         break;
     case AI_EVENT_WEAPON_FIRE:
     case AI_EVENT_EXPLOSION:
@@ -850,18 +817,23 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     case AI_EVENT_GRENADE:
     default:
         // Changed in OPM
-        //  Duration is now personality-driven: aggressive bots investigate briefly,
-        //  patient bots linger. See BotParams::curiosityDuration.
-        m_curious.time      = level.inttime + (int)(m_params.curiosityDuration * 1000);
-        m_curious.targetPos = vPos;
+        //  Signal the idle state to re-evaluate its patrol target.
+        //  The belief map already has the updated zone — breaking hysteresis
+        //  ensures GetBestZone picks the new high-belief zone immediately.
+        //  Cooldown prevents flip-flopping if sounds arrive from multiple
+        //  zones in quick succession: once fired, the bot commits to the
+        //  chosen zone for ~4 s before another spike can interrupt it.
+        if (level.inttime >= m_iBeliefSpikeCooldown) {
+            m_bBeliefSpiked        = true;
+            m_iBeliefSpikeCooldown = level.inttime + 4000;
+            beliefMap.ResetTargetLock();
+        }
         break;
     }
 
     // Added in OPM
     //  For close-range threat sounds, immediately turn toward the source.
-    //  Don't wait for the state machine to process it - a soldier would
-    //  instinctively look toward nearby gunfire. Skip if already in combat
-    //  (attack state handles its own aiming).
+    //  A soldier would instinctively look toward nearby gunfire.
     if (bypassProbability && !m_combat.attackTime) {
         if (g_bot_debug_reaction->integer) {
             gi.Printf(
@@ -1036,8 +1008,9 @@ void BotController::UseWeaponWithAmmo()
 void BotController::Spawned(void)
 {
     ClearEnemy();
-    m_curious.time   = 0;
-    m_botCmd.buttons = 0;
+    m_bBeliefSpiked        = false;
+    m_iBeliefSpikeCooldown = 0;
+    m_botCmd.buttons       = 0;
 
     // Added in OPM
     //  Seed belief map with enemy spawn points so bots patrol toward
@@ -1184,12 +1157,16 @@ void BotController::Damaged(const Event& ev)
         // Clear movement so we don't keep walking away from threat
         movement.ClearMove();
 
-        // Clear any curious state - we have a real threat now
-        m_curious.time = 0;
+        // Clear belief spike - we have a real threat now
+        m_bBeliefSpiked = false;
     } else {
-        // Non-sentient attacker (e.g., explosion, trap) - go curious toward the position
-        m_curious.targetPos = attacker->origin;
-        m_curious.time      = level.inttime + 5000;
+        // Non-sentient attacker (e.g., explosion, trap) - spike belief toward the position
+        beliefMap.UpdateFromEvent(attacker->origin, AI_EVENT_EXPLOSION, 1.0f);
+        if (level.inttime >= m_iBeliefSpikeCooldown) {
+            m_bBeliefSpiked        = true;
+            m_iBeliefSpikeCooldown = level.inttime + 4000;
+            beliefMap.ResetTargetLock();
+        }
     }
 }
 
@@ -1203,7 +1180,6 @@ void BotController::GotKill(const Event& ev)
     //
     m_enemy.enemy   = NULL;
     m_enemy.eyesTag = -1;
-    m_curious.time  = 0;
 
     // Added in OPM
     //  Sniper overwatch: after a kill, patient bots hold position and watch

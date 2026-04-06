@@ -758,9 +758,10 @@ bool BotMovement::MoveToBestAttractivePoint(const BotBeliefMap *beliefMap, int i
             continue;
         }
 
-        // Added in OPM
-        //  Skip attractive nodes in path-blocked zones or near failed targets
-        if (beliefMap && (beliefMap->IsPathBlocked(node->origin) || beliefMap->IsNearFailedTarget(node->origin))) {
+        // Changed in OPM
+        //  Skip attractive nodes in path-blocked zones.
+        //  IsNearFailedTarget removed — zone-level IsPathBlocked is sufficient.
+        if (beliefMap && beliefMap->IsPathBlocked(node->origin)) {
             continue;
         }
 
@@ -1148,4 +1149,3 @@ Vector BotMovement::GetBlockedDestination() const
 {
     return m_vBlockedDest;
 }
-

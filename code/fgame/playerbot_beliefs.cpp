@@ -388,15 +388,11 @@ int BotBeliefMap::GetBestZone(Vector myPos)
         //  Check if zone is path-blocked before returning it - don't keep targeting unreachable zones
         bool isBlocked =
             currentZone.pathBlockedTime > 0 && level.inttime - currentZone.pathBlockedTime < pathBlockDuration;
-        // Also check if zone is near a failed target
-        bool nearFailedTarget = IsNearFailedTarget(currentZone.centroid);
-        if (!isBlocked && !nearFailedTarget && currentZone.belief >= m_pParams->beliefMinPatrol
-            && level.inttime < m_iTargetLockTime) {
+        if (!isBlocked && currentZone.belief > 0.0f && level.inttime < m_iTargetLockTime) {
             return m_iCurrentTargetZone;
         }
     }
 
-    float minBelief = m_pParams->beliefMinPatrol;
     int   bestIndex = -1;
     float bestScore = -999.0f;
 
@@ -416,19 +412,8 @@ int BotBeliefMap::GetBestZone(Vector myPos)
             continue;
         }
 
-        // Added in OPM
-        //  Skip zones near failed target positions (unreachable areas)
-        if (IsNearFailedTarget(zone.centroid)) {
-            continue;
-        }
-
         // Novelty bonus: attract to never-visited zones (even if belief is 0)
         float noveltyBonus = (zone.visitCount == 0) ? m_pParams->beliefNoveltyBonus : 0.0f;
-
-        // Skip zones with no belief AND no novelty bonus
-        if (zone.belief < minBelief && noveltyBonus <= 0.0f) {
-            continue;
-        }
 
         // Calculate distance factor: closer zones score higher
         // Range: 1.0 (at bot position) to 0.3 (at max distance)
@@ -644,79 +629,21 @@ bool BotBeliefMap::IsPathBlocked(Vector pos) const
     return zone.pathBlockedTime > 0 && level.inttime - zone.pathBlockedTime < pathBlockDuration;
 }
 
-/*
-====================
-AddFailedTarget
-
-// Added in OPM
-//  Record a target position the bot couldn't reach. Any future destination
-//  within a large radius of this position will be rejected. This blocks
-//  entire areas (like the space behind a wall) rather than single points.
-====================
-*/
-void BotBeliefMap::AddFailedTarget(Vector targetPos)
-{
-    int   stuckTime = (int)(m_pParams->stuckTime * 1000.0f);
-    float radius    = m_pParams->stuckRadius;
-
-    // Remove expired entries
-    for (int i = m_failedTargets.NumObjects(); i >= 1; i--) {
-        if (level.inttime - m_failedTargets.ObjectAt(i).time > stuckTime) {
-            m_failedTargets.RemoveObjectAt(i);
-        }
-    }
-
-    // Check if we already have a failed target nearby (avoid duplicates)
-    float radiusSq = radius * radius;
-    for (int i = 1; i <= m_failedTargets.NumObjects(); i++) {
-        Vector delta = m_failedTargets.ObjectAt(i).pos - targetPos;
-        if (delta.lengthXYSquared() < radiusSq) {
-            // Update existing entry's time
-            m_failedTargets.ObjectAt(i).time = level.inttime;
-            return;
-        }
-    }
-
-    // Add new failed target
-    FailedTarget ft;
-    ft.pos  = targetPos;
-    ft.time = level.inttime;
-    m_failedTargets.AddObject(ft);
-}
+// Removed in OPM
+//  AddFailedTarget and IsNearFailedTarget removed — the failed target system
+//  poisoned large map areas. Zone-level IsPathBlocked is sufficient.
 
 /*
 ====================
-IsNearFailedTarget
+ResetTargetLock
 
 // Added in OPM
-//  Check if a position is near any failed target. Used to reject destinations
-//  that are close to places the bot already knows it can't reach.
+//  Break hysteresis so GetBestZone re-evaluates on the next call.
 ====================
 */
-bool BotBeliefMap::IsNearFailedTarget(Vector pos) const
+void BotBeliefMap::ResetTargetLock()
 {
-    if (m_failedTargets.NumObjects() == 0) {
-        return false;
-    }
-
-    int   stuckTime = (int)(m_pParams->stuckTime * 1000.0f);
-    float radiusSq  = m_pParams->stuckRadius * m_pParams->stuckRadius;
-
-    for (int i = 1; i <= m_failedTargets.NumObjects(); i++) {
-        const FailedTarget& ft = m_failedTargets.ObjectAt(i);
-
-        // Skip expired entries
-        if (level.inttime - ft.time > stuckTime) {
-            continue;
-        }
-
-        Vector delta = ft.pos - pos;
-        if (delta.lengthXYSquared() < radiusSq) {
-            return true;
-        }
-    }
-
-    return false;
+    m_iTargetLockTime = 0;
 }
 
 /*
@@ -762,15 +689,12 @@ void BotBeliefMap::PrintGrid(Vector botPos) const
 
             bool isBlocked = zone.pathBlockedTime > 0
                           && level.inttime - zone.pathBlockedTime < pathBlockDuration;
-            bool isFailed = IsNearFailedTarget(zone.centroid);
 
             char c;
             if (x == botX && y == botY) {
                 c = '@';
             } else if (isBlocked) {
                 c = 'X';
-            } else if (isFailed) {
-                c = 'F';
             } else if (zone.belief < 0.01f) {
                 c = '.';
             } else if (zone.belief < 0.25f) {
@@ -789,24 +713,4 @@ void BotBeliefMap::PrintGrid(Vector botPos) const
         gi.Printf("%s\n", line);
     }
 
-    // Print failed targets
-    if (m_failedTargets.NumObjects() > 0) {
-        int stuckTime = (int)(m_pParams->stuckTime * 1000.0f);
-
-        gi.Printf("Failed targets:\n");
-        for (int i = 1; i <= m_failedTargets.NumObjects(); i++) {
-            const FailedTarget& ft      = m_failedTargets.ObjectAt(i);
-            int                 elapsed = level.inttime - ft.time;
-
-            if (elapsed < stuckTime) {
-                gi.Printf(
-                    "  (%.0f, %.0f) %ds ago, expires in %ds\n",
-                    ft.pos.x,
-                    ft.pos.y,
-                    elapsed / 1000,
-                    (stuckTime - elapsed) / 1000
-                );
-            }
-        }
-    }
 }

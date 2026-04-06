@@ -84,7 +84,7 @@ bool BotStateAttack::CheckCondition()
 {
     BotController        *c           = m_controller;
     Container<Sentient *> sents       = SentientList;
-    float                 maxDistance  = 0;
+    float                 maxDistance = 0;
     Sentient             *bestEnemy   = NULL;
     float                 bestScore   = -999999999.0f;
 
@@ -566,7 +566,7 @@ void BotStateAttack::Think()
             float targetSpeed = c->m_enemy.enemy->velocity.length();
             // Full scoped benefit at speed 0, no benefit above 200 units/s
             float movePenalty = Q_clamp_float(targetSpeed / 200.0f, 0.0f, 1.0f);
-            float scopeScale = c->m_params.scopedAimScale + (1.0f - c->m_params.scopedAimScale) * movePenalty;
+            float scopeScale  = c->m_params.scopedAimScale + (1.0f - c->m_params.scopedAimScale) * movePenalty;
             spreadMult *= scopeScale;
         }
 
@@ -731,138 +731,6 @@ void BotStateAttack::Think()
 
 /*
 ===========================================================================
-BotStateCurious
-===========================================================================
-*/
-
-class BotStateCurious : public BotState
-{
-    BotController *m_controller;
-
-public:
-    BotStateCurious(BotController *controller)
-        : m_controller(controller)
-    {}
-
-    const char *GetName() const override { return "Curious"; }
-
-    bool CheckCondition() override;
-    void Begin() override;
-    void Think() override;
-};
-
-bool BotStateCurious::CheckCondition()
-{
-    BotController *c = m_controller;
-
-    if (c->m_combat.attackTime) {
-        c->m_curious.time = 0;
-        return false;
-    }
-
-    if (level.inttime > c->m_curious.time) {
-        if (c->m_curious.time) {
-            c->movement.ClearMove();
-            c->m_curious.time = 0;
-        }
-
-        return false;
-    }
-
-    return true;
-}
-
-// Added in OPM
-//  Clear idle state and movement when entering curious mode.
-//  Immediately turn toward the sound source.
-void BotStateCurious::Begin()
-{
-    BotController *c = m_controller;
-    c->movement.ClearMove();
-    c->m_idle.reset();
-
-    // Immediately look toward the sound source
-    // Prefer the specific sound location over the general belief map area
-    Vector targetPos = c->m_curious.targetPos;
-    if (targetPos == vec_zero) {
-        targetPos = c->beliefMap.GetHighestBeliefPos(c->controlledEnt->origin);
-    }
-    if (targetPos != vec_zero) {
-        c->rotation.AimAt(targetPos);
-    }
-}
-
-void BotStateCurious::Think()
-{
-    BotController *c = m_controller;
-
-    if (c->CheckWindows()) {
-        c->m_botCmd.buttons ^= BUTTON_ATTACKLEFT;
-        c->m_iLastFireTime = level.inttime;
-    } else {
-        c->m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
-    }
-
-    // Changed in OPM
-    //  Turn toward the sound source if visible, otherwise look along the path.
-    {
-        Vector targetPos = (c->m_curious.targetPos != vec_zero)
-                             ? c->m_curious.targetPos
-                             : c->beliefMap.GetHighestBeliefPos(c->controlledEnt->origin);
-
-        if (targetPos != vec_zero && c->controlledEnt->CanSee(targetPos, 120, 2048, false)) {
-            // Can see the target position - aim at it
-            c->rotation.AimAt(targetPos);
-        } else if (c->movement.IsMoving()) {
-            // Can't see target, but we're moving - look along path
-            c->AimAtAimNode();
-        } else if (targetPos != vec_zero) {
-            // Not moving and can't see - still face the target direction
-            c->rotation.AimAt(targetPos);
-        }
-    }
-
-    // Changed in OPM
-    //  In Curious state, prioritize investigating the sound location over
-    //  wandering to attractive points.
-    {
-        Vector beliefPos = c->beliefMap.GetHighestBeliefPos(c->controlledEnt->origin);
-        Vector targetPos = (c->m_curious.targetPos != vec_zero) ? c->m_curious.targetPos : beliefPos;
-
-        // Added in OPM
-        //  Don't try to investigate path-blocked zones or failed targets
-        if (targetPos != vec_zero
-            && (c->beliefMap.IsPathBlocked(targetPos) || c->beliefMap.IsNearFailedTarget(targetPos))) {
-            c->m_curious.time = 0;
-            return;
-        }
-
-        if (targetPos != vec_zero && c->m_curious.lastPos != targetPos) {
-            c->movement.MoveNear(targetPos, 512);
-            c->m_curious.lastPos = targetPos;
-        }
-    }
-
-    if (c->movement.MoveDone()) {
-        float distToTarget = (c->m_curious.targetPos - c->controlledEnt->origin).length();
-
-        // Added in OPM
-        //  If we finished moving but are still far from the target, the target is
-        //  probably unreachable. Mark it as failed and set a cooldown.
-        if (distToTarget > 100) {
-            c->beliefMap.AddFailedTarget(c->m_curious.targetPos);
-            c->m_curious.time         = 0;
-            c->m_curious.cooldownTime = level.inttime + 5000; // 5 second cooldown
-        } else {
-            // Actually arrived close to target
-            c->beliefMap.ClearZone(c->controlledEnt->origin);
-            c->m_curious.time = 0;
-        }
-    }
-}
-
-/*
-===========================================================================
 BotStateGrenade
 ===========================================================================
 */
@@ -996,10 +864,6 @@ bool BotStateIdle::CheckCondition()
 {
     BotController *c = m_controller;
 
-    if (c->m_curious.time) {
-        return false;
-    }
-
     if (c->m_combat.attackTime) {
         return false;
     }
@@ -1071,6 +935,17 @@ void BotStateIdle::Think()
         c->m_idle.walking = false;
     }
 
+    // Added in OPM
+    //  Belief spike: a sound event passed the gate in NoticeEvent.
+    //  Interrupt whatever we're doing (pause or current move) and
+    //  immediately re-evaluate the patrol target so the bot reacts
+    //  without waiting for the current destination to be reached.
+    if (c->m_bBeliefSpiked) {
+        c->m_bBeliefSpiked = false;
+        c->m_idle.pausing  = false;
+        c->movement.ClearMove();
+    }
+
     // Changed in OPM
     //  Pre-aim toward highest-belief direction when not in combat.
     {
@@ -1133,7 +1008,7 @@ BotController — state management
 void BotController::InitStates()
 {
     m_states[0] = new BotStateAttack(this);
-    m_states[1] = new BotStateCurious(this);
+    m_states[1] = nullptr; // Removed in OPM — curious state replaced by belief-map-driven patrol
     m_states[2] = new BotStateGrenade(this);
     m_states[3] = new BotStateIdle(this);
     m_states[4] = nullptr; // Weapon state — disabled, slot reserved
@@ -1201,9 +1076,10 @@ void BotController::CheckStates(void)
 
 void BotController::State_Reset(void)
 {
-    m_curious.reset();
     m_combat.reset();
     m_enemy.reset();
+    m_bBeliefSpiked        = false;
+    m_iBeliefSpikeCooldown = 0;
 }
 
 bool BotController::IsValidEnemy(Sentient *sent) const

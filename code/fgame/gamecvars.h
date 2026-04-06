@@ -348,15 +348,12 @@ extern "C" {
     //  Belief map: spatial probability grid for bot decision making
     extern cvar_t *g_bot_belief_decay;
     extern cvar_t *g_bot_belief_event_weight;
-    extern cvar_t *g_bot_belief_min_patrol;
     extern cvar_t *g_bot_belief_visit_penalty;
     extern cvar_t *g_bot_belief_novelty_bonus;
     extern cvar_t *g_bot_belief_score_jitter;
     extern cvar_t *g_bot_belief_visit_decay;
     extern cvar_t *g_bot_belief_path_block_time;
     extern cvar_t *g_bot_progress_stall_time;
-    extern cvar_t *g_bot_stuck_radius;
-    extern cvar_t *g_bot_stuck_time;
     extern cvar_t *g_bot_debug_beliefs;
 
     extern cvar_t *g_bot_debug_reaction;

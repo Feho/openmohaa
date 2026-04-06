@@ -24,14 +24,6 @@ struct BeliefZone {
     int    pathBlockedTime; // When path to this zone was marked blocked (0 = not blocked)
 };
 
-// Added in OPM
-//  Failed target: a position the bot tried to reach but couldn't.
-//  Any destination near this position will be rejected.
-struct FailedTarget {
-    Vector pos; // The unreachable target position
-    int    time;
-};
-
 class BotBeliefMap
 {
 public:
@@ -62,10 +54,9 @@ public:
     bool IsPathBlocked(Vector pos) const;
 
     // Added in OPM
-    //  Failed target tracking: record targets the bot couldn't reach.
-    //  Reject any destination near a failed target.
-    void AddFailedTarget(Vector targetPos);
-    bool IsNearFailedTarget(Vector pos) const;
+    //  Break hysteresis: force re-evaluation of the patrol target on the
+    //  next GetBestZone call. Used when a belief spike occurs.
+    void ResetTargetLock();
 
     // Changed in OPM
     //  Zone selection now considers distance from bot position and uses
@@ -88,7 +79,6 @@ private:
     float GetDeathDecayRate() const;
 
     Container<BeliefZone>   m_zones;
-    Container<FailedTarget> m_failedTargets;
     bool                    m_bInitialized;
     int                     m_iVisClearIndex;
 
