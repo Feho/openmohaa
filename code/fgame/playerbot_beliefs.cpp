@@ -21,6 +21,121 @@
 #include "DetourNavMesh.h"
 #include "DetourNavMeshQuery.h"
 
+// Added in OPM
+//  Static shared visibility table — one instance for all bot belief maps.
+ZoneVisibilityTable BotBeliefMap::s_visibility;
+
+/*
+====================
+ZoneVisibilityTable::Init
+
+Added in OPM
+  Allocate packed bitset storage for zoneCount x zoneCount zone pairs.
+  Each row occupies ceil(zoneCount / 32) uint32_t words.
+====================
+*/
+void ZoneVisibilityTable::Init(int zoneCount)
+{
+    m_zoneCount = zoneCount;
+    m_rowWords  = (zoneCount + 31) / 32;
+
+    int totalWords = m_rowWords * zoneCount;
+
+    m_sampled.FreeObjectList();
+    m_visible.FreeObjectList();
+
+    m_sampled.Resize(totalWords);
+    m_visible.Resize(totalWords);
+
+    for (int i = 0; i < totalWords; i++) {
+        m_sampled.AddObject(0u);
+        m_visible.AddObject(0u);
+    }
+}
+
+/*
+====================
+ZoneVisibilityTable::Clear
+
+Added in OPM
+  Zero all bitset entries without re-allocating.
+====================
+*/
+void ZoneVisibilityTable::Clear()
+{
+    for (int i = 1; i <= m_sampled.NumObjects(); i++) {
+        m_sampled.ObjectAt(i) = 0u;
+    }
+    for (int i = 1; i <= m_visible.NumObjects(); i++) {
+        m_visible.ObjectAt(i) = 0u;
+    }
+    m_zoneCount = 0;
+    m_rowWords  = 0;
+}
+
+bool ZoneVisibilityTable::IsInitialized() const
+{
+    return m_zoneCount > 0 && m_sampled.NumObjects() > 0;
+}
+
+void ZoneVisibilityTable::SetBit(Container<uint32_t>& bits, int a, int b)
+{
+    int wordIdx = a * m_rowWords + b / 32;
+    bits.ObjectAt(wordIdx + 1) |= (1u << (b % 32));
+}
+
+bool ZoneVisibilityTable::GetBit(const Container<uint32_t>& bits, int a, int b) const
+{
+    int wordIdx = a * m_rowWords + b / 32;
+    return (bits.ObjectAt(wordIdx + 1) & (1u << (b % 32))) != 0;
+}
+
+bool ZoneVisibilityTable::IsSampled(int a, int b) const
+{
+    if (a < 0 || b < 0 || a >= m_zoneCount || b >= m_zoneCount) {
+        return false;
+    }
+    return GetBit(m_sampled, a, b);
+}
+
+bool ZoneVisibilityTable::IsVisible(int a, int b) const
+{
+    if (a < 0 || b < 0 || a >= m_zoneCount || b >= m_zoneCount) {
+        return false;
+    }
+    return GetBit(m_visible, a, b);
+}
+
+void ZoneVisibilityTable::Record(int a, int b, bool visible)
+{
+    if (a < 0 || b < 0 || a >= m_zoneCount || b >= m_zoneCount) {
+        return;
+    }
+    SetBit(m_sampled, a, b);
+    SetBit(m_sampled, b, a);
+    if (visible) {
+        SetBit(m_visible, a, b);
+        SetBit(m_visible, b, a);
+    }
+}
+
+int ZoneVisibilityTable::CountOversightZones(int from, const Container<BeliefZone>& zones, float minBelief) const
+{
+    int count = 0;
+    for (int j = 0; j < m_zoneCount; j++) {
+        if (j == from) {
+            continue;
+        }
+        if (!IsSampled(from, j) || !IsVisible(from, j)) {
+            continue;
+        }
+        if (j < zones.NumObjects() && zones.ObjectAt(j + 1).belief >= minBelief) {
+            count++;
+        }
+    }
+    return count;
+}
+
 BotBeliefMap::BotBeliefMap()
     : m_bInitialized(false)
     , m_iVisClearIndex(0)
@@ -32,6 +147,13 @@ BotBeliefMap::BotBeliefMap()
     , m_iTargetLockTime(0)
     , m_pParams(NULL)
 {}
+
+// Added in OPM
+//  Reset the shared visibility table — called on map reload.
+void BotBeliefMap::ClearSharedVisibility()
+{
+    s_visibility.Clear();
+}
 
 void BotBeliefMap::SetParams(const BotParams *params)
 {
@@ -51,6 +173,11 @@ void BotBeliefMap::Init(const Vector& worldMins, const Vector& worldMaxs, float 
 {
     m_vWorldMins = worldMins;
     m_vWorldMaxs = worldMaxs;
+
+    // Added in OPM
+    //  Reset the shared visibility table on every map reload so stale
+    //  zone-pair data from the previous map does not carry over.
+    s_visibility.Clear();
 
     // Added in OPM
     //  Prefer navmesh-based zone init so centroids land on walkable surfaces
@@ -113,6 +240,10 @@ void BotBeliefMap::InitFlatGrid(const Vector& worldMins, const Vector& worldMaxs
             m_zones.AddObject(zone);
         }
     }
+
+    // Added in OPM
+    //  Initialize shared visibility table now that zone count is known.
+    s_visibility.Init(m_zones.NumObjects());
 }
 
 // Internal struct used only during navmesh zone construction.
@@ -271,6 +402,10 @@ void BotBeliefMap::InitFromNavMesh(const Vector& worldMins, const Vector& worldM
         m_iGridHeight,
         m_fCellSize
     );
+
+    // Added in OPM
+    //  Initialize shared visibility table now that zone count is known.
+    s_visibility.Init(m_zones.NumObjects());
 }
 
 /*
@@ -452,6 +587,39 @@ void BotBeliefMap::UpdateFromSighting(Vector pos)
     BeliefZone& zone    = m_zones.ObjectAt(zoneIndex + 1);
     zone.belief         = 1.0f;
     zone.lastUpdateTime = level.inttime;
+
+    // Added in OPM
+    //  Seed adjacent visible zones with partial belief — an enemy that was
+    //  spotted may retreat to a nearby zone, so pre-warm those zones.
+    DiffuseFromZone(zoneIndex, 0.4f);
+}
+
+/*
+====================
+DiffuseFromZone
+
+Added in OPM
+  Propagate partial belief from zoneIndex to all zones that are visible
+  from it according to the shared visibility table. Belief falls off with
+  distance so far-away zones receive very little seeding.
+====================
+*/
+void BotBeliefMap::DiffuseFromZone(int zoneIndex, float baseAmount)
+{
+    if (!s_visibility.IsInitialized()) {
+        return;
+    }
+    for (int j = 0; j < m_zones.NumObjects(); j++) {
+        if (j == zoneIndex) {
+            continue;
+        }
+        if (!s_visibility.IsSampled(zoneIndex, j) || !s_visibility.IsVisible(zoneIndex, j)) {
+            continue;
+        }
+        float dist        = (m_zones.ObjectAt(j + 1).centroid - m_zones.ObjectAt(zoneIndex + 1).centroid).length();
+        float attenuation = 1.0f / (1.0f + dist / 1000.0f);
+        AddBelief(j, baseAmount * attenuation * 0.3f);
+    }
 }
 
 /*
@@ -554,8 +722,11 @@ void BotBeliefMap::ClearZone(Vector pos)
 ====================
 ClearZonesVisibleFrom
 
-Periodic visibility sweep: clear belief for zones the bot can currently see
-are empty. Only checks a subset of zones per call to avoid per-frame cost.
+// Changed in OPM
+//  Periodic visibility sweep: clear belief for zones the bot can currently
+//  see are empty. Only checks a rolling window of zones per call to spread
+//  cost. Cache-first: if s_visibility has a recorded result for this zone
+//  pair, skip the raycast and use the cached result directly.
 ====================
 */
 void BotBeliefMap::ClearZonesVisibleFrom(Player *player)
@@ -566,6 +737,11 @@ void BotBeliefMap::ClearZonesVisibleFrom(Player *player)
 
     // Check a rolling window of zones each frame to spread cost
     int count = Q_min(8, m_zones.NumObjects());
+
+    // Added in OPM
+    //  Resolve the bot's current zone once for the whole window so we can
+    //  look up cached visibility results without redundant navmesh queries.
+    int botZone = FindZoneForPos(player->origin);
 
     for (int n = 0; n < count; n++) {
         int i = ((m_iVisClearIndex + n) % m_zones.NumObjects());
@@ -586,7 +762,23 @@ void BotBeliefMap::ClearZonesVisibleFrom(Player *player)
             continue;
         }
 
-        if (player->CanSee(zone.centroid, 80, 2048, false)) {
+        // Added in OPM
+        //  Cache-first: reuse a previously recorded visibility result to
+        //  skip the CanSee raycast entirely for this zone pair.
+        if (botZone >= 0 && s_visibility.IsSampled(botZone, i)) {
+            if (s_visibility.IsVisible(botZone, i)) {
+                zone.belief         = 0.0f;
+                zone.lastUpdateTime = level.inttime;
+            }
+            continue;
+        }
+
+        // Cache miss: perform the raycast and record the result.
+        bool canSee = player->CanSee(zone.centroid, 80, 2048, false);
+        if (botZone >= 0) {
+            s_visibility.Record(botZone, i, canSee);
+        }
+        if (canSee) {
             zone.belief         = 0.0f;
             zone.lastUpdateTime = level.inttime;
         }
@@ -645,6 +837,10 @@ int BotBeliefMap::GetBestZone(Vector myPos)
     // Visit decay time in milliseconds
     int visitDecayTime = (int)(m_pParams->beliefVisitDecay * 1000.0f);
 
+    // Added in OPM
+    //  Resolve bot zone once before the scoring loop for overwatch bonus.
+    int botZone = s_visibility.IsInitialized() ? FindZoneForPos(myPos) : -1;
+
     for (int i = 1; i <= m_zones.NumObjects(); i++) {
         const BeliefZone& zone = m_zones.ObjectAt(i);
 
@@ -678,6 +874,15 @@ int BotBeliefMap::GetBestZone(Vector myPos)
 
         // Final score
         float score = (zone.belief * visitPenalty * distFactor) + noveltyBonus + jitter;
+
+        // Added in OPM
+        //  Overwatch bonus: zones from which many high-belief zones are
+        //  visible score higher, encouraging bots to hold tactically
+        //  dominant positions.
+        if (s_visibility.IsInitialized() && botZone >= 0) {
+            int oversight = s_visibility.CountOversightZones(i - 1, m_zones, 0.3f);
+            score += oversight * m_pParams->beliefOverwatchBonus;
+        }
 
         if (score > bestScore) {
             bestScore = score;

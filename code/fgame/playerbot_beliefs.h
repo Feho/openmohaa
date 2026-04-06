@@ -24,6 +24,37 @@ struct BeliefZone {
     int    pathBlockedTime; // When path to this zone was marked blocked (0 = not blocked)
 };
 
+// Added in OPM
+//  Shared zone-to-zone visibility cache. Stores two packed bitsets (sampled
+//  and visible) as row-major uint32_t arrays so raycasts in
+//  ClearZonesVisibleFrom are only performed once per zone pair and then
+//  reused by all bots.
+class ZoneVisibilityTable
+{
+public:
+    void Init(int zoneCount);
+    void Clear();
+
+    bool IsSampled(int a, int b) const;
+    bool IsVisible(int a, int b) const;
+    void Record(int a, int b, bool visible);
+
+    // Added in OPM
+    //  Count zones visible from `from` whose belief >= minBelief.
+    int CountOversightZones(int from, const Container<BeliefZone>& zones, float minBelief) const;
+
+    bool IsInitialized() const;
+
+private:
+    void SetBit(Container<uint32_t>& bits, int a, int b);
+    bool GetBit(const Container<uint32_t>& bits, int a, int b) const;
+
+    int                 m_zoneCount;
+    int                 m_rowWords;
+    Container<uint32_t> m_sampled;
+    Container<uint32_t> m_visible;
+};
+
 class BotBeliefMap
 {
 public:
@@ -32,6 +63,10 @@ public:
     void SetParams(const BotParams *params);
     void Init(const Vector& worldMins, const Vector& worldMaxs, float cellSize);
     void Decay(float dt);
+
+    // Added in OPM
+    //  Reset the shared visibility table on map reload.
+    static void ClearSharedVisibility();
 
     void UpdateFromEvent(Vector pos, int iType, float fRangeFactor);
     void UpdateFromSighting(Vector pos);
@@ -82,6 +117,14 @@ private:
     //  Separate initialization paths for navmesh-based and flat-grid modes.
     void InitFromNavMesh(const Vector& worldMins, const Vector& worldMaxs, float cellSize);
     void InitFlatGrid(const Vector& worldMins, const Vector& worldMaxs, float cellSize);
+
+    // Added in OPM
+    //  Propagate partial belief from a spotted zone to adjacent visible zones.
+    void DiffuseFromZone(int zoneIndex, float baseAmount);
+
+    // Added in OPM
+    //  Shared zone-to-zone visibility table — one instance for all bots.
+    static ZoneVisibilityTable s_visibility;
 
     Container<BeliefZone>   m_zones;
     bool                    m_bInitialized;

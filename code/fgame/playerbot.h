@@ -65,6 +65,9 @@ struct BotParams {
     float beliefScoreJitter;
     float beliefVisitDecay;
     float beliefPathBlockTime;
+    // Added in OPM
+    //  Bonus score per visible high-belief zone when selecting patrol target.
+    float beliefOverwatchBonus;
 
     // Movement / stuck detection
     float progressStallTime;

@@ -128,6 +128,9 @@ void BotParams::InitFromCvars()
     beliefScoreJitter   = g_bot_belief_score_jitter->value;
     beliefVisitDecay    = g_bot_belief_visit_decay->value;
     beliefPathBlockTime = g_bot_belief_path_block_time->value;
+    // Added in OPM
+    //  Score bonus per visible high-belief zone when selecting patrol target.
+    beliefOverwatchBonus = 0.02f;
 
     progressStallTime = g_bot_progress_stall_time->value;
 
