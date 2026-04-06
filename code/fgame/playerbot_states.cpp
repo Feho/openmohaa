@@ -712,7 +712,7 @@ void BotStateAttack::Think()
     } else if (bCanSee && bCanAttack && !bMelee && bInWeaponRange) {
         // In weapon range — stop and fight, let strafing handle lateral movement
         c->movement.ClearMove();
-    } else if ((!c->movement.MoveToBestAttractivePoint(&c->beliefMap, 5) && !c->movement.IsMoving())
+    } else if (!c->movement.IsMoving()
                || (c->m_enemy.oldPos != c->m_enemy.lastPos && !c->movement.MoveDone())) {
         // Can't see enemy or using melee — close the distance
         c->movement.MoveTo(c->m_enemy.lastPos);
@@ -917,7 +917,11 @@ void BotStateIdle::Think()
         // Changed in OPM
         //  Pause frequency and duration are now personality-driven via
         //  idlePauseChance/idlePauseMinTime/idlePauseRandomTime (patience trait).
-        if (rand() % c->m_params.idlePauseChance == 0 && !c->movement.MoveToBestAttractivePoint(&c->beliefMap, 1)) {
+        // Changed in OPM
+        //  Idle pause gate no longer consults attractive nodes — belief spikes
+        //  are handled by the m_bBeliefSpiked path below, and the unified
+        //  belief map is the single source of truth for "busy area".
+        if (rand() % c->m_params.idlePauseChance == 0) {
             c->m_idle.pausing   = true;
             c->m_idle.pauseTime = level.inttime + (int)(c->m_params.idlePauseMinTime * 1000)
                                 + (int)G_Random(c->m_params.idlePauseRandomTime * 1000);
@@ -958,8 +962,10 @@ void BotStateIdle::Think()
     }
 
     // Changed in OPM
-    //  Belief-driven patrol: move toward the highest-belief zone.
-    if (!c->movement.MoveToBestAttractivePoint(&c->beliefMap) && !c->movement.IsMoving()) {
+    //  Belief-driven patrol: move toward the highest-belief zone. The belief
+    //  map is now the single source of truth — attractive nodes are injected
+    //  into it via UpdateFromAttractiveNodes.
+    if (!c->movement.IsMoving()) {
         Vector beliefPos = c->beliefMap.GetHighestBeliefPos(c->controlledEnt->origin);
         if (beliefPos != vec_zero) {
             if (g_bot_debug_state->integer >= 2) {

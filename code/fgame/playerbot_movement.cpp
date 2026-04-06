@@ -36,7 +36,6 @@ BotMovement::BotMovement()
     m_pPath          = NULL;
     m_iLastMoveTime  = 0;
     m_iCheckPathTime = 0;
-    m_fAttractTime   = 0;
     m_bPathing       = false;
 
     m_blocked.reset();
@@ -65,8 +64,6 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
     Vector vDelta;
 
     m_bGaveUpPath = false;
-
-    CheckAttractiveNodes();
 
     if (!IsMoving() || !m_pPath) {
         // Changed in OPM
@@ -322,18 +319,6 @@ Vector BotMovement::CalculateRelativeWishDirection(const Vector& dir) const
     angles.AngleVectorsLeft(&wishdir);
 
     return wishdir;
-}
-
-void BotMovement::CheckAttractiveNodes()
-{
-    for (int i = m_attractList.NumObjects(); i > 0; i--) {
-        nodeAttract_t *a = m_attractList.ObjectAt(i);
-
-        if (a->m_pNode == NULL || !a->m_pNode->CheckTeam(controlledEntity) || level.time > a->m_fRespawnTime) {
-            delete a;
-            m_attractList.RemoveObjectAt(i);
-        }
-    }
 }
 
 void BotMovement::CheckEndPos(Entity *entity)
@@ -674,113 +659,6 @@ void BotMovement::MoveTo(Vector vPos, float *vLeashHome, float fLeashRadius)
 
     m_iLastMoveTime = level.inttime;
     CheckEndPos(controlledEntity);
-}
-
-/*
-====================
-MoveToBestAttractivePoint
-
-Move to the nearest attractive point with a minimum priority
-Returns true if no attractive point was found
-====================
-*/
-bool BotMovement::MoveToBestAttractivePoint(const BotBeliefMap *beliefMap, int iMinPriority)
-{
-    Container<AttractiveNode *> list;
-    AttractiveNode             *bestNode;
-    float                       bestDistanceSquared;
-    int                         bestPriority;
-
-    if (m_pPrimaryAttract) {
-        MoveTo(m_pPrimaryAttract->origin);
-
-        if (!IsMoving()) {
-            m_pPrimaryAttract = NULL;
-        } else {
-            if (MoveDone()) {
-                if (!m_fAttractTime) {
-                    m_fAttractTime = level.time + m_pPrimaryAttract->m_fMaxStayTime;
-                }
-                if (level.time > m_fAttractTime) {
-                    nodeAttract_t *a  = new nodeAttract_t;
-                    a->m_fRespawnTime = level.time + m_pPrimaryAttract->m_fRespawnTime;
-                    a->m_pNode        = m_pPrimaryAttract;
-
-                    m_pPrimaryAttract = NULL;
-                }
-            }
-
-            return true;
-        }
-    }
-
-    if (!attractiveNodes.NumObjects()) {
-        return false;
-    }
-
-    bestNode            = NULL;
-    bestDistanceSquared = 99999999.0f;
-    bestPriority        = iMinPriority;
-
-    for (int i = attractiveNodes.NumObjects(); i > 0; i--) {
-        AttractiveNode *node = attractiveNodes.ObjectAt(i);
-        float           distSquared;
-        bool            m_bRespawning = false;
-
-        for (int j = m_attractList.NumObjects(); j > 0; j--) {
-            AttractiveNode *node2 = m_attractList.ObjectAt(j)->m_pNode;
-
-            if (node2 == node) {
-                m_bRespawning = true;
-                break;
-            }
-        }
-
-        if (m_bRespawning) {
-            continue;
-        }
-
-        if (node->m_iPriority < bestPriority) {
-            continue;
-        }
-
-        if (!node->CheckTeam(controlledEntity)) {
-            continue;
-        }
-
-        distSquared = VectorLengthSquared(controlledEntity->origin - node->origin);
-
-        if (node->m_fMaxDistanceSquared >= 0 && distSquared > node->m_fMaxDistanceSquared) {
-            continue;
-        }
-
-        if (!CanMoveTo(node->origin)) {
-            continue;
-        }
-
-        // Changed in OPM
-        //  Skip attractive nodes in path-blocked zones.
-        //  IsNearFailedTarget removed — zone-level IsPathBlocked is sufficient.
-        if (beliefMap && beliefMap->IsPathBlocked(node->origin)) {
-            continue;
-        }
-
-        if (distSquared < bestDistanceSquared) {
-            bestDistanceSquared = distSquared;
-            bestNode            = node;
-            bestPriority        = node->m_iPriority;
-        }
-    }
-
-    if (bestNode) {
-        m_pPrimaryAttract = bestNode;
-        m_fAttractTime    = 0;
-        MoveTo(bestNode->origin);
-        return true;
-    } else {
-        // No attractive point found
-        return false;
-    }
 }
 
 /*

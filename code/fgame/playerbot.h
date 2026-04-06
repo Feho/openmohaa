@@ -130,11 +130,6 @@ const BotPersonality& G_GetRandomBotPersonality();
 
 #define MAX_BOT_FUNCTIONS 5
 
-typedef struct nodeAttract_s {
-    float             m_fRespawnTime;
-    AttractiveNodePtr m_pNode;
-} nodeAttract_t;
-
 class BotController;
 
 // Added in OPM
@@ -240,7 +235,6 @@ public:
     );
     void MoveNear(Vector vNear, float fRadius, float *vLeashHome = NULL, float fLeashRadius = 0.0f);
     void MoveTo(Vector vPos, float *vLeashHome = NULL, float fLeashRadius = 0.0f);
-    bool MoveToBestAttractivePoint(const BotBeliefMap *beliefMap = NULL, int iMinPriority = 0);
 
     bool   CanMoveTo(Vector vPos) const;
     bool   MoveDone() const;
@@ -258,7 +252,6 @@ public:
 private:
     Vector CalculateDir(const Vector& delta) const;
     Vector CalculateRelativeWishDirection(const Vector& dir) const;
-    void   CheckAttractiveNodes();
     void   CheckEndPos(Entity *entity);
     void   CheckJump(usercmd_t& botcmd);
     void   CheckJumpOverEdge(usercmd_t& botcmd);
@@ -275,8 +268,6 @@ private:
 
 private:
     SafePtr<Player>            controlledEntity;
-    AttractiveNodePtr          m_pPrimaryAttract;
-    Container<nodeAttract_t *> m_attractList;
     IPather                   *m_pPath;
     int                        m_iLastMoveTime;
 
@@ -287,7 +278,6 @@ private:
     Vector m_vCurrentDir;
     Vector m_vLastCheckPos[2];
     int    m_iCheckPathTime;
-    float  m_fAttractTime;
     bool   m_bPathing;
 
     // Grouped state structs (prevents partial-reset bugs)
