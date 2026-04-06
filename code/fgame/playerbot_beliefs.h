@@ -78,6 +78,11 @@ private:
     void  AddBelief(int zoneIndex, float amount);
     float GetDeathDecayRate() const;
 
+    // Added in OPM
+    //  Separate initialization paths for navmesh-based and flat-grid modes.
+    void InitFromNavMesh(const Vector& worldMins, const Vector& worldMaxs, float cellSize);
+    void InitFlatGrid(const Vector& worldMins, const Vector& worldMaxs, float cellSize);
+
     Container<BeliefZone>   m_zones;
     bool                    m_bInitialized;
     int                     m_iVisClearIndex;
@@ -88,6 +93,13 @@ private:
     float  m_fCellSize;
     int    m_iGridWidth;
     int    m_iGridHeight;
+
+    // Added in OPM
+    //  Navmesh-based zone mode: zones are derived from Recast polygon centroids,
+    //  bucketed by XY cell + Z floor. FindZoneForPos uses findNearestPoly lookup
+    //  instead of raw XY grid arithmetic.
+    bool           m_bNavMeshMode;
+    Container<int> m_polyToZone; // poly index (within tile 0) -> zone index; -1 = no zone
 
     // Hysteresis - prevent flip-flopping between zones
     int m_iCurrentTargetZone;

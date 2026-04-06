@@ -15,6 +15,11 @@
 #include "sentient.h"
 #include "dm_manager.h"
 #include "playerstart.h"
+#include "navigation_recast_load.h"
+#include "navigation_recast_helpers.h"
+
+#include "DetourNavMesh.h"
+#include "DetourNavMeshQuery.h"
 
 BotBeliefMap::BotBeliefMap()
     : m_bInitialized(false)
@@ -22,6 +27,7 @@ BotBeliefMap::BotBeliefMap()
     , m_fCellSize(0)
     , m_iGridWidth(0)
     , m_iGridHeight(0)
+    , m_bNavMeshMode(false)
     , m_iCurrentTargetZone(-1)
     , m_iTargetLockTime(0)
     , m_pParams(NULL)
@@ -36,15 +42,47 @@ void BotBeliefMap::SetParams(const BotParams *params)
 ====================
 Init
 
-Discretize the map into a 2D grid of zones. The grid is flat (XY plane)
-since vertical variation in MOHAA maps is modest relative to cell size.
-Cell size is clamped so the total zone count stays in the ~50-200 range.
+Discretize the map into belief zones. If a valid Recast navmesh is available,
+zones are derived from navigation mesh polygons (multi-floor aware). Otherwise,
+falls back to a flat XY grid.
 ====================
 */
 void BotBeliefMap::Init(const Vector& worldMins, const Vector& worldMaxs, float cellSize)
 {
     m_vWorldMins = worldMins;
     m_vWorldMaxs = worldMaxs;
+
+    // Added in OPM
+    //  Prefer navmesh-based zone init so centroids land on walkable surfaces
+    //  and multi-floor maps get per-floor zones. If the navmesh hasn't been
+    //  built yet (sv_maxbots was 0 at map load time, so LoadWorldMap skipped
+    //  it), trigger a build now that we know there is at least one bot.
+    if (!navigationMap.IsValid() && !g_navigation_legacy->integer
+        && g_gametype->integer != GT_SINGLE_PLAYER) {
+        navigationMap.LoadWorldMap(level.m_mapfile);
+    }
+
+    if (navigationMap.IsValid()) {
+        InitFromNavMesh(worldMins, worldMaxs, cellSize);
+    } else {
+        InitFlatGrid(worldMins, worldMaxs, cellSize);
+    }
+
+    m_bInitialized = true;
+}
+
+/*
+====================
+InitFlatGrid
+
+Flat XY-grid fallback used when no navmesh is available. Zone centroids are
+pinned to mid-height of the map bbox (the pre-navmesh behavior).
+====================
+*/
+void BotBeliefMap::InitFlatGrid(const Vector& worldMins, const Vector& worldMaxs, float cellSize)
+{
+    m_bNavMeshMode = false;
+    m_polyToZone.FreeObjectList();
 
     float worldWidth  = worldMaxs.x - worldMins.x;
     float worldHeight = worldMaxs.y - worldMins.y;
@@ -75,8 +113,164 @@ void BotBeliefMap::Init(const Vector& worldMins, const Vector& worldMaxs, float 
             m_zones.AddObject(zone);
         }
     }
+}
 
-    m_bInitialized = true;
+// Internal struct used only during navmesh zone construction.
+struct ZoneBuildData {
+    float sumX, sumY, sumZ;
+    int   count;
+    int   gridX, gridY;
+};
+
+/*
+====================
+InitFromNavMesh
+
+Added in OPM
+  Build belief zones from Recast navigation mesh polygons.
+
+  Each ground polygon's centroid (in game coordinates, guaranteed walkable)
+  is bucketed by (XY grid cell, Z floor). Polys that share the same XY cell
+  and whose Z centroids are within Z_CLUSTER_THRESHOLD of an existing zone in
+  that cell are merged into it; otherwise a new zone is created. This produces
+  one zone per floor per map area rather than a single flat zone per cell.
+
+  A poly-index -> zone-index table is built so FindZoneForPos can use
+  dtNavMeshQuery::findNearestPoly for constant-time, multi-floor-correct
+  lookup instead of raw XY arithmetic.
+====================
+*/
+void BotBeliefMap::InitFromNavMesh(const Vector& worldMins, const Vector& worldMaxs, float cellSize)
+{
+    const dtNavMesh  *navMesh = navigationMap.GetNavMesh();
+    const dtMeshTile *tile   = navMesh->getTile(0);
+    if (!tile || !tile->header || tile->header->polyCount == 0) {
+        // No polys in tile 0 — degrade gracefully to flat grid
+        InitFlatGrid(worldMins, worldMaxs, cellSize);
+        return;
+    }
+
+    // Derive XY grid dimensions (same clamping as flat-grid mode)
+    float worldWidth  = worldMaxs.x - worldMins.x;
+    float worldHeight = worldMaxs.y - worldMins.y;
+    float minCellSize = Q_max(worldWidth, worldHeight) / 14.0f;
+    float maxCellSize = Q_max(worldWidth, worldHeight) / 5.0f;
+    m_fCellSize       = Q_clamp_float(cellSize, minCellSize, maxCellSize);
+    m_iGridWidth      = Q_max(1, (int)ceilf(worldWidth / m_fCellSize));
+    m_iGridHeight     = Q_max(1, (int)ceilf(worldHeight / m_fCellSize));
+
+    // Z tolerance: polys within this vertical distance share a floor zone
+    static const float Z_CLUSTER_THRESHOLD = 200.0f;
+
+    int polyCount = tile->header->polyCount;
+
+    // Pre-fill poly-to-zone map with -1 (off-mesh or unassigned)
+    m_polyToZone.FreeObjectList();
+    m_polyToZone.Resize(polyCount);
+    for (int i = 0; i < polyCount; i++) {
+        m_polyToZone.AddObject(-1);
+    }
+
+    // Accumulate zone centroids from poly centroids
+    Container<ZoneBuildData> buildData;
+
+    for (int i = 0; i < polyCount; i++) {
+        const dtPoly& poly = tile->polys[i];
+
+        // Skip off-mesh connections — they have no walkable surface
+        if (poly.getType() != DT_POLYTYPE_GROUND) {
+            continue;
+        }
+        if (poly.vertCount == 0) {
+            continue;
+        }
+
+        // Compute centroid in Recast space (X=right, Y=up, Z=-fwd)
+        float rcx = 0, rcy = 0, rcz = 0;
+        for (int v = 0; v < poly.vertCount; v++) {
+            int vi = poly.verts[v];
+            rcx += tile->verts[vi * 3 + 0];
+            rcy += tile->verts[vi * 3 + 1];
+            rcz += tile->verts[vi * 3 + 2];
+        }
+        rcx /= poly.vertCount;
+        rcy /= poly.vertCount;
+        rcz /= poly.vertCount;
+
+        // Convert centroid to game coordinates (X=right, Y=fwd, Z=up)
+        float recastPos[3] = {rcx, rcy, rcz};
+        float gamePos[3];
+        ConvertRecastToGameCoord(recastPos, gamePos);
+
+        // Determine XY grid cell for this poly
+        int gx = (int)((gamePos[0] - worldMins.x) / m_fCellSize);
+        int gy = (int)((gamePos[1] - worldMins.y) / m_fCellSize);
+        gx = Q_clamp(gx, 0, m_iGridWidth - 1);
+        gy = Q_clamp(gy, 0, m_iGridHeight - 1);
+
+        // Search for a matching zone: same XY cell, Z centroid within threshold
+        int matchedZone = -1;
+        for (int z = 1; z <= buildData.NumObjects(); z++) {
+            ZoneBuildData& zd = buildData.ObjectAt(z);
+            if (zd.gridX == gx && zd.gridY == gy) {
+                float zCentroid = zd.sumZ / zd.count;
+                if (fabsf(gamePos[2] - zCentroid) < Z_CLUSTER_THRESHOLD) {
+                    matchedZone = z - 1; // convert to 0-based
+                    break;
+                }
+            }
+        }
+
+        if (matchedZone < 0) {
+            // No matching zone — create a new one
+            ZoneBuildData zd;
+            zd.sumX  = gamePos[0];
+            zd.sumY  = gamePos[1];
+            zd.sumZ  = gamePos[2];
+            zd.count = 1;
+            zd.gridX = gx;
+            zd.gridY = gy;
+            matchedZone = buildData.NumObjects(); // 0-based index of the new entry
+            buildData.AddObject(zd);
+        } else {
+            ZoneBuildData& zd = buildData.ObjectAt(matchedZone + 1);
+            zd.sumX += gamePos[0];
+            zd.sumY += gamePos[1];
+            zd.sumZ += gamePos[2];
+            zd.count++;
+        }
+
+        m_polyToZone.ObjectAt(i + 1) = matchedZone;
+    }
+
+    // Finalize zones from accumulated sums
+    int zoneCount = buildData.NumObjects();
+    m_zones.Resize(zoneCount);
+
+    for (int i = 1; i <= zoneCount; i++) {
+        const ZoneBuildData& zd = buildData.ObjectAt(i);
+        BeliefZone zone;
+        zone.centroid.x      = zd.sumX / zd.count;
+        zone.centroid.y      = zd.sumY / zd.count;
+        zone.centroid.z      = zd.sumZ / zd.count;
+        zone.belief          = 0.0f;
+        zone.lastUpdateTime  = 0;
+        zone.visitCount      = 0;
+        zone.lastVisitTime   = 0;
+        zone.pathBlockedTime = 0;
+        m_zones.AddObject(zone);
+    }
+
+    m_bNavMeshMode = true;
+
+    gi.DPrintf(
+        "BotBeliefMap: navmesh mode — %d zones from %d polys (grid %dx%d cell=%.0f)\n",
+        zoneCount,
+        polyCount,
+        m_iGridWidth,
+        m_iGridHeight,
+        m_fCellSize
+    );
 }
 
 /*
@@ -84,7 +278,15 @@ void BotBeliefMap::Init(const Vector& worldMins, const Vector& worldMaxs, float 
 FindZoneForPos
 
 Map a world position to the zone index that contains it.
-Returns -1 if outside the grid.
+Returns -1 if no zone is found.
+
+In navmesh mode (Added in OPM):
+  Converts pos to Recast space and calls findNearestPoly. The nearest poly's
+  index is used to look up the pre-built poly-to-zone table. This handles
+  multi-floor maps correctly because each floor has its own zone.
+
+In flat-grid mode (fallback):
+  Simple XY grid arithmetic as before.
 ====================
 */
 int BotBeliefMap::FindZoneForPos(const Vector& pos) const
@@ -93,6 +295,34 @@ int BotBeliefMap::FindZoneForPos(const Vector& pos) const
         return -1;
     }
 
+    // Added in OPM
+    //  Navmesh-based lookup: use findNearestPoly to resolve which poly (and
+    //  therefore which zone) is beneath the position. Half-extents match the
+    //  player bounding box used everywhere else in the navigation system.
+    if (m_bNavMeshMode) {
+        static const float halfExtents[3] = {15.f, 47.f, 15.f};
+
+        float recastPos[3];
+        ConvertGameToRecastCoord(pos, recastPos);
+
+        dtPolyRef polyRef  = 0;
+        float     nearest[3];
+        navigationMap.GetNavMeshQuery()->findNearestPoly(
+            recastPos, halfExtents, navigationMap.GetQueryFilter(), &polyRef, nearest
+        );
+
+        if (polyRef == 0) {
+            return -1;
+        }
+
+        unsigned int polyIdx = navigationMap.GetNavMesh()->decodePolyIdPoly(polyRef);
+        if ((int)polyIdx < m_polyToZone.NumObjects()) {
+            return m_polyToZone.ObjectAt(polyIdx + 1);
+        }
+        return -1;
+    }
+
+    // Flat-grid fallback
     int x = (int)((pos.x - m_vWorldMins.x) / m_fCellSize);
     int y = (int)((pos.y - m_vWorldMins.y) / m_fCellSize);
 
@@ -342,6 +572,17 @@ void BotBeliefMap::ClearZonesVisibleFrom(Player *player)
 
         BeliefZone& zone = m_zones.ObjectAt(i + 1);
         if (zone.belief <= 0.0f) {
+            continue;
+        }
+
+        // Added in OPM
+        //  Don't clear zones that were recently reinforced by a sound event.
+        //  Seeing the centroid from afar is not the same as physically
+        //  searching the area — the bot must walk to the zone and trigger
+        //  MarkVisited to legitimately lower belief. Without this guard, a
+        //  fresh gunshot belief is wiped within a frame on flat maps where
+        //  the centroid is trivially visible.
+        if (level.inttime - zone.lastUpdateTime < 15000) {
             continue;
         }
 
@@ -651,9 +892,14 @@ void BotBeliefMap::ResetTargetLock()
 PrintGrid
 
 // Added in OPM
-//  Print the belief grid to the console as a text map.
-//  Each cell shows its belief intensity: . low, o medium, O high, X blocked.
-//  The bot's position is marked with @.
+//  Print the belief map to the console.
+//
+//  Navmesh mode: lists the top 16 zones by belief score, showing position
+//  (X Y Z), belief value, visit count, and whether the zone is blocked. The
+//  bot's zone is highlighted with @. This replaces the flat 2D grid since
+//  zones no longer map 1:1 to XY cells.
+//
+//  Flat-grid mode: prints the original top-down 2D grid with symbols.
 ====================
 */
 void BotBeliefMap::PrintGrid(Vector botPos) const
@@ -663,13 +909,88 @@ void BotBeliefMap::PrintGrid(Vector botPos) const
         return;
     }
 
-    int botZone = FindZoneForPos(botPos);
-    int botX    = (botZone >= 0) ? (botZone % m_iGridWidth) : -1;
-    int botY    = (botZone >= 0) ? (botZone / m_iGridWidth) : -1;
+    int pathBlockDuration = (int)(m_pParams->beliefPathBlockTime * 1000.0f);
+    int botZone           = FindZoneForPos(botPos);
 
-    int   pathBlockDuration = (int)(m_pParams->beliefPathBlockTime * 1000.0f);
-    float maxBelief         = 0.0f;
+    // Added in OPM
+    //  Navmesh mode: print per-zone list sorted by belief (top 16).
+    if (m_bNavMeshMode) {
+        float maxBelief = 0.0f;
+        for (int i = 1; i <= m_zones.NumObjects(); i++) {
+            if (m_zones.ObjectAt(i).belief > maxBelief) {
+                maxBelief = m_zones.ObjectAt(i).belief;
+            }
+        }
 
+        gi.Printf(
+            "Belief map (navmesh) %d zones  max=%.2f  bot=%d\n", m_zones.NumObjects(), maxBelief, botZone
+        );
+
+        // Collect indices of zones with non-zero belief, sorted descending
+        // Use simple insertion sort (zone count is small)
+        int   sortedIdx[16];
+        float sortedBelief[16];
+        int   sortedCount = 0;
+
+        for (int i = 1; i <= m_zones.NumObjects(); i++) {
+            const BeliefZone& zone = m_zones.ObjectAt(i);
+            if (zone.belief < 0.01f && i - 1 != botZone) {
+                continue;
+            }
+            // Insert into sorted list (max 16 entries)
+            bool insert = sortedCount < 16;
+            if (!insert && zone.belief > sortedBelief[15]) {
+                insert = true;
+            }
+            if (insert) {
+                // Find insertion position
+                int ins = (sortedCount < 16) ? sortedCount : 15;
+                for (int j = 0; j < sortedCount && j < 16; j++) {
+                    if (zone.belief > sortedBelief[j]) {
+                        ins = j;
+                        break;
+                    }
+                }
+                // Shift down
+                int cap = Q_min(sortedCount, 15);
+                for (int j = cap; j > ins; j--) {
+                    sortedIdx[j]    = sortedIdx[j - 1];
+                    sortedBelief[j] = sortedBelief[j - 1];
+                }
+                sortedIdx[ins]    = i - 1; // 0-based
+                sortedBelief[ins] = zone.belief;
+                if (sortedCount < 16) {
+                    sortedCount++;
+                }
+            }
+        }
+
+        for (int s = 0; s < sortedCount; s++) {
+            int               idx  = sortedIdx[s];
+            const BeliefZone& zone = m_zones.ObjectAt(idx + 1);
+            bool              isBlocked =
+                zone.pathBlockedTime > 0 && level.inttime - zone.pathBlockedTime < pathBlockDuration;
+            char marker = (idx == botZone) ? '@' : ' ';
+            gi.Printf(
+                " %c zone %3d  pos(%.0f %.0f %.0f)  belief=%.2f  visits=%d%s\n",
+                marker,
+                idx,
+                zone.centroid.x,
+                zone.centroid.y,
+                zone.centroid.z,
+                zone.belief,
+                zone.visitCount,
+                isBlocked ? "  BLOCKED" : ""
+            );
+        }
+        return;
+    }
+
+    // Flat-grid mode: print original 2D grid
+    int botX = (botZone >= 0) ? (botZone % m_iGridWidth) : -1;
+    int botY = (botZone >= 0) ? (botZone / m_iGridWidth) : -1;
+
+    float maxBelief = 0.0f;
     for (int i = 1; i <= m_zones.NumObjects(); i++) {
         if (m_zones.ObjectAt(i).belief > maxBelief) {
             maxBelief = m_zones.ObjectAt(i).belief;
@@ -712,5 +1033,4 @@ void BotBeliefMap::PrintGrid(Vector botPos) const
         line[len] = '\0';
         gi.Printf("%s\n", line);
     }
-
 }
