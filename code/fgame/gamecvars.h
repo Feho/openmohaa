@@ -366,6 +366,8 @@ extern cvar_t *g_textmsg_minDelay;
 extern cvar_t *g_teambalance;
 
 extern cvar_t *g_navigation_legacy;
+extern cvar_t *g_navigation_cache;
+extern cvar_t *g_navigation_force_rebuild;
 
 void CVAR_Init(void);
 

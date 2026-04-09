@@ -46,6 +46,25 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "DetourNavMeshQuery.h"
 #include "DetourNode.h"
 
+// Added in OPM
+//  Recast navmesh disk cache (see issue #9)
+#include "gamecvars.h"
+
+static const unsigned int NAVMESH_CACHE_MAGIC   = 0x564E4D4F; // 'OMNV'
+static const unsigned int NAVMESH_CACHE_VERSION = 1;
+
+struct NavMeshCacheHeader {
+    unsigned int    magic;
+    unsigned int    version;
+    int             numTiles;
+    dtNavMeshParams params;
+};
+
+struct NavMeshCacheTileHeader {
+    dtTileRef tileRef;
+    int       dataSize;
+};
+
 NavigationMap navigationMap;
 
 /// Recast build context.
@@ -735,6 +754,24 @@ void NavigationMap::LoadWorldMap(const char *mapname)
         return;
     }
 
+    // Added in OPM
+    //  Try to load a cached navmesh from disk first.
+    const bool forceRebuild = g_navigation_force_rebuild && g_navigation_force_rebuild->integer != 0;
+    const bool cacheEnabled = g_navigation_cache && g_navigation_cache->integer != 0;
+
+    if (cacheEnabled && !forceRebuild) {
+        start = gi.Milliseconds();
+        if (LoadNavigationCache(mapname)) {
+            InitializeFilter();
+            pathMaster.PostLoadNavigation(*this);
+            navigationObstacleMap.Init();
+            end = gi.Milliseconds();
+            gi.Printf("Navigation mesh loaded from cache in %.03f seconds\n", (float)((end - start) / 1000.0));
+            validNavigation = true;
+            return;
+        }
+    }
+
     //
     // Parse the BSP file into triangles
     //
@@ -792,7 +829,175 @@ void NavigationMap::LoadWorldMap(const char *mapname)
     gi.Printf("Recast navigation mesh(es) generated in %.03f seconds\n", (float)((end - start) / 1000.0));
 
     validNavigation = true;
+
+    // Added in OPM
+    //  Persist the freshly built navmesh to disk so subsequent map loads can skip the rebuild.
+    if (cacheEnabled) {
+        SaveNavigationCache(mapname);
+    }
 }
+
+// Added in OPM
+//====
+//  Recast navmesh disk cache (see issue #9)
+
+/*
+============
+NavigationMap::GetCacheFileName
+============
+*/
+str NavigationMap::GetCacheFileName(const char *mapname) const
+{
+    str name = mapname;
+    // Strip "maps/" prefix if present
+    if (!Q_stricmpn(name.c_str(), "maps/", 5)) {
+        name = str(name.c_str() + 5);
+    }
+    // Strip ".bsp" extension if present
+    const int len = name.length();
+    if (len > 4 && !Q_stricmp(name.c_str() + len - 4, ".bsp")) {
+        name = str(name.c_str(), 0, len - 4);
+    }
+    return str("navmesh/") + name + ".nav";
+}
+
+/*
+============
+NavigationMap::LoadNavigationCache
+============
+*/
+bool NavigationMap::LoadNavigationCache(const char *mapname)
+{
+    const str   cacheFile = GetCacheFileName(mapname);
+    fileHandle_t handle    = 0;
+    long         length;
+
+    // Invalidate cache if BSP is newer than the cached navmesh.
+    if (gi.FS_FileNewer(mapname, cacheFile.c_str()) > 0) {
+        return false;
+    }
+
+    length = gi.FS_FOpenFile(cacheFile.c_str(), &handle, qtrue, qtrue);
+    if (length <= 0 || !handle) {
+        if (handle) {
+            gi.FS_FCloseFile(handle);
+        }
+        return false;
+    }
+
+    NavMeshCacheHeader header;
+    if (length < (long)sizeof(header)) {
+        gi.FS_FCloseFile(handle);
+        return false;
+    }
+
+    gi.FS_Read(&header, sizeof(header), handle);
+    if (header.magic != NAVMESH_CACHE_MAGIC || header.version != NAVMESH_CACHE_VERSION) {
+        gi.FS_FCloseFile(handle);
+        return false;
+    }
+
+    dtNavMesh *mesh   = dtAllocNavMesh();
+    dtStatus   status = mesh->init(&header.params);
+    if (dtStatusFailed(status)) {
+        dtFreeNavMesh(mesh);
+        gi.FS_FCloseFile(handle);
+        return false;
+    }
+
+    for (int i = 0; i < header.numTiles; i++) {
+        NavMeshCacheTileHeader tileHeader;
+        gi.FS_Read(&tileHeader, sizeof(tileHeader), handle);
+        if (tileHeader.dataSize <= 0) {
+            dtFreeNavMesh(mesh);
+            gi.FS_FCloseFile(handle);
+            return false;
+        }
+
+        unsigned char *data = (unsigned char *)dtAlloc(tileHeader.dataSize, DT_ALLOC_PERM);
+        if (!data) {
+            dtFreeNavMesh(mesh);
+            gi.FS_FCloseFile(handle);
+            return false;
+        }
+        gi.FS_Read(data, tileHeader.dataSize, handle);
+
+        status = mesh->addTile(data, tileHeader.dataSize, DT_TILE_FREE_DATA, tileHeader.tileRef, NULL);
+        if (dtStatusFailed(status)) {
+            dtFree(data);
+            dtFreeNavMesh(mesh);
+            gi.FS_FCloseFile(handle);
+            return false;
+        }
+    }
+
+    gi.FS_FCloseFile(handle);
+
+    navMeshDt    = mesh;
+    navMeshQuery = dtAllocNavMeshQuery();
+    status       = navMeshQuery->init(navMeshDt, MAX_PATHNODES);
+    if (dtStatusFailed(status)) {
+        ClearNavigation();
+        return false;
+    }
+
+    gi.Printf("Loaded cached navmesh from %s\n", cacheFile.c_str());
+    return true;
+}
+
+/*
+============
+NavigationMap::SaveNavigationCache
+============
+*/
+void NavigationMap::SaveNavigationCache(const char *mapname) const
+{
+    if (!navMeshDt) {
+        return;
+    }
+
+    const str    cacheFile = GetCacheFileName(mapname);
+    fileHandle_t handle    = gi.FS_FOpenFileWrite(cacheFile.c_str());
+    if (!handle) {
+        gi.Printf("Failed to open navmesh cache for writing: %s\n", cacheFile.c_str());
+        return;
+    }
+
+    const dtNavMesh *constMesh = navMeshDt;
+
+    // Count valid tiles
+    int numTiles = 0;
+    for (int i = 0; i < constMesh->getMaxTiles(); ++i) {
+        const dtMeshTile *tile = constMesh->getTile(i);
+        if (tile && tile->header && tile->dataSize > 0) {
+            numTiles++;
+        }
+    }
+
+    NavMeshCacheHeader header;
+    header.magic    = NAVMESH_CACHE_MAGIC;
+    header.version  = NAVMESH_CACHE_VERSION;
+    header.numTiles = numTiles;
+    memcpy(&header.params, navMeshDt->getParams(), sizeof(dtNavMeshParams));
+    gi.FS_Write(&header, sizeof(header), handle);
+
+    for (int i = 0; i < constMesh->getMaxTiles(); ++i) {
+        const dtMeshTile *tile = constMesh->getTile(i);
+        if (!tile || !tile->header || tile->dataSize <= 0) {
+            continue;
+        }
+
+        NavMeshCacheTileHeader tileHeader;
+        tileHeader.tileRef  = constMesh->getTileRef(tile);
+        tileHeader.dataSize = tile->dataSize;
+        gi.FS_Write(&tileHeader, sizeof(tileHeader), handle);
+        gi.FS_Write(tile->data, tile->dataSize, handle);
+    }
+
+    gi.FS_FCloseFile(handle);
+    gi.Printf("Saved navmesh cache to %s\n", cacheFile.c_str());
+}
+//====
 
 void NavigationMap::CleanUp(qboolean samemap)
 {

@@ -330,6 +330,8 @@ cvar_t *g_teambalance;
 
 // Whether or not to use Legacy Navigation
 cvar_t *g_navigation_legacy;
+cvar_t *g_navigation_cache;
+cvar_t *g_navigation_force_rebuild;
 
 void CVAR_Init(void)
 {
@@ -746,7 +748,9 @@ void CVAR_Init(void)
 
     g_teambalance = gi.Cvar_Get("g_teambalance", "0", 0);
 
-    g_navigation_legacy = gi.Cvar_Get("g_navigation_legacy", "0", CVAR_LATCH);
+    g_navigation_legacy       = gi.Cvar_Get("g_navigation_legacy", "0", CVAR_LATCH);
+    g_navigation_cache        = gi.Cvar_Get("g_navigation_cache", "1", CVAR_ARCHIVE);
+    g_navigation_force_rebuild = gi.Cvar_Get("g_navigation_force_rebuild", "0", 0);
 
     cl_running = gi.Cvar_Get("cl_running", "", 0);
 }

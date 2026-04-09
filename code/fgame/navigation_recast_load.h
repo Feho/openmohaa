@@ -150,6 +150,12 @@ private:
     void BuildWorldMesh(RecastBuildContext& buildContext, const navMap_t& navigationMap);
     void BuildMeshesForEntities(RecastBuildContext& buildContext, const navMap_t& navigationMap);
 
+    // Added in OPM
+    //  Recast navmesh disk cache (see issue #9)
+    str  GetCacheFileName(const char *mapname) const;
+    bool LoadNavigationCache(const char *mapname);
+    void SaveNavigationCache(const char *mapname) const;
+
 private:
     dtNavMesh      *navMeshDt;
     dtNavMeshQuery *navMeshQuery;
