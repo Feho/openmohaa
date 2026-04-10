@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "debuglines.h"
 
 static int maxFallHeight = 400;
+static constexpr float kBotAttractiveNodeMaxStayTime = 1.5f;
 
 BotMovement::BotMovement()
 {
@@ -649,13 +650,17 @@ bool BotMovement::MoveToBestAttractivePoint(int iMinPriority)
         } else {
             if (MoveDone()) {
                 if (!m_fAttractTime) {
-                    m_fAttractTime = level.time + m_pPrimaryAttract->m_fMaxStayTime;
+                    // Map-authored attractive nodes may request long stay times
+                    // that look like broken bots. Clamp the linger time so bots
+                    // still acknowledge the node without parking for several seconds.
+                    m_fAttractTime = level.time + Q_min(m_pPrimaryAttract->m_fMaxStayTime, kBotAttractiveNodeMaxStayTime);
                 }
                 if (level.time > m_fAttractTime) {
                     nodeAttract_t *a  = new nodeAttract_t;
                     a->m_fRespawnTime = level.time + m_pPrimaryAttract->m_fRespawnTime;
                     a->m_pNode        = m_pPrimaryAttract;
 
+                    m_attractList.AddObject(a);
                     m_pPrimaryAttract = NULL;
                 }
             }
