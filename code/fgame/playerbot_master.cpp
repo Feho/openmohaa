@@ -43,6 +43,7 @@ CLASS_DECLARATION(Listener, BotManager, NULL) {
 
 void BotManager::Init()
 {
+    botProfileManager.Init();
     botControllerManager.Init();
 }
 

@@ -310,6 +310,7 @@ cvar_t *g_bot_belief_min_patrol;
 cvar_t *g_bot_debug_beliefs;
 cvar_t *g_bot_debug_reaction;
 cvar_t *g_bot_debug_state;
+cvar_t *g_bot_profile_override;
 
 cvar_t *g_rankedserver;
 cvar_t *g_spectatefollow_firstperson;
@@ -745,6 +746,7 @@ void CVAR_Init(void)
     g_bot_debug_beliefs          = gi.Cvar_Get("g_bot_debug_beliefs", "0", 0);
     g_bot_debug_reaction         = gi.Cvar_Get("g_bot_debug_reaction", "0", 0);
     g_bot_debug_state            = gi.Cvar_Get("g_bot_debug_state", "0", 0);
+    g_bot_profile_override       = gi.Cvar_Get("g_bot_profile_override", "", 0);
 
     g_teambalance = gi.Cvar_Get("g_teambalance", "0", 0);
 

@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "navigate.h"
 #include "navigation_path.h"
 #include "playerbot_beliefs.h"
+#include "playerbot_profile.h"
 
 #define MAX_BOT_FUNCTIONS 5
 
@@ -180,6 +181,10 @@ public:
     void          SetTargetAngles(Vector vAngles);
     void          AimAt(Vector vPos);
 
+    // Added in OPM
+    //  Set aim parameters from BotProfile so rotation uses per-bot values
+    void SetAimParameters(float turnSpeed, float overshoot, float settleSpeed, float noise);
+
 private:
     SafePtr<Player> controlledEntity;
 
@@ -187,6 +192,13 @@ private:
     Vector m_vCurrentAng;
     Vector m_vAngDelta;
     Vector m_vAngSpeed;
+
+    // Added in OPM
+    //  Per-bot aim parameters (set from BotProfile on spawn)
+    float m_fTurnSpeed;
+    float m_fAimOvershoot;
+    float m_fAimSettleSpeed;
+    float m_fAimNoise;
 
     // Added in OPM
     //  Aim dynamics: overshoot and settle model
@@ -301,6 +313,42 @@ struct BotGrenadeState {
     }
 };
 
+// Added in OPM
+//  Perception layer: single write target for all sense events
+//  (see github issue #8). The state machine reads from this struct
+//  each frame instead of perception events writing directly to
+//  rotation/movement.
+/**
+ * @brief Perception/sense inputs gathered from events (hearing, damage).
+ *
+ * This struct is the sole target for NoticeEvent/Damaged writes. State
+ * `Think` functions read from it to decide behavior; only state code
+ * writes to rotation and movement.
+ */
+struct BotSenses {
+    // Hearing
+    Vector heardPos;   // Last significant sound position
+    int    heardType;  // AI_EVENT_* type of last sound
+    int    heardTime;  // level.inttime when heard (for decay)
+    float  heardRange; // 0..1 proximity factor of the sound
+
+    // Damage
+    Vector            damagedFrom; // Attacker position at time of hit
+    int               damagedTime; // level.inttime when hit
+    SafePtr<Sentient> damagedBy;   // Attacker (may be NULL)
+
+    void reset()
+    {
+        heardPos    = vec_zero;
+        heardType   = 0;
+        heardTime   = 0;
+        heardRange  = 0.0f;
+        damagedFrom = vec_zero;
+        damagedTime = 0;
+        damagedBy   = NULL;
+    }
+};
+
 /**
  * @brief Human-like idle/movement behavior state.
  */
@@ -341,6 +389,7 @@ private:
     BotMovement  movement;
     BotRotation  rotation;
     BotBeliefMap beliefMap;
+    BotProfile   m_profile;
 
     // Grouped state structs (prevents partial-reset bugs)
     BotCombatState  m_combat;
@@ -348,6 +397,7 @@ private:
     BotCuriousState m_curious;
     BotGrenadeState m_grenade;
     BotIdleBehavior m_idle;
+    BotSenses       m_senses;
 
     // Input
     usercmd_t  m_botCmd;
@@ -440,8 +490,9 @@ public:
     void GotKill(const Event& ev);
     void EventStuffText(const str& text);
 
-    BotMovement&  GetMovement();
-    BotBeliefMap& GetBeliefMap();
+    BotMovement&      GetMovement();
+    BotBeliefMap&     GetBeliefMap();
+    const BotProfile& GetProfile() const;
 
     void DrawDebugBeliefs();
 

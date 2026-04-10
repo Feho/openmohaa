@@ -147,6 +147,7 @@ void BotController::State_Reset(void)
     m_curious.reset();
     m_combat.reset();
     m_enemy.reset();
+    m_senses.reset();
 }
 
 /*
@@ -169,6 +170,22 @@ bool BotController::CheckCondition_Idle(void)
     }
 
     if (m_combat.attackTime) {
+        return false;
+    }
+
+    // Added in OPM (github issue #8)
+    //  Recent perception events block idle so the curious/attack
+    //  transitions have a chance to pick them up.
+    if (m_senses.heardTime && level.inttime - m_senses.heardTime < 20000) {
+        return false;
+    }
+    // Fixed in OPM
+    //  Only block idle if the attacker is still a valid enemy, so that
+    //  CheckCondition_Attack can actually pick it up. If damagedBy is
+    //  NULL (non-sentient source) or invalid (attacker died), blocking
+    //  idle here would deadlock the state machine.
+    if (m_senses.damagedTime && level.inttime - m_senses.damagedTime < 5000
+        && m_senses.damagedBy && IsValidEnemy(m_senses.damagedBy)) {
         return false;
     }
 
@@ -231,16 +248,24 @@ void BotController::State_Idle(void)
         m_idle.walking = false;
     }
 
-    // Changed in OPM
-    //  Pre-aim toward highest-belief direction when not in combat and
-    //  the zone is visible. Otherwise look along the path direction so
-    //  the bot doesn't stare at walls.
+    // Changed in OPM (github issue #8)
+    //  Pre-aim is driven first by the perception layer (m_senses): if we
+    //  recently heard a threat sound, face it — a soldier would always
+    //  glance toward nearby gunfire. Otherwise fall back to the highest-
+    //  belief direction, then the current path direction.
     {
-        Vector beliefPos = beliefMap.GetHighestBeliefPos(controlledEnt->origin);
-        if (beliefPos != vec_zero && controlledEnt->CanSee(beliefPos, 120, 2048, false)) {
-            rotation.AimAt(beliefPos);
-        } else {
-            AimAtAimNode();
+        bool aimed = false;
+        if (m_senses.heardTime && level.inttime - m_senses.heardTime < 20000) {
+            rotation.AimAt(m_senses.heardPos);
+            aimed = true;
+        }
+        if (!aimed) {
+            Vector beliefPos = beliefMap.GetHighestBeliefPos(controlledEnt->origin);
+            if (beliefPos != vec_zero && controlledEnt->CanSee(beliefPos, 120, 2048, false)) {
+                rotation.AimAt(beliefPos);
+            } else {
+                AimAtAimNode();
+            }
         }
     }
 
@@ -291,10 +316,22 @@ void BotController::InitState_Curious(botfunc_t *func)
 // Added in OPM
 //  Clear idle state and movement when entering curious mode.
 //  Immediately turn toward the sound source.
+//  Changed in OPM (github issue #8): read the target position from the
+//  BotSenses perception layer and consume the heard event so we don't
+//  re-trigger on stale data. Only state code is allowed to issue
+//  rotation/movement calls.
 void BotController::State_BeginCurious(void)
 {
     movement.ClearMove();
     m_idle.reset();
+
+    // Seed state from the perception layer
+    if (m_senses.heardTime) {
+        m_curious.time      = level.inttime + 20000;
+        m_curious.targetPos = m_senses.heardPos;
+        // Consume the heard event — state now owns the investigation
+        m_senses.heardTime = 0;
+    }
 
     // Immediately look toward the sound source
     // Prefer the specific sound location over the general belief map area
@@ -329,8 +366,16 @@ bool BotController::CheckCondition_Curious(void)
                 m_combat.attackTime - level.inttime
             );
         }
-        m_curious.time = 0;
+        m_curious.time     = 0;
+        m_senses.heardTime = 0;
         return false;
+    }
+
+    // Added in OPM (github issue #8)
+    //  Curious transitions are triggered by a fresh BotSenses entry.
+    //  Once triggered, the state owns its own lifetime via m_curious.time.
+    if (!m_curious.time && m_senses.heardTime && level.inttime - m_senses.heardTime < 20000) {
+        return true;
     }
 
     if (level.inttime > m_curious.time) {
@@ -345,6 +390,7 @@ bool BotController::CheckCondition_Curious(void)
             }
             movement.ClearMove();
             m_curious.time = 0;
+            m_senses.heardTime = 0;
         }
 
         return false;
@@ -464,11 +510,30 @@ void BotController::InitState_Attack(botfunc_t *func)
 }
 
 // Added in OPM
-//  Clear idle state and movement when entering attack mode
+//  Clear idle state and movement when entering attack mode.
+//  Changed in OPM (github issue #8): when there is no visible target yet
+//  but we just took a hit, seed the initial enemy from BotSenses. This
+//  replaces the direct writes that Damaged() used to perform.
 void BotController::State_BeginAttack(void)
 {
     movement.ClearMove();
     m_idle.reset();
+
+    if (!m_enemy.enemy && m_senses.damagedBy && IsValidEnemy(m_senses.damagedBy)
+        && level.inttime - m_senses.damagedTime < 5000) {
+        m_enemy.enemy              = m_senses.damagedBy;
+        m_enemy.lastPos            = m_senses.damagedBy->origin;
+        m_enemy.eyesTag            = -1;
+        m_combat.attackTime        = level.inttime + 5000;
+        m_combat.lastSeenTime      = level.inttime;
+        m_combat.attackStopAimTime = level.inttime + 2000;
+        // Reaction delay: damaged tells you where, but you still need to turn and aim
+        m_combat.lastUnseenTime = level.inttime;
+        // Clear any curious state — we have a real threat now
+        m_curious.time = 0;
+        // Consume the damage sense
+        m_senses.damagedTime = 0;
+    }
 
     if (g_bot_debug_state->integer && m_enemy.enemy) {
         const char *enemyName = "unknown";
@@ -598,6 +663,15 @@ bool BotController::CheckCondition_Attack(void)
         return true;
     }
 
+    // Added in OPM (github issue #8)
+    //  If we were just damaged by a valid sentient, enter attack state
+    //  even if the attacker isn't yet visible. State_BeginAttack will
+    //  consume m_senses.damagedBy and set up enemy tracking.
+    if (m_senses.damagedBy && IsValidEnemy(m_senses.damagedBy)
+        && level.inttime - m_senses.damagedTime < 5000) {
+        return true;
+    }
+
     // No visible enemy - check if we should keep hunting the last known position
     if (level.inttime > m_combat.attackTime) {
         if (m_combat.attackTime) {
@@ -687,8 +761,8 @@ void BotController::State_Attack(void)
         bCanAttack = true;
         if (m_combat.lastUnseenTime) {
             const float        reactionTime = Q_min(1000 * Q_min(1, fDistanceSquared / Square(2048)), 1000);
-            const unsigned int minDelay     = g_bot_attack_react_min_delay->value * 1000;
-            const unsigned int randomDelay  = g_bot_attack_react_random_delay->value * 1000;
+            const unsigned int minDelay     = m_profile.reactionMinDelay * 1000;
+            const unsigned int randomDelay  = m_profile.reactionRandomDelay * 1000;
             if (level.inttime <= m_combat.lastUnseenTime + minDelay + G_Random(randomDelay)) {
                 if (g_bot_debug_state->integer >= 2) {
                     gi.Printf(
@@ -711,10 +785,10 @@ void BotController::State_Attack(void)
             float     fSecondaryBulletRange        = pWeap->GetBulletRange(FIRE_SECONDARY);
             float     fSecondaryBulletRangeSquared = fSecondaryBulletRange * fSecondaryBulletRange;
 
-            const int maxcontinuousFireTime = fireDelay + g_bot_attack_continuousfire_min_firetime->value * 1000
-                                            + G_Random(g_bot_attack_continuousfire_random_firetime->value * 1000);
-            const int maxBurstTime = fireDelay + g_bot_attack_burst_min_time->value * 1000
-                                   + G_Random(g_bot_attack_burst_random_delay->value * 1000);
+            const int maxcontinuousFireTime = fireDelay + m_profile.continuousFireMinTime * 1000
+                                            + G_Random(m_profile.continuousFireRandomTime * 1000);
+            const int maxBurstTime = fireDelay + m_profile.burstMinTime * 1000
+                                   + G_Random(m_profile.burstRandomDelay * 1000);
 
             //
             // check the fire movement speed if the weapon has a max fire movement
@@ -911,7 +985,7 @@ void BotController::State_Attack(void)
 
         // Smoothly lerp current offset toward target offset
         {
-            float dt       = level.frametime * g_bot_aim_lerp_speed->value;
+            float dt       = level.frametime * m_profile.aimLerpSpeed;
             float lerpFrac = Q_clamp_float(dt, 0.0, 1.0);
 
             m_combat.aimOffset[0] =
@@ -922,7 +996,7 @@ void BotController::State_Attack(void)
                 m_combat.aimOffset[2] + (m_combat.aimOffsetTarget[2] - m_combat.aimOffset[2]) * lerpFrac;
         }
 
-        rotation.AimAt(vTarget + m_combat.aimOffset * g_bot_attack_spreadmult->value);
+        rotation.AimAt(vTarget + m_combat.aimOffset * m_profile.aimSpreadMult);
     } else {
         AimAtAimNode();
     }
@@ -989,7 +1063,7 @@ void BotController::State_Attack(void)
     if (m_combat.standingStill) {
         if (!m_combat.crouching && !m_combat.crouchDecided) {
             m_combat.crouchDecided = true;
-            if (rand() % 100 < g_bot_crouch_chance->integer) {
+            if (rand() % 100 < m_profile.crouchChance) {
                 m_combat.crouching = true;
             }
         }

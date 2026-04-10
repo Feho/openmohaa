@@ -73,6 +73,7 @@ BotController::BotController()
     m_curious.reset();
     m_grenade.reset();
     m_idle.reset();
+    m_senses.reset();
 
     m_iNextTauntTime = 0;
     m_iLastFireTime  = 0;
@@ -98,6 +99,11 @@ BotMovement& BotController::GetMovement()
 BotBeliefMap& BotController::GetBeliefMap()
 {
     return beliefMap;
+}
+
+const BotProfile& BotController::GetProfile() const
+{
+    return m_profile;
 }
 
 // Added in OPM
@@ -508,7 +514,6 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
 {
     Sentient *pSentOwner;
     float     fRangeFactor;
-    Vector    delta1, delta2;
 
     fRangeFactor = 1.0 - (fDistanceSquared / fRadiusSquared);
     if (fRangeFactor < 0) {
@@ -557,86 +562,39 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     //  Always update beliefs from enemy sounds regardless of distance
     //  or whether the bot is already investigating something else.
     //  The belief map is the bot's spatial awareness — it should
-    //  accumulate all heard information. Only the curiosity trigger
-    //  (whether to actively investigate) is gated by probability.
+    //  accumulate all heard information.
     beliefMap.UpdateFromEvent(vPos, iType, fRangeFactor);
 
-    //
-    // Curiosity trigger — probability-gated
-    //
-
-    // Already curious about a closer sound? Don't switch target.
-    if (m_curious.time) {
-        delta1 = vPos - controlledEnt->origin;
-        delta2 = m_curious.targetPos - controlledEnt->origin;
-        if (delta1.lengthSquared() > delta2.lengthSquared()) {
-            return;
-        }
-    }
-
-    // Changed in OPM
-    //  Close-range weapon fire and explosions bypass the probability gate.
-    //  This ensures bots react immediately to nearby threats even if they
-    //  weren't directly hit. A soldier would always notice gunfire 10 feet away.
-    //  Note: WEAPON_IMPACT is excluded - we want the shooter position, not impact.
-    bool bypassProbability = false;
-    if (fRangeFactor > 0.7f) {
-        // Close range (within ~30% of sound radius)
-        switch (iType) {
-        case AI_EVENT_WEAPON_FIRE:
-        case AI_EVENT_EXPLOSION:
-        case AI_EVENT_GRENADE:
-            bypassProbability = true;
-            break;
-        default:
-            break;
-        }
-    }
-
-    if (!bypassProbability && fRangeFactor < random()) {
+    // Ignore bullet impact positions — they indicate where the bullet hit,
+    // not where the shooter is. React to WEAPON_FIRE instead.
+    if (iType == AI_EVENT_MISC || iType == AI_EVENT_MISC_LOUD || iType == AI_EVENT_WEAPON_IMPACT) {
         return;
     }
 
-    switch (iType) {
-    case AI_EVENT_MISC:
-    case AI_EVENT_MISC_LOUD:
-    case AI_EVENT_WEAPON_IMPACT:
-        // Ignore bullet impacts - they indicate where the bullet hit, not where
-        // the shooter is. React to WEAPON_FIRE instead which gives shooter position.
-        break;
-    case AI_EVENT_WEAPON_FIRE:
-    case AI_EVENT_EXPLOSION:
-    case AI_EVENT_AMERICAN_VOICE:
-    case AI_EVENT_GERMAN_VOICE:
-    case AI_EVENT_AMERICAN_URGENT:
-    case AI_EVENT_GERMAN_URGENT:
-    case AI_EVENT_FOOTSTEP:
-    case AI_EVENT_GRENADE:
-    default:
-        m_curious.time      = level.inttime + 20000;
-        m_curious.targetPos = vPos;
+    // Refactored in OPM (see github issue #8)
+    //  Perception writes only to the BotSenses struct and the belief map.
+    //  The state machine reads m_senses each frame to decide whether to
+    //  react, pre-aim, or transition state. This prevents perception
+    //  events from competing with state `Think` functions for rotation
+    //  and movement control.
+    //
+    //  Previously NoticeEvent set m_curious.time/targetPos, called
+    //  rotation.AimAt, movement.ClearMove, and m_idle.reset directly —
+    //  which was immediately overwritten by BotStateIdle::Think the next
+    //  frame, causing bots to ignore gunfire from behind.
+
+    // Keep the strongest recent sound: prefer higher range (closer), but
+    // always refresh if the existing sense has decayed.
+    const int senseMaxAge = 20000;
+    if (level.inttime > m_senses.heardTime + senseMaxAge || fRangeFactor >= m_senses.heardRange) {
+        m_senses.heardPos   = vPos;
+        m_senses.heardType  = iType;
+        m_senses.heardTime  = level.inttime;
+        m_senses.heardRange = fRangeFactor;
+
         if (g_bot_debug_state->integer >= 2) {
             gi.Printf(
-                "BOT %s: NoticeEvent set curious (time=%d, pos=(%.0f,%.0f,%.0f))\n",
-                controlledEnt->client->pers.netname,
-                m_curious.time,
-                vPos.x,
-                vPos.y,
-                vPos.z
-            );
-        }
-        break;
-    }
-
-    // Added in OPM
-    //  For close-range threat sounds, immediately turn toward the source.
-    //  Don't wait for the state machine to process it - a soldier would
-    //  instinctively look toward nearby gunfire. Skip if already in combat
-    //  (attack state handles its own aiming).
-    if (bypassProbability && !m_combat.attackTime) {
-        if (g_bot_debug_reaction->integer) {
-            gi.Printf(
-                "BOT %s: Immediate reaction to close-range sound (type=%d, rangeFactor=%.2f) at (%.0f, %.0f, %.0f)\n",
+                "BOT %s: NoticeEvent -> senses (type=%d, range=%.2f, pos=(%.0f,%.0f,%.0f))\n",
                 controlledEnt->client->pers.netname,
                 iType,
                 fRangeFactor,
@@ -645,9 +603,6 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
                 vPos.z
             );
         }
-        rotation.AimAt(vPos);
-        movement.ClearMove();
-        m_idle.reset();
     }
 }
 
@@ -771,6 +726,16 @@ void BotController::Spawned(void)
     m_botCmd.buttons = 0;
 
     // Added in OPM
+    //  Assign personality profile on each spawn. The profile is copied
+    //  so each bot has its own independent parameter set.
+    m_profile = botProfileManager.PickProfile();
+    rotation.SetAimParameters(m_profile.turnSpeed, m_profile.aimOvershoot, m_profile.aimSettleSpeed, m_profile.aimNoise);
+
+    if (g_bot_debug_state->integer) {
+        gi.Printf("BOT %s: spawned with profile '%s'\n", controlledEnt->client->pers.netname, m_profile.name.c_str());
+    }
+
+    // Added in OPM
     //  Seed belief map with enemy spawn points so bots patrol toward
     //  likely spawn areas on round start.
     beliefMap.SeedFromSpawnPoints(controlledEnt);
@@ -834,8 +799,11 @@ void BotController::Killed(const Event& ev)
     G_ClientUserinfoChanged(controlledEnt->edict, controlledEnt->client->pers.userinfo);
 }
 
-// Added in OPM
-//  React to being damaged - look toward attacker immediately
+// Refactored in OPM (see github issue #8)
+//  Damage perception writes only to BotSenses and the belief map. The
+//  state machine reads m_senses.damagedBy/damagedFrom each frame to
+//  decide whether to transition into attack, seed the initial enemy,
+//  or pre-aim toward the threat. No direct rotation/movement writes.
 void BotController::Damaged(const Event& ev)
 {
     Entity *attacker = ev.GetEntity(1);
@@ -844,7 +812,7 @@ void BotController::Damaged(const Event& ev)
         return;
     }
 
-    // Check if attacker is a valid enemy
+    // Resolve attacker as a valid sentient enemy (if any)
     Sentient *sentAttacker = NULL;
     if (attacker->IsSubclassOfSentient()) {
         sentAttacker = static_cast<Sentient *>(attacker);
@@ -857,49 +825,26 @@ void BotController::Damaged(const Event& ev)
     // Update belief map with attacker position - high confidence
     beliefMap.UpdateFromEvent(attacker->origin, AI_EVENT_WEAPON_FIRE, 1.0f);
 
-    // If we already have this enemy targeted and can see them, don't interrupt
-    if (m_enemy.enemy == sentAttacker && m_combat.lastSeenTime == level.inttime) {
-        return;
-    }
+    // Record the hit into the sense layer
+    m_senses.damagedFrom = attacker->origin;
+    m_senses.damagedTime = level.inttime;
+    m_senses.damagedBy   = sentAttacker;
 
-    // Immediately look toward the attacker
-    rotation.AimAt(attacker->centroid);
-
-    // If the attacker is a valid sentient enemy, enter attack mode
-    if (sentAttacker) {
-        if (g_bot_debug_reaction->integer) {
-            gi.Printf(
-                "BOT %s: Damaged by %s - entering attack mode, looking at (%.0f, %.0f, %.0f)\n",
-                controlledEnt->client->pers.netname,
-                sentAttacker->IsSubclassOfPlayer() ? static_cast<Player *>(sentAttacker)->client->pers.netname
-                                                   : sentAttacker->targetname.c_str(),
-                attacker->centroid.x,
-                attacker->centroid.y,
-                attacker->centroid.z
-            );
+    if (g_bot_debug_reaction->integer) {
+        const char *attackerName = "non-sentient";
+        if (sentAttacker) {
+            attackerName = sentAttacker->IsSubclassOfPlayer()
+                             ? static_cast<Player *>(sentAttacker)->client->pers.netname
+                             : sentAttacker->targetname.c_str();
         }
-
-        // Set up enemy tracking
-        m_enemy.enemy   = sentAttacker;
-        m_enemy.lastPos = sentAttacker->origin;
-        m_enemy.eyesTag = gi.Tag_NumForName(sentAttacker->edict->tiki, "eyes bone");
-
-        // Enter attack state - still need reaction time to aim before firing
-        // Being shot tells you where the threat is, but you still need to turn and aim
-        m_combat.attackTime        = level.inttime + 5000;
-        m_combat.lastSeenTime      = level.inttime;
-        m_combat.attackStopAimTime = level.inttime + 2000;
-        m_combat.lastUnseenTime    = level.inttime; // Start reaction delay - need time to aim
-
-        // Clear movement so we don't keep walking away from threat
-        movement.ClearMove();
-
-        // Clear any curious state - we have a real threat now
-        m_curious.time = 0;
-    } else {
-        // Non-sentient attacker (e.g., explosion, trap) - go curious toward the position
-        m_curious.targetPos = attacker->origin;
-        m_curious.time      = level.inttime + 5000;
+        gi.Printf(
+            "BOT %s: Damaged by %s -> senses (pos=(%.0f, %.0f, %.0f))\n",
+            controlledEnt->client->pers.netname,
+            attackerName,
+            attacker->origin.x,
+            attacker->origin.y,
+            attacker->origin.z
+        );
     }
 }
 

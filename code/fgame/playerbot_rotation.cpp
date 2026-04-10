@@ -27,15 +27,32 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 BotRotation::BotRotation()
 {
-    m_vAngDelta      = vec_zero;
-    m_vAngSpeed      = vec_zero;
-    m_vTargetAng     = vec_zero;
-    m_vCurrentAng    = vec_zero;
-    m_vPrevTargetAng = vec_zero;
+    m_vAngDelta       = vec_zero;
+    m_vAngSpeed       = vec_zero;
+    m_vTargetAng      = vec_zero;
+    m_vCurrentAng     = vec_zero;
+    m_vPrevTargetAng  = vec_zero;
     m_bOvershootPhase = false;
     m_fSettleFrac     = 1.0;
     m_fOvershootYaw   = 0;
     m_fOvershootPitch = 0;
+
+    // Added in OPM
+    //  Default aim parameters from cvars (overridden by profile on spawn)
+    m_fTurnSpeed      = 15;
+    m_fAimOvershoot   = 0.1f;
+    m_fAimSettleSpeed = 8.0f;
+    m_fAimNoise       = 0.3f;
+}
+
+// Added in OPM
+//  Set aim parameters from BotProfile
+void BotRotation::SetAimParameters(float turnSpeed, float overshoot, float settleSpeed, float noise)
+{
+    m_fTurnSpeed      = turnSpeed;
+    m_fAimOvershoot   = overshoot;
+    m_fAimSettleSpeed = settleSpeed;
+    m_fAimNoise       = noise;
 }
 
 void BotRotation::SetControlledEntity(Player *newEntity)
@@ -67,7 +84,7 @@ float AngleDifference(float ang1, float ang2)
 //  Small tracking adjustments use smooth interpolation with micro-noise.
 void BotRotation::TurnThink(usercmd_t& botcmd, usereyes_t& eyeinfo)
 {
-    float maxChange = Q_max(360, g_bot_turn_speed->integer);
+    float maxChange = Q_max(360.0f, m_fTurnSpeed);
 
     if (m_vTargetAng[PITCH] > 180) {
         m_vTargetAng[PITCH] -= 360;
@@ -81,7 +98,7 @@ void BotRotation::TurnThink(usercmd_t& botcmd, usereyes_t& eyeinfo)
 
     if (yawDelta > 15 || pitchDelta > 10) {
         // New target acquired - start overshoot phase
-        float overshootScale = g_bot_aim_overshoot->value;
+        float overshootScale = m_fAimOvershoot;
 
         m_bOvershootPhase = true;
         m_fSettleFrac     = 0;
@@ -99,7 +116,7 @@ void BotRotation::TurnThink(usercmd_t& botcmd, usereyes_t& eyeinfo)
     Vector effectiveTarget = m_vTargetAng;
 
     if (m_bOvershootPhase) {
-        float settleSpeed = g_bot_aim_settle_speed->value;
+        float settleSpeed = m_fAimSettleSpeed;
         m_fSettleFrac += level.frametime * settleSpeed;
 
         if (m_fSettleFrac >= 1.0) {
@@ -118,7 +135,7 @@ void BotRotation::TurnThink(usercmd_t& botcmd, usereyes_t& eyeinfo)
     //
     // Add micro-noise to simulate hand tremor
     //
-    float noiseScale = g_bot_aim_noise->value;
+    float noiseScale = m_fAimNoise;
     effectiveTarget[YAW]   += G_CRandom(noiseScale);
     effectiveTarget[PITCH] += G_CRandom(noiseScale * 0.5);
 
@@ -138,7 +155,7 @@ void BotRotation::TurnThink(usercmd_t& botcmd, usereyes_t& eyeinfo)
         }
 
         // Acceleration: faster rotation for larger differences
-        float changeSpeed = g_bot_turn_speed->integer;
+        float changeSpeed = m_fTurnSpeed;
         if (deltaDiff >= 20) {
             m_vAngSpeed[i] = Q_min(1.0, m_vAngSpeed[i] + changeSpeed * level.frametime);
             maxChangeDelta *= m_vAngSpeed[i];

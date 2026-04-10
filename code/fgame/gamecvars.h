@@ -353,6 +353,11 @@ extern cvar_t *g_bot_debug_beliefs;
 
 extern cvar_t *g_bot_debug_reaction;
 extern cvar_t *g_bot_debug_state;
+
+// Added in OPM
+//  Profile override for testing specific bot personalities
+extern cvar_t *g_bot_profile_override;
+
 extern cvar_t *g_rankedserver;
 extern cvar_t *g_spectatefollow_firstperson;
 
