@@ -10,7 +10,9 @@ OpenMoHAA is an open-source preservation project for Medal of Honor: Allied Assa
 
 ### Building the Project
 
-OpenMoHAA uses CMake as its build system. Basic build commands:
+OpenMoHAA uses CMake as its build system. New `.cpp`/`.h` files added to `code/fgame/` or `code/cgame/` are automatically picked up via `GLOB_RECURSE` in `cmake/basegame.cmake` — no manual `CMakeLists.txt` edits needed.
+
+The conventional build directory is `.cmake/` (gitignored). Basic build commands:
 
 ```bash
 # Standard build
@@ -128,46 +130,6 @@ Use `clang-format` for all code formatting. The project includes a `.clang-forma
 - 120 character line limit
 - Pointer alignment right (`Type *ptr`)
 - Braces: custom style with functions/classes on new line
-
-### Code Annotations
-
-When modifying code, annotate changes with comments:
-
-**Additions:**
-```cpp
-// Added in OPM
-//  Description of what was added
-```
-
-**Changes:**
-```cpp
-// Changed in OPM
-//  Description of what was changed
-```
-
-**Fixes:**
-```cpp
-// Fixed in OPM
-//  Description of what was fixed
-```
-
-**Removals:**
-```cpp
-// Removed in OPM
-//  Description of what was removed
-```
-
-For changes matching specific game versions, replace "OPM" with version: `2.0`, `2.1`, `2.11`, `2.15`, `2.30`, `2.40`.
-
-Group related changes:
-```cpp
-// Added in OPM
-//====
-void Function1();
-void Function2();
-void Function3();
-//====
-```
 
 ### Event Declaration Format
 
