@@ -148,6 +148,7 @@ void BotController::State_Reset(void)
     m_combat.reset();
     m_enemy.reset();
     m_senses.reset();
+    m_planner.Reset();
 }
 
 /*
@@ -165,31 +166,7 @@ void BotController::InitState_Idle(botfunc_t *func)
 
 bool BotController::CheckCondition_Idle(void)
 {
-    if (m_curious.time) {
-        return false;
-    }
-
-    if (m_combat.attackTime) {
-        return false;
-    }
-
-    // Added in OPM (github issue #8)
-    //  Recent perception events block idle so the curious/attack
-    //  transitions have a chance to pick them up.
-    if (m_senses.heardTime && level.inttime - m_senses.heardTime < 20000) {
-        return false;
-    }
-    // Fixed in OPM
-    //  Only block idle if the attacker is still a valid enemy, so that
-    //  CheckCondition_Attack can actually pick it up. If damagedBy is
-    //  NULL (non-sentient source) or invalid (attacker died), blocking
-    //  idle here would deadlock the state machine.
-    if (m_senses.damagedTime && level.inttime - m_senses.damagedTime < 5000
-        && m_senses.damagedBy && IsValidEnemy(m_senses.damagedBy)) {
-        return false;
-    }
-
-    return true;
+    return m_planner.Current().type == BotGoalType::Idle;
 }
 
 void BotController::State_Idle(void)
@@ -330,16 +307,22 @@ void BotController::InitState_Curious(botfunc_t *func)
 //  rotation/movement calls.
 void BotController::State_BeginCurious(void)
 {
+    const BotGoal& goal = m_planner.Current();
+
     movement.ClearMove();
     m_idle.reset();
 
-    // Seed state from the perception layer
-    if (m_senses.heardTime) {
+    // Seed execution state from the planner goal.
+    if (goal.type == BotGoalType::Investigate && goal.targetPos != vec_zero) {
+        m_curious.time      = level.inttime + 20000;
+        m_curious.targetPos = goal.targetPos;
+    } else if (m_senses.heardTime) {
         m_curious.time      = level.inttime + 20000;
         m_curious.targetPos = m_senses.heardPos;
-        // Consume the heard event — state now owns the investigation
-        m_senses.heardTime = 0;
     }
+
+    // Consume the heard event — state now owns the investigation.
+    m_senses.heardTime = 0;
 
     // Immediately look toward the sound source
     // Prefer the specific sound location over the most relevant memory
@@ -366,49 +349,13 @@ void BotController::State_BeginCurious(void)
 
 bool BotController::CheckCondition_Curious(void)
 {
-    if (m_combat.attackTime) {
-        if (g_bot_debug_state->integer >= 2 && m_curious.time) {
-            gi.Printf(
-                "BOT %s: Curious blocked - in combat (attackTime=%dms)\n",
-                controlledEnt->client->pers.netname,
-                m_combat.attackTime - level.inttime
-            );
-        }
-        m_curious.reset();
-        m_senses.heardTime = 0;
-        return false;
-    }
-
-    // Added in OPM (github issue #8)
-    //  Curious transitions are triggered by a fresh BotSenses entry.
-    //  Once triggered, the state owns its own lifetime via m_curious.time.
-    if (!m_curious.time && m_senses.heardTime && level.inttime - m_senses.heardTime < 20000) {
-        return true;
-    }
-
-    if (level.inttime > m_curious.time) {
-        if (m_curious.time) {
-            if (g_bot_debug_state->integer >= 2) {
-                gi.Printf(
-                    "BOT %s: Curious expired (curiousTime=%d, inttime=%d)\n",
-                    controlledEnt->client->pers.netname,
-                    m_curious.time,
-                    level.inttime
-                );
-            }
-            movement.ClearMove();
-            m_curious.reset();
-            m_senses.heardTime = 0;
-        }
-
-        return false;
-    }
-
-    return true;
+    return m_planner.Current().type == BotGoalType::Investigate;
 }
 
 void BotController::State_Curious(void)
 {
+    const BotGoal& goal = m_planner.Current();
+
     if (CheckWindows()) {
         m_botCmd.buttons ^= BUTTON_ATTACKLEFT;
         m_iLastFireTime = level.inttime;
@@ -421,7 +368,7 @@ void BotController::State_Curious(void)
     //  This prevents bots from staring at walls while walking, which looks unnatural.
     //  Only turn toward invisible sounds briefly at the start (handled in BeginState).
     {
-        Vector targetPos = m_curious.targetPos;
+        Vector targetPos = goal.targetPos != vec_zero ? goal.targetPos : m_curious.targetPos;
         if (targetPos == vec_zero) {
             m_memory.GetMostRelevantPos(controlledEnt->origin, level.inttime, targetPos);
         }
@@ -448,7 +395,14 @@ void BotController::State_Curious(void)
     {
         Vector memPos = vec_zero;
         m_memory.GetMostRelevantPos(controlledEnt->origin, level.inttime, memPos);
-        Vector targetPos = (m_curious.targetPos != vec_zero) ? m_curious.targetPos : memPos;
+        Vector targetPos = goal.targetPos != vec_zero ? goal.targetPos : m_curious.targetPos;
+        if (targetPos == vec_zero) {
+            targetPos = memPos;
+        }
+
+        if (targetPos != vec_zero) {
+            m_curious.targetPos = targetPos;
+        }
 
         if (targetPos != vec_zero && m_curious.lastPos != targetPos) {
             movement.MoveNear(targetPos, 512);
@@ -526,24 +480,38 @@ void BotController::InitState_Attack(botfunc_t *func)
 //  replaces the direct writes that Damaged() used to perform.
 void BotController::State_BeginAttack(void)
 {
+    const BotGoal& goal = m_planner.Current();
+
     movement.ClearMove();
     m_idle.reset();
 
+    if (goal.type == BotGoalType::Engage) {
+        m_enemy.enemy   = goal.targetEnemy;
+        m_enemy.lastPos = goal.targetPos;
+    }
+
     if (!m_enemy.enemy && m_senses.damagedBy && IsValidEnemy(m_senses.damagedBy)
         && level.inttime - m_senses.damagedTime < 5000) {
-        m_enemy.enemy              = m_senses.damagedBy;
-        m_enemy.lastPos            = m_senses.damagedBy->origin;
+        m_enemy.enemy   = m_senses.damagedBy;
+        m_enemy.lastPos = m_senses.damagedBy->origin;
+    }
+
+    if (m_enemy.enemy) {
         m_enemy.eyesTag            = -1;
         m_combat.attackTime        = level.inttime + 5000;
         m_combat.lastSeenTime      = level.inttime;
         m_combat.attackStopAimTime = level.inttime + 2000;
         // Reaction delay: damaged tells you where, but you still need to turn and aim
         m_combat.lastUnseenTime = level.inttime;
-        // Clear any curious state — we have a real threat now
-        m_curious.reset();
-        // Consume the damage sense
-        m_senses.damagedTime = 0;
+    } else if (m_enemy.lastPos != vec_zero) {
+        m_combat.attackTime        = level.inttime + 2000;
+        m_combat.attackStopAimTime = level.inttime + 2000;
     }
+
+    // Clear any curious state — we have a real threat now.
+    m_curious.reset();
+    // Consume the damage sense.
+    m_senses.damagedTime = 0;
 
     if (g_bot_debug_state->integer && m_enemy.enemy) {
         const char *enemyName = "unknown";
@@ -554,30 +522,6 @@ void BotController::State_BeginAttack(void)
         }
         float dist = (m_enemy.enemy->origin - controlledEnt->origin).length();
         gi.Printf("BOT %s: Attack - targeting %s at dist=%.0f\n", controlledEnt->client->pers.netname, enemyName, dist);
-    }
-}
-
-static Vector bot_origin;
-
-static int sentients_compare(const void *elem1, const void *elem2)
-{
-    Entity *e1, *e2;
-    float   delta[3];
-    float   d1, d2;
-
-    e1 = *(Entity **)elem1;
-    e2 = *(Entity **)elem2;
-
-    VectorSubtract(bot_origin, e1->origin, delta);
-    d1 = VectorLengthSquared(delta);
-
-    VectorSubtract(bot_origin, e2->origin, delta);
-    d2 = VectorLengthSquared(delta);
-
-    if (d2 <= d1) {
-        return d1 > d2;
-    } else {
-        return -1;
     }
 }
 
@@ -619,82 +563,7 @@ bool BotController::IsValidEnemy(Sentient *sent) const
 
 bool BotController::CheckCondition_Attack(void)
 {
-    Container<Sentient *> sents       = SentientList;
-    float                 maxDistance = 0;
-    Sentient             *bestEnemy   = NULL;
-    float                 bestDistSq  = 999999999.0f;
-
-    bot_origin = controlledEnt->origin;
-    sents.Sort(sentients_compare);
-
-    maxDistance = Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828);
-
-    //
-    // Changed in OPM
-    //  Scan ALL visible enemies and pick the closest one, rather than
-    //  returning early when any enemy is found. Use 360° FOV so bots
-    //  detect enemies regardless of where they're currently looking -
-    //  a player would notice someone appearing in their peripheral vision.
-    //
-    for (int i = 1; i <= sents.NumObjects(); i++) {
-        Sentient *sent = sents.ObjectAt(i);
-
-        if (!IsValidEnemy(sent)) {
-            continue;
-        }
-
-        float distSq = (sent->origin - controlledEnt->origin).lengthSquared();
-
-        // Use 360° FOV - detect enemies anywhere, not just where we're looking
-        if (controlledEnt->CanSee(sent, 360, maxDistance, false)) {
-            if (distSq < bestDistSq) {
-                bestDistSq = distSq;
-                bestEnemy  = sent;
-            }
-        }
-    }
-
-    // If we found a visible enemy, target them
-    if (bestEnemy) {
-        if (m_enemy.enemy != bestEnemy) {
-            m_enemy.eyesTag = -1;
-            // Reset reaction time when switching targets
-            m_combat.lastUnseenTime = level.inttime;
-        }
-
-        m_enemy.enemy       = bestEnemy;
-        m_enemy.lastPos     = m_enemy.enemy->origin;
-        m_combat.attackTime = level.inttime + 500 + (int)G_Random(1000);
-
-        // Throttle sighting writes to avoid flooding the ring buffer
-        if (level.inttime - m_enemy.lastSightingTime >= 1000) {
-            m_memory.Remember(m_enemy.enemy->origin, AI_EVENT_WEAPON_FIRE, 1.0f);
-            m_enemy.lastSightingTime = level.inttime;
-        }
-
-        return true;
-    }
-
-    // Added in OPM (github issue #8)
-    //  If we were just damaged by a valid sentient, enter attack state
-    //  even if the attacker isn't yet visible. State_BeginAttack will
-    //  consume m_senses.damagedBy and set up enemy tracking.
-    if (m_senses.damagedBy && IsValidEnemy(m_senses.damagedBy)
-        && level.inttime - m_senses.damagedTime < 5000) {
-        return true;
-    }
-
-    // No visible enemy - check if we should keep hunting the last known position
-    if (level.inttime > m_combat.attackTime) {
-        if (m_combat.attackTime) {
-            movement.ClearMove();
-            m_combat.attackTime = 0;
-        }
-
-        return false;
-    }
-
-    return true;
+    return m_planner.Current().type == BotGoalType::Engage;
 }
 
 void BotController::State_EndAttack(void)
@@ -725,6 +594,8 @@ void BotController::State_EndAttack(void)
 
 void BotController::State_Attack(void)
 {
+    const BotGoal& goal = m_planner.Current();
+
     bool    bMelee              = false;
     bool    bCanSee             = false;
     bool    bCanAttack          = false;
@@ -734,6 +605,20 @@ void BotController::State_Attack(void)
     Weapon *pWeap   = controlledEnt->GetActiveWeapon(WEAPON_MAIN);
     bool    bNoMove = false;
     bool    bFiring = false;
+
+    if (goal.type == BotGoalType::Engage) {
+        if (goal.targetEnemy && goal.targetEnemy != m_enemy.enemy) {
+            m_enemy.eyesTag         = -1;
+            m_combat.lastUnseenTime = level.inttime;
+        }
+
+        if (goal.targetEnemy) {
+            m_enemy.enemy = goal.targetEnemy;
+        }
+        if (goal.targetPos != vec_zero) {
+            m_enemy.lastPos = goal.targetPos;
+        }
+    }
 
     // Changed in OPM
     //  When enemy is gone but we recently had one, keep looking at the last
@@ -766,6 +651,11 @@ void BotController::State_Attack(void)
     );
 
     if (bCanSee) {
+        if (level.inttime - m_enemy.lastSightingTime >= 1000) {
+            m_memory.Remember(m_enemy.enemy->origin, AI_EVENT_WEAPON_FIRE, 1.0f);
+            m_enemy.lastSightingTime = level.inttime;
+        }
+
         if (!pWeap) {
             return;
         }

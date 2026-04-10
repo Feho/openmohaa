@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "navigate.h"
 #include "navigation_path.h"
 #include "playerbot_memory.h"
+#include "playerbot_planner.h"
 #include "playerbot_profile.h"
 #include "playerbot_visibility.h"
 
@@ -387,6 +388,8 @@ public:
     };
 
 private:
+    friend class BotPlanner;
+
     static botfunc_t botfuncs[];
 
     BotMovement    movement;
@@ -394,6 +397,7 @@ private:
     BotMemory      m_memory;
     BotCoverageMap m_coverage;
     BotProfile     m_profile;
+    BotPlanner     m_planner;
 
     // Grouped state structs (prevents partial-reset bugs)
     BotCombatState  m_combat;
@@ -502,6 +506,7 @@ public:
     BotMemory&        GetMemory();
     BotCoverageMap&   GetCoverage();
     const BotProfile& GetProfile() const;
+    const BotGoal&    GetCurrentGoal() const;
 
     void DrawDebugCoverage();
 

@@ -347,6 +347,7 @@ extern cvar_t *g_bot_aim_noise;
 // Added in OPM
 //  Coverage debug: draw nav node visit age
 extern cvar_t *g_bot_debug_coverage;
+extern cvar_t *g_bot_debug_planner;
 
 extern cvar_t *g_bot_debug_reaction;
 extern cvar_t *g_bot_debug_state;

@@ -113,6 +113,11 @@ const BotProfile& BotController::GetProfile() const
     return m_profile;
 }
 
+const BotGoal& BotController::GetCurrentGoal() const
+{
+    return m_planner.Current();
+}
+
 // Added in OPM
 //  Draw debug visualization of coverage and memory state.
 //  Only drawn for the first bot to avoid visual clutter.
@@ -246,6 +251,7 @@ void BotController::UpdateBotStates(void)
     //  Per-frame memory maintenance and coverage tracking
     m_memory.Tick(level.inttime);
     UpdateCoverage();
+    m_planner.Tick(level.inttime);
 
     CheckStates();
 
@@ -708,6 +714,7 @@ void BotController::Spawned(void)
     ClearEnemy();
     m_curious.reset();
     m_botCmd.buttons = 0;
+    m_planner.Reset();
 
     // Added in OPM
     //  Assign personality profile only on first spawn so the bot keeps
@@ -879,6 +886,7 @@ void BotController::setControlledEntity(Player *player)
     controlledEnt = player;
     movement.SetControlledEntity(player);
     rotation.SetControlledEntity(player);
+    m_planner.SetController(this);
 
     // Added in OPM
     //  Coverage map is lazily initialized from the nav graph on first
