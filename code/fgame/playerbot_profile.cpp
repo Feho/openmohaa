@@ -41,6 +41,8 @@ void BotProfile::setDefaults()
     hearingRange     = 1.0f;
     visionFovDegrees = 120;
 
+    preferredWeapon = "";
+
     weight = 1.0f;
 }
 
@@ -156,6 +158,8 @@ void BotProfileManager::LoadProfileFile(const char *path)
             profile.hearingRange = atof(value.c_str());
         } else if (key == "visionFovDegrees") {
             profile.visionFovDegrees = atof(value.c_str());
+        } else if (key == "preferredWeapon") {
+            profile.preferredWeapon = value;
         } else if (key == "weight") {
             profile.weight = atof(value.c_str());
         } else {

@@ -408,6 +408,9 @@ private:
     unsigned int      m_StateFlags;
     ScriptThreadLabel m_RunLabel;
 
+    // Spawn tracking
+    bool m_bFirstSpawn;
+
     // Taunts
     int m_iNextTauntTime;
     int m_iLastFireTime;

@@ -75,6 +75,8 @@ BotController::BotController()
     m_idle.reset();
     m_senses.reset();
 
+    m_bFirstSpawn = true;
+
     m_iNextTauntTime = 0;
     m_iLastFireTime  = 0;
 
@@ -241,10 +243,10 @@ void BotController::UpdateBotStates(void)
         Event *event;
 
         //
-        // Primary weapon
+        // Primary weapon — use profile preference if available
         //
         event = new Event(EV_Player_PrimaryDMWeapon);
-        event->AddString("auto");
+        event->AddString(m_profile.preferredWeapon.length() ? m_profile.preferredWeapon.c_str() : "auto");
 
         controlledEnt->ProcessEvent(event);
     }
@@ -726,13 +728,17 @@ void BotController::Spawned(void)
     m_botCmd.buttons = 0;
 
     // Added in OPM
-    //  Assign personality profile on each spawn. The profile is copied
-    //  so each bot has its own independent parameter set.
-    m_profile = botProfileManager.PickProfile();
-    rotation.SetAimParameters(m_profile.turnSpeed, m_profile.aimOvershoot, m_profile.aimSettleSpeed, m_profile.aimNoise);
+    //  Assign personality profile only on first spawn so the bot keeps
+    //  the same profile (and weapon/model) across respawns within a map.
+    if (m_bFirstSpawn) {
+        m_profile = botProfileManager.PickProfile();
+        rotation.SetAimParameters(m_profile.turnSpeed, m_profile.aimOvershoot, m_profile.aimSettleSpeed, m_profile.aimNoise);
 
-    if (g_bot_debug_state->integer) {
-        gi.Printf("BOT %s: spawned with profile '%s'\n", controlledEnt->client->pers.netname, m_profile.name.c_str());
+        if (g_bot_debug_state->integer) {
+            gi.Printf("BOT %s: spawned with profile '%s'\n", controlledEnt->client->pers.netname, m_profile.name.c_str());
+        }
+
+        m_bFirstSpawn = false;
     }
 
     // Added in OPM
@@ -783,20 +789,13 @@ void BotController::Killed(const Event& ev)
         m_enemy.deathPos = vec_zero;
     }
 
-    // Choose a new random primary weapon
+    // Changed in OPM
+    //  Use profile's preferred weapon instead of re-randomizing on death.
+    //  Model is kept from initial spawn — no re-randomization.
     Event event(EV_Player_PrimaryDMWeapon);
-    event.AddString("auto");
+    event.AddString(m_profile.preferredWeapon.length() ? m_profile.preferredWeapon.c_str() : "auto");
 
     controlledEnt->ProcessEvent(event);
-
-    //
-    // This is useful to change nationality in Spearhead and Breakthrough
-    // this allows the AI to use more weapons
-    //
-    Info_SetValueForKey(controlledEnt->client->pers.userinfo, "dm_playermodel", G_GetRandomAlliedPlayerModel());
-    Info_SetValueForKey(controlledEnt->client->pers.userinfo, "dm_playergermanmodel", G_GetRandomGermanPlayerModel());
-
-    G_ClientUserinfoChanged(controlledEnt->edict, controlledEnt->client->pers.userinfo);
 }
 
 // Refactored in OPM (see github issue #8)

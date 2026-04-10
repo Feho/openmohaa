@@ -44,6 +44,9 @@ struct BotProfile {
     float hearingRange;    // multiplier on sound range factor
     float visionFovDegrees; // replaces hardcoded 360° scan
 
+    // --- Weapon preference ---
+    str preferredWeapon; // "rifle","sniper","smg","mg","heavy","shotgun" or empty for "auto"
+
     // --- Selection weight ---
     float weight; // relative probability of being picked
 
