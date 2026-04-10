@@ -64,10 +64,10 @@ void BotVisibilityMatrix::Bake()
 
         vec3_t posAStand;
         vec3_t posACrouch;
-        posAStand[0] = posACrouch[0] = nodeA->m_PathPos[0];
-        posAStand[1] = posACrouch[1] = nodeA->m_PathPos[1];
-        posAStand[2]  = nodeA->m_PathPos[2] + STANDING_EYE_OFFSET;
-        posACrouch[2] = nodeA->m_PathPos[2] + CROUCH_EYE_OFFSET;
+        posAStand[0] = posACrouch[0] = nodeA->origin[0];
+        posAStand[1] = posACrouch[1] = nodeA->origin[1];
+        posAStand[2]  = nodeA->origin[2] + STANDING_EYE_OFFSET;
+        posACrouch[2] = nodeA->origin[2] + CROUCH_EYE_OFFSET;
 
         if (!IsFiniteVec3(posAStand) || !IsFiniteVec3(posACrouch)) {
             continue;
@@ -79,9 +79,9 @@ void BotVisibilityMatrix::Bake()
                 continue;
             }
 
-            float dx = nodeA->m_PathPos[0] - nodeB->m_PathPos[0];
-            float dy = nodeA->m_PathPos[1] - nodeB->m_PathPos[1];
-            float dz = nodeA->m_PathPos[2] - nodeB->m_PathPos[2];
+            float dx = nodeA->origin[0] - nodeB->origin[0];
+            float dy = nodeA->origin[1] - nodeB->origin[1];
+            float dz = nodeA->origin[2] - nodeB->origin[2];
             float distSq = dx * dx + dy * dy + dz * dz;
 
             if (!isfinite(distSq) || distSq <= 0.0f || distSq > MAX_TACTICAL_RANGE_SQ) {
@@ -92,10 +92,10 @@ void BotVisibilityMatrix::Bake()
 
             vec3_t posBStand;
             vec3_t posBCrouch;
-            posBStand[0] = posBCrouch[0] = nodeB->m_PathPos[0];
-            posBStand[1] = posBCrouch[1] = nodeB->m_PathPos[1];
-            posBStand[2]  = nodeB->m_PathPos[2] + STANDING_EYE_OFFSET;
-            posBCrouch[2] = nodeB->m_PathPos[2] + CROUCH_EYE_OFFSET;
+            posBStand[0] = posBCrouch[0] = nodeB->origin[0];
+            posBStand[1] = posBCrouch[1] = nodeB->origin[1];
+            posBStand[2]  = nodeB->origin[2] + STANDING_EYE_OFFSET;
+            posBCrouch[2] = nodeB->origin[2] + CROUCH_EYE_OFFSET;
 
             if (!IsFiniteVec3(posBStand) || !IsFiniteVec3(posBCrouch)) {
                 continue;
@@ -265,9 +265,9 @@ void BotVisibilityMatrix::DrawDebug(const Vector& fromPos)
             continue;
         }
 
-        float dx = fromPos.x - node->m_PathPos[0];
-        float dy = fromPos.y - node->m_PathPos[1];
-        float dz = fromPos.z - node->m_PathPos[2];
+        float dx = fromPos.x - node->origin[0];
+        float dy = fromPos.y - node->origin[1];
+        float dz = fromPos.z - node->origin[2];
         float d  = dx * dx + dy * dy + dz * dz;
 
         if (d < bestDist) {
@@ -282,9 +282,9 @@ void BotVisibilityMatrix::DrawDebug(const Vector& fromPos)
 
     const Container<VisibilityEntry>& nodeEntries = m_entries.ObjectAt(bestNode + 1);
     Vector startPos(
-        PathSearch::pathnodes[bestNode]->m_PathPos[0],
-        PathSearch::pathnodes[bestNode]->m_PathPos[1],
-        PathSearch::pathnodes[bestNode]->m_PathPos[2] + STANDING_EYE_OFFSET
+        PathSearch::pathnodes[bestNode]->origin[0],
+        PathSearch::pathnodes[bestNode]->origin[1],
+        PathSearch::pathnodes[bestNode]->origin[2] + STANDING_EYE_OFFSET
     );
 
     for (int i = 1; i <= nodeEntries.NumObjects(); i++) {
@@ -294,7 +294,7 @@ void BotVisibilityMatrix::DrawDebug(const Vector& fromPos)
             continue;
         }
 
-        Vector endPos(other->m_PathPos[0], other->m_PathPos[1], other->m_PathPos[2] + STANDING_EYE_OFFSET);
+        Vector endPos(other->origin[0], other->origin[1], other->origin[2] + STANDING_EYE_OFFSET);
 
         if (entry.crouchOnly) {
             // Yellow for crouch-only visibility
