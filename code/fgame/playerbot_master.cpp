@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "playerbot.h"
 #include "consoleevent.h"
 #include "debuglines.h"
+#include "gamecvars.h"
 #include "scriptexception.h"
 #include "vehicleturret.h"
 #include "weaputils.h"
@@ -45,16 +46,52 @@ void BotManager::Init()
 {
     botProfileManager.Init();
     botControllerManager.Init();
+    visibilityMatrix.Reset();
+    m_bPendingVisibilityBake = false;
 }
 
 void BotManager::Cleanup()
 {
     botControllerManager.Cleanup();
+    visibilityMatrix.Reset();
+    m_bPendingVisibilityBake = false;
+}
+
+void BotManager::OnPathNodesLoaded()
+{
+    m_bPendingVisibilityBake = true;
+}
+
+void BotManager::EnsureVisibilityMatrixBaked()
+{
+    if (!m_bPendingVisibilityBake || visibilityMatrix.IsBaked()) {
+        return;
+    }
+
+    visibilityMatrix.Bake();
+    m_bPendingVisibilityBake = false;
 }
 
 void BotManager::Frame()
 {
     botControllerManager.ThinkControllers();
+
+    // Added in OPM
+    //  Debug visualization for the visibility matrix.
+    //  Draws lines from the first bot's nearest node to all visible nodes.
+    if (g_bot_debug_visibility->integer) {
+        EnsureVisibilityMatrixBaked();
+    }
+
+    if (g_bot_debug_visibility->integer && visibilityMatrix.IsBaked()) {
+        const Container<BotController *>& controllers = botControllerManager.getControllers();
+        if (controllers.NumObjects() > 0) {
+            Player *player = controllers.ObjectAt(1)->getControlledEntity();
+            if (player) {
+                visibilityMatrix.DrawDebug(player->origin);
+            }
+        }
+    }
 }
 
 void BotManager::BroadcastEvent(Entity *originator, Vector origin, int iType, float radius)

@@ -28,6 +28,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "navigation_path.h"
 #include "playerbot_beliefs.h"
 #include "playerbot_profile.h"
+#include "playerbot_visibility.h"
 
 #define MAX_BOT_FUNCTIONS 5
 
@@ -538,11 +539,21 @@ public:
 
     void Init();
     void Cleanup();
+    void EnsureVisibilityMatrixBaked();
+    void OnPathNodesLoaded();
     void Frame();
     void BroadcastEvent(Entity *originator, Vector origin, int iType, float radius);
 
+    const BotVisibilityMatrix& getVisibilityMatrix()
+    {
+        EnsureVisibilityMatrixBaked();
+        return visibilityMatrix;
+    }
+
 private:
     BotControllerManager botControllerManager;
+    BotVisibilityMatrix  visibilityMatrix;
+    bool                 m_bPendingVisibilityBake;
 };
 
 extern BotManager botManager;

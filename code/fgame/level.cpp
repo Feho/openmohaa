@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "g_local.h"
 #include "g_spawn.h"
 #include "g_bot.h"
+#include "playerbot.h"
 #include "level.h"
 #include "parm.h"
 #include "navigate.h"
@@ -1253,6 +1254,8 @@ void Level::SpawnEntities(char *entities, int svsTime)
     Com_Printf("%i entities inhibited\n", inhibit);
 
     Com_Printf("-------------------- Spawning Entities Done ------------------ %i ms\n", t2 - t1);
+
+    botManager.OnPathNodesLoaded();
 
     //
     // create landmarks

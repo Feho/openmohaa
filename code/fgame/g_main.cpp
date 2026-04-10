@@ -1569,6 +1569,8 @@ qboolean G_ArchiveLevel(
                     player->Loaded();
                 }
             }
+
+            botManager.OnPathNodesLoaded();
         }
 
         if (arc.Loading()) {
