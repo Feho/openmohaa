@@ -129,46 +129,6 @@ Use `clang-format` for all code formatting. The project includes a `.clang-forma
 - Pointer alignment right (`Type *ptr`)
 - Braces: custom style with functions/classes on new line
 
-### Code Annotations
-
-When modifying code, annotate changes with comments:
-
-**Additions:**
-```cpp
-// Added in OPM
-//  Description of what was added
-```
-
-**Changes:**
-```cpp
-// Changed in OPM
-//  Description of what was changed
-```
-
-**Fixes:**
-```cpp
-// Fixed in OPM
-//  Description of what was fixed
-```
-
-**Removals:**
-```cpp
-// Removed in OPM
-//  Description of what was removed
-```
-
-For changes matching specific game versions, replace "OPM" with version: `2.0`, `2.1`, `2.11`, `2.15`, `2.30`, `2.40`.
-
-Group related changes:
-```cpp
-// Added in OPM
-//====
-void Function1();
-void Function2();
-void Function3();
-//====
-```
-
 ### Event Declaration Format
 
 Always use this exact structure for Event declarations:
