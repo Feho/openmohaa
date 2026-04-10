@@ -442,4 +442,4 @@ inline void AttractiveNode::Archive(Archiver& arc)
     arc.ArchiveFloat(&m_fMaxDistanceSquared);
 }
 
-extern Container<AttractiveNode *> attractiveNodes;
+extern Container<AttractiveNodePtr> attractiveNodes;

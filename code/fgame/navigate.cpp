@@ -3743,7 +3743,7 @@ CLASS_DECLARATION(SimpleArchivedEntity, AttractiveNode, NULL) {
     {NULL,                              NULL                           }
 };
 
-Container<AttractiveNode *> attractiveNodes;
+Container<AttractiveNodePtr> attractiveNodes;
 
 AttractiveNode::AttractiveNode()
 {

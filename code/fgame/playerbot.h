@@ -26,7 +26,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "player.h"
 #include "navigate.h"
 #include "navigation_path.h"
-#include "playerbot_beliefs.h"
+#include "playerbot_memory.h"
 #include "playerbot_profile.h"
 #include "playerbot_visibility.h"
 
@@ -270,17 +270,19 @@ struct BotCombatState {
 struct BotEnemyState {
     SafePtr<Sentient> enemy;
     int               eyesTag;  // Bone tag for enemy's eyes
+    int               lastSightingTime;
     Vector            oldPos;   // Previous known enemy position
     Vector            lastPos;  // Last known enemy position
     Vector            deathPos; // Where enemy died (for avoidance)
 
     void reset()
     {
-        enemy    = NULL;
-        eyesTag  = -1;
-        oldPos   = vec_zero;
-        lastPos  = vec_zero;
-        deathPos = vec_zero;
+        enemy            = NULL;
+        eyesTag          = -1;
+        lastSightingTime = 0;
+        oldPos           = vec_zero;
+        lastPos          = vec_zero;
+        deathPos         = vec_zero;
     }
 };
 
@@ -387,10 +389,11 @@ public:
 private:
     static botfunc_t botfuncs[];
 
-    BotMovement  movement;
-    BotRotation  rotation;
-    BotBeliefMap beliefMap;
-    BotProfile   m_profile;
+    BotMovement    movement;
+    BotRotation    rotation;
+    BotMemory      m_memory;
+    BotCoverageMap m_coverage;
+    BotProfile     m_profile;
 
     // Grouped state structs (prevents partial-reset bugs)
     BotCombatState  m_combat;
@@ -431,6 +434,7 @@ private:
     void CheckUse(void);
     bool CheckWindows(void);
     void CheckValidWeapon(void);
+    void UpdateCoverage(void);
 
     void State_DefaultBegin(void);
     void State_DefaultEnd(void);
@@ -495,10 +499,11 @@ public:
     void EventStuffText(const str& text);
 
     BotMovement&      GetMovement();
-    BotBeliefMap&     GetBeliefMap();
+    BotMemory&        GetMemory();
+    BotCoverageMap&   GetCoverage();
     const BotProfile& GetProfile() const;
 
-    void DrawDebugBeliefs();
+    void DrawDebugCoverage();
 
 public:
     void    setControlledEntity(Player *player);

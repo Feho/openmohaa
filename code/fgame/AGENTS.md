@@ -10,7 +10,7 @@ The active bot system lives primarily in:
 - `playerbot_states.cpp`: high-level state machine and state transitions.
 - `playerbot_movement.cpp`: pathing, obstacle handling, jump logic, attractive nodes.
 - `playerbot_rotation.cpp`: aim and turn dynamics.
-- `playerbot_beliefs.h` / `playerbot_beliefs.cpp`: belief-map storage and patrol targeting.
+- `playerbot_memory.h` / `playerbot_memory.cpp`: recent event memory (ring buffer) and coverage tracking.
 - `playerbot_profile.h` / `playerbot_profile.cpp`: data-only bot profiles loaded from `bots/profiles/*.cfg`.
 - `playerbot_strategy.h` / `playerbot_strategy.cpp`: strategy helpers layered on top of controller state.
 - `playerbot_master.cpp`: controller manager ownership and ticking.
@@ -41,7 +41,7 @@ Preserve the current separation of responsibilities:
 - Per-frame decisions belong in `BotController` and the state files.
 - Motion/path execution belongs in `BotMovement`.
 - Aim smoothing and turn behavior belong in `BotRotation`.
-- Spatial suspicion and patrol memory belong in `BotBeliefMap`.
+- Recent event memory belongs in `BotMemory`, coverage tracking in `BotCoverageMap`.
 - Personality tuning belongs in `BotProfile`. Profiles are data only.
 
 Do not write behavior-specific logic into `BotProfile` loading code.
@@ -53,7 +53,7 @@ Grouped state structs in `playerbot.h` exist to avoid partial resets. Prefer ext
 The main states are initialized in `BotController::Init()` and implemented in `playerbot_states.cpp`.
 
 - Default idle/combat/curious/grenade behavior should continue to flow through `CheckStates()`.
-- Event handlers like `Damaged()` and `NoticeEvent()` should write to sense or belief state first.
+- Event handlers like `Damaged()` and `NoticeEvent()` should write to sense or memory state first.
 - State `Think` methods should be the place that converts those inputs into movement, aiming, and firing decisions.
 
 Avoid direct movement or rotation writes from perception/event handlers unless there is a strong reason and the boundary is updated consistently everywhere.
@@ -77,16 +77,22 @@ If you change spawn behavior, verify all of:
 
 Weapon preferences must remain compatible with the strings accepted by `Player::EventPrimaryDMWeapon`.
 
-## Belief Map Rules
+## Memory and Coverage Rules
 
-The belief map is persistent bot memory for likely enemy presence.
+`BotMemory` is a fixed-capacity ring buffer of recent perception events.
 
-- Initialize it from map spawn bounds.
-- Seed it from enemy spawn points on spawn.
-- Update it from damage/noise/death events.
-- Decay and visibility clearing happen every frame.
+- Updated from NoticeEvent, Damaged, Killed, and enemy sightings.
+- Entries age out after 30 seconds. Tick is called each frame.
+- Consumers: idle pre-aim, curious state fallback.
 
-If you add new perception inputs, prefer feeding the belief map rather than adding separate one-off patrol heuristics.
+`BotCoverageMap` tracks when each nav node was last visited.
+
+- Lazily initialized from the navigation graph.
+- Updated each frame via `UpdateCoverage()`.
+- Consumers: idle patrol via `PickExplorationTarget()`.
+- Coverage persists across respawns; memory is cleared on spawn.
+
+If you add new perception inputs, prefer feeding `BotMemory` rather than adding separate one-off patrol heuristics.
 
 ## Editing Guidance
 
@@ -107,7 +113,7 @@ After meaningful bot changes, validate at least these cases:
 - Bot respawns without losing required persistent state.
 - Bot still acquires enemies, moves, and fires.
 - No delegate registration/removal regressions were introduced.
-- No belief-map initialization regressions were introduced on fresh map load.
+- No memory/coverage initialization regressions were introduced on fresh map load.
 
 If you touch profile parsing or selection, also verify behavior with:
 

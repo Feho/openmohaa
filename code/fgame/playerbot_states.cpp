@@ -248,11 +248,10 @@ void BotController::State_Idle(void)
         m_idle.walking = false;
     }
 
-    // Changed in OPM (github issue #8)
+    // Changed in OPM (github issue #8, #12)
     //  Pre-aim is driven first by the perception layer (m_senses): if we
-    //  recently heard a threat sound, face it — a soldier would always
-    //  glance toward nearby gunfire. Otherwise fall back to the highest-
-    //  belief direction, then the current path direction.
+    //  recently heard a threat sound, face it. Otherwise fall back to the
+    //  most relevant memory position, then the current path direction.
     {
         bool aimed = false;
         if (m_senses.heardTime && level.inttime - m_senses.heardTime < 20000) {
@@ -260,34 +259,43 @@ void BotController::State_Idle(void)
             aimed = true;
         }
         if (!aimed) {
-            Vector beliefPos = beliefMap.GetHighestBeliefPos(controlledEnt->origin);
-            if (beliefPos != vec_zero && controlledEnt->CanSee(beliefPos, 120, 2048, false)) {
-                rotation.AimAt(beliefPos);
+            Vector memPos;
+            if (m_memory.GetMostRelevantPos(controlledEnt->origin, level.inttime, memPos)
+                && controlledEnt->CanSee(memPos, 120, 2048, false)) {
+                rotation.AimAt(memPos);
             } else {
                 AimAtAimNode();
             }
         }
     }
 
-    // Changed in OPM
-    //  Belief-driven patrol: move toward the highest-belief zone instead
-    //  of wandering randomly. Falls back to attractive nodes and random
-    //  movement when no zone has significant belief.
+    // Changed in OPM (github issue #12)
+    //  Coverage-driven patrol: move toward the least-visited navigation
+    //  node within roam radius. Falls back to attractive nodes, then
+    //  death position, then random movement.
     if (!movement.MoveToBestAttractivePoint() && !movement.IsMoving()) {
-        Vector beliefPos = beliefMap.GetHighestBeliefPos(controlledEnt->origin);
-        if (beliefPos != vec_zero) {
-            movement.MoveTo(beliefPos);
+        float roamRadius = m_profile.roamRadius > 0 ? m_profile.roamRadius : 2048.0f;
+        int   targetNode = m_coverage.PickExplorationTarget(controlledEnt->origin, roamRadius, level.inttime);
 
-            if (movement.MoveDone()) {
-                beliefMap.ClearZone(beliefPos);
+        if (targetNode >= 0 && targetNode < PathSearch::nodecount && PathSearch::pathnodes[targetNode]) {
+            PathNode *node = PathSearch::pathnodes[targetNode];
+            Vector    targetPos = node->origin;
+            movement.MoveTo(targetPos);
+
+            if (!movement.IsMoving()) {
+                m_coverage.MarkVisited(targetNode, level.inttime);
             }
-        } else if (m_enemy.deathPos != vec_zero) {
+        }
+
+        if (!movement.IsMoving() && m_enemy.deathPos != vec_zero) {
             movement.MoveTo(m_enemy.deathPos);
 
             if (movement.MoveDone()) {
                 m_enemy.deathPos = vec_zero;
             }
-        } else {
+        }
+
+        if (!movement.IsMoving()) {
             Vector randomDir(G_CRandom(16), G_CRandom(16), G_CRandom(16));
             Vector preferredDir;
             float  radius = 512 + G_Random(2048);
@@ -334,10 +342,10 @@ void BotController::State_BeginCurious(void)
     }
 
     // Immediately look toward the sound source
-    // Prefer the specific sound location over the general belief map area
+    // Prefer the specific sound location over the most relevant memory
     Vector targetPos = m_curious.targetPos;
     if (targetPos == vec_zero) {
-        targetPos = beliefMap.GetHighestBeliefPos(controlledEnt->origin);
+        m_memory.GetMostRelevantPos(controlledEnt->origin, level.inttime, targetPos);
     }
     if (targetPos != vec_zero) {
         rotation.AimAt(targetPos);
@@ -366,7 +374,7 @@ bool BotController::CheckCondition_Curious(void)
                 m_combat.attackTime - level.inttime
             );
         }
-        m_curious.time     = 0;
+        m_curious.reset();
         m_senses.heardTime = 0;
         return false;
     }
@@ -389,7 +397,7 @@ bool BotController::CheckCondition_Curious(void)
                 );
             }
             movement.ClearMove();
-            m_curious.time = 0;
+            m_curious.reset();
             m_senses.heardTime = 0;
         }
 
@@ -413,8 +421,10 @@ void BotController::State_Curious(void)
     //  This prevents bots from staring at walls while walking, which looks unnatural.
     //  Only turn toward invisible sounds briefly at the start (handled in BeginState).
     {
-        Vector targetPos = (m_curious.targetPos != vec_zero) ? m_curious.targetPos
-                                                             : beliefMap.GetHighestBeliefPos(controlledEnt->origin);
+        Vector targetPos = m_curious.targetPos;
+        if (targetPos == vec_zero) {
+            m_memory.GetMostRelevantPos(controlledEnt->origin, level.inttime, targetPos);
+        }
 
         if (targetPos != vec_zero && controlledEnt->CanSee(targetPos, 120, 2048, false)) {
             // Can see the target position - aim at it
@@ -436,8 +446,9 @@ void BotController::State_Curious(void)
     //  exactly on the navigation mesh, so find a path to anywhere within
     //  512 units of the target.
     {
-        Vector beliefPos = beliefMap.GetHighestBeliefPos(controlledEnt->origin);
-        Vector targetPos = (m_curious.targetPos != vec_zero) ? m_curious.targetPos : beliefPos;
+        Vector memPos = vec_zero;
+        m_memory.GetMostRelevantPos(controlledEnt->origin, level.inttime, memPos);
+        Vector targetPos = (m_curious.targetPos != vec_zero) ? m_curious.targetPos : memPos;
 
         if (targetPos != vec_zero && m_curious.lastPos != targetPos) {
             movement.MoveNear(targetPos, 512);
@@ -475,8 +486,7 @@ void BotController::State_Curious(void)
                     "BOT %s: Curious arrived at target (dist=%.0f)\n", controlledEnt->client->pers.netname, distToTarget
                 );
             }
-            beliefMap.ClearZone(controlledEnt->origin);
-            m_curious.time = 0;
+            m_curious.reset();
         } else if (!movement.IsMoving()) {
             // Can't path to target - stay alert briefly (3 seconds) then resume normal behavior
             // This gives time to spot an enemy while not freezing the bot
@@ -488,7 +498,7 @@ void BotController::State_Curious(void)
                         distToTarget
                     );
                 }
-                m_curious.time = 0;
+                m_curious.reset();
             }
         }
     }
@@ -530,7 +540,7 @@ void BotController::State_BeginAttack(void)
         // Reaction delay: damaged tells you where, but you still need to turn and aim
         m_combat.lastUnseenTime = level.inttime;
         // Clear any curious state — we have a real threat now
-        m_curious.time = 0;
+        m_curious.reset();
         // Consume the damage sense
         m_senses.damagedTime = 0;
     }
@@ -656,9 +666,11 @@ bool BotController::CheckCondition_Attack(void)
         m_enemy.lastPos     = m_enemy.enemy->origin;
         m_combat.attackTime = level.inttime + 500 + (int)G_Random(1000);
 
-        // Added in OPM
-        //  Update belief map with direct sighting
-        beliefMap.UpdateFromSighting(m_enemy.enemy->origin);
+        // Throttle sighting writes to avoid flooding the ring buffer
+        if (level.inttime - m_enemy.lastSightingTime >= 1000) {
+            m_memory.Remember(m_enemy.enemy->origin, AI_EVENT_WEAPON_FIRE, 1.0f);
+            m_enemy.lastSightingTime = level.inttime;
+        }
 
         return true;
     }

@@ -98,9 +98,14 @@ BotMovement& BotController::GetMovement()
     return movement;
 }
 
-BotBeliefMap& BotController::GetBeliefMap()
+BotMemory& BotController::GetMemory()
 {
-    return beliefMap;
+    return m_memory;
+}
+
+BotCoverageMap& BotController::GetCoverage()
+{
+    return m_coverage;
 }
 
 const BotProfile& BotController::GetProfile() const
@@ -109,99 +114,33 @@ const BotProfile& BotController::GetProfile() const
 }
 
 // Added in OPM
-//  Draw debug visualization of belief zones. Each zone is drawn as a
-//  colored circle at its centroid: green (low) -> yellow -> red (high).
-//  The current patrol target zone gets a cyan pyramid marker.
-//  A cyan arrow is drawn from the bot to its target zone.
+//  Draw debug visualization of coverage and memory state.
 //  Only drawn for the first bot to avoid visual clutter.
-//  Periodic console output summarizes belief state.
-void BotController::DrawDebugBeliefs()
+void BotController::DrawDebugCoverage()
 {
-    if (!beliefMap.IsInitialized()) {
-        return;
-    }
-
     // Only draw for the first bot to avoid clutter
     const Container<BotController *>& controllers = botManager.getControllerManager().getControllers();
     if (controllers.NumObjects() > 0 && controllers.ObjectAt(1) != this) {
         return;
     }
 
-    const Container<BeliefZone>& zones    = beliefMap.GetZones();
-    Vector                       botPos   = controlledEnt->origin;
-    int                          bestZone = beliefMap.GetBestZone(botPos);
-
-    int activeCount = 0;
-
-    for (int i = 1; i <= zones.NumObjects(); i++) {
-        const BeliefZone& zone = zones.ObjectAt(i);
-        if (zone.belief < 0.01f) {
-            continue;
-        }
-
-        activeCount++;
-
-        float r, g, b;
-        if (zone.belief < 0.5f) {
-            // Green to yellow
-            r = zone.belief * 2.0f;
-            g = 1.0f;
-            b = 0.0f;
-        } else {
-            // Yellow to red
-            r = 1.0f;
-            g = 1.0f - (zone.belief - 0.5f) * 2.0f;
-            b = 0.0f;
-        }
-
-        float  radius = 32.0f + zone.belief * 64.0f;
-        Vector pos    = zone.centroid;
-        G_DebugCircle((float *)pos, radius, r, g, b, zone.belief, qtrue);
-
-        // Mark the current patrol target with a cyan pyramid
-        if ((i - 1) == bestZone) {
-            Vector pyramidPos = zone.centroid;
-            pyramidPos.z += 96.0f;
-            G_DebugPyramid(pyramidPos, 48.0f, 0.0f, 1.0f, 1.0f, 1.0f);
-        }
-    }
-
-    // Draw arrow from bot to target zone
-    if (bestZone >= 0 && bestZone < zones.NumObjects()) {
-        const BeliefZone& target = zones.ObjectAt(bestZone + 1);
-        Vector            dir    = target.centroid - botPos;
-        float             len    = dir.length();
-        if (len > 1.0f) {
-            VectorNormalize(dir);
-            G_DebugArrow(botPos, dir, len, 0.0f, 1.0f, 1.0f, 1.0f);
-        }
-    }
+    m_coverage.DrawDebug(controlledEnt->origin, level.inttime);
 
     // Periodic console summary (every 2 seconds)
     static int lastPrintTime = 0;
     if (level.inttime - lastPrintTime >= 2000) {
         lastPrintTime = level.inttime;
 
+        Vector memPos    = vec_zero;
+        bool   hasMemory = m_memory.GetMostRelevantPos(controlledEnt->origin, level.inttime, memPos);
         gi.Printf(
-            "--- Belief Map [%s]: %d/%d active zones ---\n",
+            "--- Coverage [%s]: memory=%d events, bestMemory=(%.0f, %.0f, %.0f) ---\n",
             controlledEnt->client->pers.netname,
-            activeCount,
-            zones.NumObjects()
+            m_memory.Count(),
+            hasMemory ? memPos.x : vec_zero.x,
+            hasMemory ? memPos.y : vec_zero.y,
+            hasMemory ? memPos.z : vec_zero.z
         );
-
-        if (bestZone >= 0 && bestZone < zones.NumObjects()) {
-            const BeliefZone& target = zones.ObjectAt(bestZone + 1);
-            gi.Printf(
-                "  Target zone %d: belief=%.2f pos=(%.0f, %.0f, %.0f)\n",
-                bestZone,
-                target.belief,
-                target.centroid.x,
-                target.centroid.y,
-                target.centroid.z
-            );
-        } else {
-            gi.Printf("  No target zone (all beliefs below threshold)\n");
-        }
     }
 }
 
@@ -304,9 +243,9 @@ void BotController::UpdateBotStates(void)
     m_botEyes.angles[1] = 0;
 
     // Added in OPM
-    //  Per-frame belief map maintenance
-    beliefMap.Decay(level.frametime);
-    beliefMap.ClearZonesVisibleFrom(controlledEnt);
+    //  Per-frame memory maintenance and coverage tracking
+    m_memory.Tick(level.inttime);
+    UpdateCoverage();
 
     CheckStates();
 
@@ -317,9 +256,9 @@ void BotController::UpdateBotStates(void)
     CheckValidWeapon();
 
     // Added in OPM
-    //  Debug visualization of belief zones
-    if (g_bot_debug_beliefs->integer) {
-        DrawDebugBeliefs();
+    //  Debug visualization of coverage state
+    if (g_bot_debug_coverage->integer) {
+        DrawDebugCoverage();
     }
 }
 
@@ -392,6 +331,21 @@ void BotController::CheckValidWeapon()
     } else if (!weapon->HasAmmo(FIRE_PRIMARY) && !controlledEnt->GetNewActiveWeapon()) {
         // In case the current weapon has no ammo, use the best available weapon
         UseWeaponWithAmmo();
+    }
+}
+
+// Added in OPM
+//  Track which navigation nodes the bot has visited. Called each frame.
+//  Finds the nearest navigation node each frame.
+void BotController::UpdateCoverage(void)
+{
+    if (!controlledEnt || controlledEnt->IsDead()) {
+        return;
+    }
+
+    PathNode *nearNode = PathSearch::NearestEndNode(controlledEnt->origin);
+    if (nearNode) {
+        m_coverage.MarkVisited(nearNode->nodenum, level.inttime);
     }
 }
 
@@ -561,11 +515,39 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     }
 
     // Changed in OPM
-    //  Always update beliefs from enemy sounds regardless of distance
-    //  or whether the bot is already investigating something else.
-    //  The belief map is the bot's spatial awareness — it should
-    //  accumulate all heard information.
-    beliefMap.UpdateFromEvent(vPos, iType, fRangeFactor);
+    //  Always remember enemy sounds regardless of distance or whether
+    //  the bot is already investigating something else.
+    float eventWeight = 0.0f;
+    switch (iType) {
+    case AI_EVENT_WEAPON_FIRE:
+        eventWeight = 0.6f;
+        break;
+    case AI_EVENT_EXPLOSION:
+        eventWeight = 0.4f;
+        break;
+    case AI_EVENT_FOOTSTEP:
+        eventWeight = 0.2f;
+        break;
+    case AI_EVENT_AMERICAN_VOICE:
+    case AI_EVENT_GERMAN_VOICE:
+    case AI_EVENT_AMERICAN_URGENT:
+    case AI_EVENT_GERMAN_URGENT:
+        eventWeight = 0.3f;
+        break;
+    case AI_EVENT_GRENADE:
+        eventWeight = 0.5f;
+        break;
+    case AI_EVENT_WEAPON_IMPACT:
+        eventWeight = 0.0f;
+        break;
+    default:
+        eventWeight = 0.15f;
+        break;
+    }
+
+    if (eventWeight > 0.0f) {
+        m_memory.Remember(vPos, iType, eventWeight * fRangeFactor);
+    }
 
     // Ignore bullet impact positions — they indicate where the bullet hit,
     // not where the shooter is. React to WEAPON_FIRE instead.
@@ -724,7 +706,7 @@ void BotController::UseWeaponWithAmmo()
 void BotController::Spawned(void)
 {
     ClearEnemy();
-    m_curious.time   = 0;
+    m_curious.reset();
     m_botCmd.buttons = 0;
 
     // Added in OPM
@@ -742,9 +724,11 @@ void BotController::Spawned(void)
     }
 
     // Added in OPM
-    //  Seed belief map with enemy spawn points so bots patrol toward
-    //  likely spawn areas on round start.
-    beliefMap.SeedFromSpawnPoints(controlledEnt);
+    //  Clear memory on spawn but keep coverage across respawns so
+    //  the bot doesn't re-explore areas it already covered.
+    m_memory.Clear();
+    m_senses.reset();
+    m_curious.reset();
 }
 
 void BotController::Think()
@@ -779,8 +763,8 @@ void BotController::Killed(const Event& ev)
     attacker = ev.GetEntity(1);
 
     // Added in OPM
-    //  Record death location in belief map — persists across respawn
-    beliefMap.UpdateFromDeath(controlledEnt->origin);
+    //  Remember death location so the bot may return to investigate
+    m_memory.Remember(controlledEnt->origin, AI_EVENT_WEAPON_FIRE, 0.8f);
 
     if (attacker && rand() % 5 == 0) {
         // 1/5 chance to go back to the attacker position
@@ -821,8 +805,8 @@ void BotController::Damaged(const Event& ev)
         }
     }
 
-    // Update belief map with attacker position - high confidence
-    beliefMap.UpdateFromEvent(attacker->origin, AI_EVENT_WEAPON_FIRE, 1.0f);
+    // Remember attacker position - high confidence
+    m_memory.Remember(attacker->origin, AI_EVENT_WEAPON_FIRE, 1.0f);
 
     // Record the hit into the sense layer
     m_senses.damagedFrom = attacker->origin;
@@ -897,41 +881,8 @@ void BotController::setControlledEntity(Player *player)
     rotation.SetControlledEntity(player);
 
     // Added in OPM
-    //  Initialize belief map from spawn point bounds. We use spawn points
-    //  rather than world->absmin/absmax because the world entity bounds
-    //  don't reflect the actual playable area.
-    if (!beliefMap.IsInitialized()) {
-        Vector mapMins(999999, 999999, 999999);
-        Vector mapMaxs(-999999, -999999, -999999);
-        int    totalSpawns = 0;
-
-        DM_Team *teams[] = {dmManager.GetTeamAllies(), dmManager.GetTeamAxis()};
-        for (int t = 0; t < 2; t++) {
-            for (int i = 1; i <= teams[t]->m_spawnpoints.NumObjects(); i++) {
-                PlayerStart *spawn = teams[t]->m_spawnpoints.ObjectAt(i);
-                Vector       pos   = spawn->origin;
-
-                if (pos.x < mapMins.x) mapMins.x = pos.x;
-                if (pos.y < mapMins.y) mapMins.y = pos.y;
-                if (pos.z < mapMins.z) mapMins.z = pos.z;
-                if (pos.x > mapMaxs.x) mapMaxs.x = pos.x;
-                if (pos.y > mapMaxs.y) mapMaxs.y = pos.y;
-                if (pos.z > mapMaxs.z) mapMaxs.z = pos.z;
-                totalSpawns++;
-            }
-        }
-
-        if (totalSpawns > 0) {
-            // Pad bounds so edge spawns aren't at grid boundary
-            float padding = 512.0f;
-            mapMins.x -= padding;
-            mapMins.y -= padding;
-            mapMaxs.x += padding;
-            mapMaxs.y += padding;
-
-            beliefMap.Init(mapMins, mapMaxs, 512.0f);
-        }
-    }
+    //  Coverage map is lazily initialized from the nav graph on first
+    //  MarkVisited call. No explicit init needed here.
 
     delegateHandle_gotKill =
         player->delegate_gotKill.Add(std::bind(&BotController::GotKill, this, std::placeholders::_1));

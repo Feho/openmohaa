@@ -637,10 +637,13 @@ Returns true if no attractive point was found
 */
 bool BotMovement::MoveToBestAttractivePoint(int iMinPriority)
 {
-    Container<AttractiveNode *> list;
     AttractiveNode             *bestNode;
     float                       bestDistanceSquared;
     int                         bestPriority;
+
+    if (!m_pPath) {
+        m_pPath = IPather::CreatePather();
+    }
 
     if (m_pPrimaryAttract) {
         MoveTo(m_pPrimaryAttract->origin);
@@ -681,6 +684,10 @@ bool BotMovement::MoveToBestAttractivePoint(int iMinPriority)
         AttractiveNode *node = attractiveNodes.ObjectAt(i);
         float           distSquared;
         bool            m_bRespawning = false;
+
+        if (!node) {
+            continue;
+        }
 
         for (int j = m_attractList.NumObjects(); j > 0; j--) {
             AttractiveNode *node2 = m_attractList.ObjectAt(j)->m_pNode;
@@ -995,6 +1002,10 @@ Returns true if the bot has done moving
 */
 bool BotMovement::CanMoveTo(Vector vPos) const
 {
+    if (!m_pPath) {
+        return false;
+    }
+
     PathSearchParameter parameters;
     parameters.fallHeight = maxFallHeight;
     parameters.entity     = controlledEntity;

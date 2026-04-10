@@ -345,11 +345,8 @@ extern cvar_t *g_bot_aim_settle_speed;
 extern cvar_t *g_bot_aim_noise;
 
 // Added in OPM
-//  Belief map: spatial probability grid for bot decision making
-extern cvar_t *g_bot_belief_decay;
-extern cvar_t *g_bot_belief_event_weight;
-extern cvar_t *g_bot_belief_min_patrol;
-extern cvar_t *g_bot_debug_beliefs;
+//  Coverage debug: draw nav node visit age
+extern cvar_t *g_bot_debug_coverage;
 
 extern cvar_t *g_bot_debug_reaction;
 extern cvar_t *g_bot_debug_state;
