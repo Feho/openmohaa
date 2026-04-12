@@ -375,20 +375,31 @@ void BotController::State_Curious(void)
     //  This prevents bots from staring at walls while walking, which looks unnatural.
     //  Only turn toward invisible sounds briefly at the start (handled in BeginState).
     {
-        Vector targetPos = goal.targetPos != vec_zero ? goal.targetPos : m_curious.targetPos;
-        if (targetPos == vec_zero) {
-            m_memory.GetMostRelevantPos(controlledEnt->origin, level.inttime, targetPos);
-        }
+        if (goal.type == BotGoalType::Flank) {
+            // The nav node in goal.targetPos is a movement waypoint, not a look-at target.
+            // Look toward the enemy if visible; otherwise look along the movement path.
+            if (goal.targetEnemy && IsValidEnemy(goal.targetEnemy)
+                && controlledEnt->CanSee(goal.targetEnemy, 120, 2048, false)) {
+                rotation.AimAt(goal.targetEnemy->origin);
+            } else {
+                AimAtAimNode();
+            }
+        } else {
+            Vector targetPos = goal.targetPos != vec_zero ? goal.targetPos : m_curious.targetPos;
+            if (targetPos == vec_zero) {
+                m_memory.GetMostRelevantPos(controlledEnt->origin, level.inttime, targetPos);
+            }
 
-        if (targetPos != vec_zero && controlledEnt->CanSee(targetPos, 120, 2048, false)) {
-            // Can see the target position - aim at it
-            rotation.AimAt(targetPos);
-        } else if (movement.IsMoving()) {
-            // Can't see target, but we're moving - look along path
-            AimAtAimNode();
-        } else if (targetPos != vec_zero) {
-            // Not moving and can't see - still face the target direction
-            rotation.AimAt(targetPos);
+            if (targetPos != vec_zero && controlledEnt->CanSee(targetPos, 120, 2048, false)) {
+                // Can see the target position - aim at it
+                rotation.AimAt(targetPos);
+            } else if (movement.IsMoving()) {
+                // Can't see target, but we're moving - look along path
+                AimAtAimNode();
+            } else if (targetPos != vec_zero) {
+                // Not moving and can't see - still face the target direction
+                rotation.AimAt(targetPos);
+            }
         }
     }
 
