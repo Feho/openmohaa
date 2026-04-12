@@ -317,18 +317,129 @@ struct BotGrenadeState {
     }
 };
 
-// Added in OPM
-//  Perception layer: single write target for all sense events
-//  (see github issue #8). The state machine reads from this struct
-//  each frame instead of perception events writing directly to
-//  rotation/movement.
-/**
- * @brief Perception/sense inputs gathered from events (hearing, damage).
- *
- * This struct is the sole target for NoticeEvent/Damaged writes. State
- * `Think` functions read from it to decide behavior; only state code
- * writes to rotation and movement.
- */
+// Added in OPM (PR #17 — world model pipeline)
+//  All perception callbacks append events here. The buffer is flushed
+//  once per frame into BotWorldModel before any state runs. No state
+//  or planner code reads from the buffer directly.
+
+enum class PerceptType {
+    Damaged, // took damage from an attacker
+    Heard,   // heard a sound event
+};
+
+struct PerceptEvent {
+    PerceptType        type;
+    int                time;       // level.inttime when the event fired
+    Vector             position;   // world position of the event source
+    SafePtr<Sentient>  entity;     // responsible sentient, may be NULL
+    int                soundType;  // AI_EVENT_* (Heard only)
+    float              confidence; // 0..1: 1.0 = certain (damaged), <1.0 = heard
+};
+
+class PerceptBuffer
+{
+public:
+    PerceptBuffer();
+
+    void Append(const PerceptEvent& ev);
+    void Flush(struct BotWorldModel& out, int now);
+
+private:
+    static constexpr int kMaxEvents = 32;
+
+    PerceptEvent m_events[kMaxEvents];
+    int          m_count;
+};
+
+// Added in OPM (PR #17 — world model pipeline)
+//  A snapshot of all bot-relevant world state, written once per frame
+//  during the perception flush, then treated as read-only for the rest
+//  of the frame. States and the planner read from here; nothing
+//  downstream writes back into it.
+
+struct TrackedEnemy {
+    SafePtr<Sentient> entity;
+    Vector            lastKnownPos;      // last confirmed position (seen or heard)
+    int               lastSeenTime;      // level.inttime when last confirmed visible
+    int               lastHeardTime;     // level.inttime when last heard
+    bool              currentlyVisible;  // true if CanSee passed this frame
+
+    bool valid() const { return entity && !entity->IsDead() && entity->getSolidType() != SOLID_NOT; }
+};
+
+struct BotWorldModel {
+    // --- Tracked enemies (ordered: index 0 = highest priority) ---
+    static constexpr int kMaxTracked = 8;
+    TrackedEnemy         enemies[kMaxTracked];
+    int                  enemyCount;
+
+    // --- Damage perception ---
+    Vector            damagedFrom; // attacker world position at time of hit
+    int               damagedTime; // level.inttime of last hit (0 = none)
+    SafePtr<Sentient> damagedBy;   // attacker sentient, may be NULL
+
+    // --- Sound perception ---
+    Vector heardPos;   // most significant sound position this frame
+    int    heardType;  // AI_EVENT_* type
+    int    heardTime;  // level.inttime when heard (0 = none)
+    float  heardRange; // 0..1 proximity factor
+
+    // --- Grenade ---
+    bool   nearGrenade;
+    Vector grenadePos;
+
+    // --- Frame stamp ---
+    int frameTime; // level.inttime at flush
+
+    void reset()
+    {
+        for (int i = 0; i < kMaxTracked; i++) {
+            enemies[i] = TrackedEnemy();
+        }
+        enemyCount  = 0;
+        damagedFrom = vec_zero;
+        damagedTime = 0;
+        damagedBy   = NULL;
+        heardPos    = vec_zero;
+        heardType   = 0;
+        heardTime   = 0;
+        heardRange  = 0.0f;
+        nearGrenade = false;
+        grenadePos  = vec_zero;
+        frameTime   = 0;
+    }
+
+    // Returns the highest-priority currently-visible enemy, or NULL.
+    const TrackedEnemy *BestVisibleEnemy() const
+    {
+        for (int i = 0; i < enemyCount; i++) {
+            if (enemies[i].valid() && enemies[i].currentlyVisible) {
+                return &enemies[i];
+            }
+        }
+        return NULL;
+    }
+
+    // Returns the best known enemy: visible preferred, last-known fallback.
+    const TrackedEnemy *BestKnownEnemy() const
+    {
+        const TrackedEnemy *best = BestVisibleEnemy();
+        if (best) {
+            return best;
+        }
+        for (int i = 0; i < enemyCount; i++) {
+            if (enemies[i].valid()) {
+                return &enemies[i];
+            }
+        }
+        return NULL;
+    }
+};
+
+// Kept for internal state-machine bookkeeping (damage seed, heard-event
+// consumption). Writers: Damaged(), NoticeEvent() via PerceptBuffer::Flush().
+// Readers: State_BeginAttack, State_BeginCurious, HasHardTrigger.
+// Do not add new readers — prefer BotWorldModel for new code.
 struct BotSenses {
     // Hearing
     Vector heardPos;   // Last significant sound position
@@ -399,6 +510,10 @@ private:
     BotProfile     m_profile;
     BotPlanner     m_planner;
 
+    // Perception pipeline (PR #17)
+    PerceptBuffer m_perceptBuffer;
+    BotWorldModel m_worldModel;
+
     // Grouped state structs (prevents partial-reset bugs)
     BotCombatState  m_combat;
     BotEnemyState   m_enemy;
@@ -439,6 +554,8 @@ private:
     bool CheckWindows(void);
     void CheckValidWeapon(void);
     void UpdateCoverage(void);
+    void UpdateEnemyVisibility(void);
+    void TrackEnemy(Sentient *sent, int now);
 
     void State_DefaultBegin(void);
     void State_DefaultEnd(void);
@@ -458,7 +575,6 @@ private:
     void        State_BeginAttack(void);
     void        State_EndAttack(void);
     void        State_Attack(void);
-    bool        IsValidEnemy(Sentient *sent) const;
 
     static void InitState_Grenade(botfunc_t *func);
     bool        CheckCondition_Grenade(void);
@@ -490,6 +606,8 @@ public:
 
     void NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDistanceSquared, float fRadiusSquared);
     void ClearEnemy(void);
+
+    bool IsValidEnemy(Sentient *sent) const;
 
     void SendCommand(const char *text);
 

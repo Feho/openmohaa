@@ -42,6 +42,97 @@ CLASS_DECLARATION(Listener, BotController, NULL) {
     {NULL, NULL}
 };
 
+// ---------------------------------------------------------------------------
+// PerceptBuffer
+// ---------------------------------------------------------------------------
+
+PerceptBuffer::PerceptBuffer()
+    : m_count(0)
+{}
+
+void PerceptBuffer::Append(const PerceptEvent& ev)
+{
+    if (m_count >= kMaxEvents) {
+        // Ring: overwrite oldest slot (index 0), shift remaining down.
+        // A simple memmove keeps the buffer ordered by arrival time without
+        // a separate head/tail index.
+        for (int i = 0; i < kMaxEvents - 1; i++) {
+            m_events[i] = m_events[i + 1];
+        }
+        m_events[kMaxEvents - 1] = ev;
+    } else {
+        m_events[m_count++] = ev;
+    }
+}
+
+// Merge pending events into the world model, then clear the buffer.
+// The caller must have already updated m_worldModel.frameTime.
+void PerceptBuffer::Flush(BotWorldModel& world, int now)
+{
+    world.frameTime = now;
+
+    for (int i = 0; i < m_count; i++) {
+        const PerceptEvent& ev = m_events[i];
+
+        switch (ev.type) {
+        case PerceptType::Damaged:
+            // Keep the most recent damage event
+            if (ev.time >= world.damagedTime) {
+                world.damagedFrom = ev.position;
+                world.damagedTime = ev.time;
+                world.damagedBy   = ev.entity;
+            }
+            break;
+
+        case PerceptType::Heard:
+            // Keep the strongest (highest confidence × recency) heard event.
+            // Prefer higher confidence; break ties with recency.
+            if (world.heardTime == 0 || ev.confidence > world.heardRange
+                || (ev.confidence >= world.heardRange && ev.time > world.heardTime)) {
+                world.heardPos   = ev.position;
+                world.heardType  = ev.soundType;
+                world.heardTime  = ev.time;
+                world.heardRange = ev.confidence;
+            }
+            break;
+        }
+    }
+
+    // Expire old entries so stale data doesn't linger across respawns.
+    // (States that "consume" an entry set the time to 0.)
+    static constexpr int kDamageMaxAge = 5000;
+    static constexpr int kHeardMaxAge  = 20000;
+    if (world.damagedTime && now - world.damagedTime > kDamageMaxAge) {
+        world.damagedFrom = vec_zero;
+        world.damagedTime = 0;
+        world.damagedBy   = NULL;
+    }
+    if (world.heardTime && now - world.heardTime > kHeardMaxAge) {
+        world.heardPos  = vec_zero;
+        world.heardType = 0;
+        world.heardTime = 0;
+        world.heardRange = 0.0f;
+    }
+
+    // Remove dead enemies from the tracked list.
+    // (Visibility is refreshed by UpdateEnemyVisibility each frame.)
+    int kept = 0;
+    for (int i = 0; i < world.enemyCount; i++) {
+        if (world.enemies[i].valid()) {
+            if (kept != i) {
+                world.enemies[kept] = world.enemies[i];
+            }
+            kept++;
+        }
+    }
+    for (int i = kept; i < world.enemyCount; i++) {
+        world.enemies[i] = TrackedEnemy();
+    }
+    world.enemyCount = kept;
+
+    m_count = 0;
+}
+
 BotController::botfunc_t BotController::botfuncs[MAX_BOT_FUNCTIONS];
 
 BotController::BotController()
@@ -256,6 +347,13 @@ void BotController::UpdateBotStates(void)
     //  Per-frame memory maintenance and coverage tracking
     m_memory.Tick(level.inttime);
     UpdateCoverage();
+
+    // PR #17: flush perception events into the world model, then refresh
+    // visibility. Both happen before the planner and states run so they
+    // see a coherent, current snapshot for the entire frame.
+    m_perceptBuffer.Flush(m_worldModel, level.inttime);
+    UpdateEnemyVisibility();
+
     m_planner.Tick(level.inttime);
 
     CheckStates();
@@ -357,6 +455,95 @@ void BotController::UpdateCoverage(void)
     PathNode *nearNode = PathSearch::NearestEndNode(controlledEnt->origin);
     if (nearNode) {
         m_coverage.MarkVisited(nearNode->nodenum, level.inttime);
+    }
+}
+
+// Added in OPM (PR #17)
+//  Insert or update a sentient in the world model's tracked enemy list.
+//  Called from UpdateEnemyVisibility when a live enemy is spotted.
+void BotController::TrackEnemy(Sentient *sent, int now)
+{
+    // Update existing slot
+    for (int i = 0; i < m_worldModel.enemyCount; i++) {
+        if (m_worldModel.enemies[i].entity == sent) {
+            m_worldModel.enemies[i].lastKnownPos     = sent->origin;
+            m_worldModel.enemies[i].lastSeenTime     = now;
+            m_worldModel.enemies[i].currentlyVisible = true;
+            return;
+        }
+    }
+
+    // New enemy — add if there is space
+    if (m_worldModel.enemyCount < BotWorldModel::kMaxTracked) {
+        TrackedEnemy& slot      = m_worldModel.enemies[m_worldModel.enemyCount++];
+        slot.entity             = sent;
+        slot.lastKnownPos       = sent->origin;
+        slot.lastSeenTime       = now;
+        slot.lastHeardTime      = 0;
+        slot.currentlyVisible   = true;
+    }
+}
+
+// Added in OPM (PR #17)
+//  Refresh currentlyVisible for every tracked enemy, and scan
+//  SentientList for newly visible enemies. Called once per frame
+//  before the planner and states run.
+void BotController::UpdateEnemyVisibility(void)
+{
+    if (!controlledEnt || controlledEnt->IsDead()) {
+        return;
+    }
+
+    const float maxVisionDist = Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828f);
+    const int   now           = level.inttime;
+
+    // Mark all tracked enemies invisible; we'll re-confirm below.
+    for (int i = 0; i < m_worldModel.enemyCount; i++) {
+        m_worldModel.enemies[i].currentlyVisible = false;
+    }
+
+    // Scan all sentients for valid enemies that are currently visible.
+    for (int i = 1; i <= SentientList.NumObjects(); i++) {
+        Sentient *sent = SentientList.ObjectAt(i);
+        if (!IsValidEnemy(sent)) {
+            continue;
+        }
+        if (!controlledEnt->CanSee(sent, 120.0f, maxVisionDist, false)) {
+            continue;
+        }
+        TrackEnemy(sent, now);
+    }
+
+    // For tracked enemies that are still valid but not currently visible,
+    // update their last-known position from their actual entity origin
+    // (they may have moved since we last saw them).
+    for (int i = 0; i < m_worldModel.enemyCount; i++) {
+        TrackedEnemy& te = m_worldModel.enemies[i];
+        if (te.valid() && !te.currentlyVisible) {
+            te.lastKnownPos = te.entity->origin;
+        }
+    }
+
+    // Merge damage/heard events into tracked enemy list.
+    // If we were damaged by someone not yet tracked, add them.
+    if (m_worldModel.damagedBy && IsValidEnemy(m_worldModel.damagedBy)) {
+        bool found = false;
+        for (int i = 0; i < m_worldModel.enemyCount; i++) {
+            if (m_worldModel.enemies[i].entity == m_worldModel.damagedBy) {
+                m_worldModel.enemies[i].lastHeardTime = now;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            TrackEnemy(m_worldModel.damagedBy, now);
+            // Correct: we didn't see them, so mark not visible.
+            if (m_worldModel.enemyCount > 0) {
+                m_worldModel.enemies[m_worldModel.enemyCount - 1].currentlyVisible = false;
+                m_worldModel.enemies[m_worldModel.enemyCount - 1].lastSeenTime     = 0;
+                m_worldModel.enemies[m_worldModel.enemyCount - 1].lastHeardTime    = now;
+            }
+        }
     }
 }
 
@@ -566,17 +753,19 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
         return;
     }
 
-    // Refactored in OPM (see github issue #8)
-    //  Perception writes only to the BotSenses struct and the belief map.
-    //  The state machine reads m_senses each frame to decide whether to
-    //  react, pre-aim, or transition state. This prevents perception
-    //  events from competing with state `Think` functions for rotation
-    //  and movement control.
-    //
-    //  Previously NoticeEvent set m_curious.time/targetPos, called
-    //  rotation.AimAt, movement.ClearMove, and m_idle.reset directly —
-    //  which was immediately overwritten by BotStateIdle::Think the next
-    //  frame, causing bots to ignore gunfire from behind.
+    // PR #17: append to the perception buffer so it lands in BotWorldModel
+    // at the start of the next frame. Also mirror into BotSenses so that
+    // existing state code keeps working without changes in this PR.
+    if (eventWeight > 0.0f) {
+        PerceptEvent pev;
+        pev.type       = PerceptType::Heard;
+        pev.time       = level.inttime;
+        pev.position   = vPos;
+        pev.entity     = pSentOwner;
+        pev.soundType  = iType;
+        pev.confidence = eventWeight * fRangeFactor;
+        m_perceptBuffer.Append(pev);
+    }
 
     // Keep the strongest recent sound: prefer higher range (closer), but
     // always refresh if the existing sense has decayed.
@@ -744,6 +933,7 @@ void BotController::Spawned(void)
     //  the bot doesn't re-explore areas it already covered.
     m_memory.Clear();
     m_senses.reset();
+    m_worldModel.reset();
     m_curious.reset();
 }
 
@@ -824,7 +1014,21 @@ void BotController::Damaged(const Event& ev)
     // Remember attacker position - high confidence
     m_memory.Remember(attacker->origin, AI_EVENT_WEAPON_FIRE, 1.0f);
 
-    // Record the hit into the sense layer
+    // PR #17: append to the perception buffer so it lands in BotWorldModel
+    // at the start of the next frame. Also mirror into BotSenses so that
+    // existing state code (State_BeginAttack, HasHardTrigger) keeps working
+    // without changes in this PR.
+    {
+        PerceptEvent pev;
+        pev.type       = PerceptType::Damaged;
+        pev.time       = level.inttime;
+        pev.position   = attacker->origin;
+        pev.entity     = sentAttacker;
+        pev.soundType  = 0;
+        pev.confidence = 1.0f;
+        m_perceptBuffer.Append(pev);
+    }
+
     m_senses.damagedFrom = attacker->origin;
     m_senses.damagedTime = level.inttime;
     m_senses.damagedBy   = sentAttacker;
