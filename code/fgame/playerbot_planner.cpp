@@ -90,9 +90,10 @@ void BotPlanner::Tick(int now)
 
     BotGoal candidate = ChooseGoal(now);
 
-    // Commitment: don't downgrade goal type while committed
+    // Commitment: don't switch goal type while committed, including lateral same-priority
+    // switches (e.g. Engage↔Flank churn at LOS boundaries). Hard triggers bypass this.
     if (!hardTrigger && now < m_currentGoal.committedUntil && candidate.type != m_currentGoal.type) {
-        if (GoalPriority(candidate.type) < GoalPriority(m_currentGoal.type)) {
+        if (GoalPriority(candidate.type) <= GoalPriority(m_currentGoal.type)) {
             m_lastPlanTime = now;
             return;
         }
@@ -165,6 +166,18 @@ bool BotPlanner::HasHardTrigger(int now) const
     if (m_currentGoal.type == BotGoalType::Engage && !m_controller->m_combat.attackTime
         && !m_controller->m_enemy.enemy) {
         return true;
+    }
+
+    // Enemy became visible while flanking - promote to Engage immediately
+    if (m_currentGoal.type == BotGoalType::Flank && m_currentGoal.targetEnemy
+        && m_controller->IsValidEnemy(m_currentGoal.targetEnemy)) {
+        Player *me = m_controller->getControlledEntity();
+        if (me) {
+            float maxVisionDist = Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828f);
+            if (me->CanSee(m_currentGoal.targetEnemy, 120.0f, maxVisionDist, false)) {
+                return true;
+            }
+        }
     }
     if (m_currentGoal.type == BotGoalType::Investigate && m_currentGoal.createdAt != 0
         && !m_controller->m_curious.time && now > m_currentGoal.createdAt + kPlanIntervalMs) {
