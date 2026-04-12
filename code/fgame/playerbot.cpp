@@ -98,6 +98,11 @@ BotMovement& BotController::GetMovement()
     return movement;
 }
 
+const BotMovement& BotController::GetMovement() const
+{
+    return movement;
+}
+
 BotMemory& BotController::GetMemory()
 {
     return m_memory;
@@ -721,10 +726,14 @@ void BotController::Spawned(void)
     //  the same profile (and weapon/model) across respawns within a map.
     if (m_bFirstSpawn) {
         m_profile = botProfileManager.PickProfile();
-        rotation.SetAimParameters(m_profile.turnSpeed, m_profile.aimOvershoot, m_profile.aimSettleSpeed, m_profile.aimNoise);
+        rotation.SetAimParameters(
+            m_profile.turnSpeed, m_profile.aimOvershoot, m_profile.aimSettleSpeed, m_profile.aimNoise
+        );
 
         if (g_bot_debug_state->integer) {
-            gi.Printf("BOT %s: spawned with profile '%s'\n", controlledEnt->client->pers.netname, m_profile.name.c_str());
+            gi.Printf(
+                "BOT %s: spawned with profile '%s'\n", controlledEnt->client->pers.netname, m_profile.name.c_str()
+            );
         }
 
         m_bFirstSpawn = false;

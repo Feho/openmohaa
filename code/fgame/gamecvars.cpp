@@ -307,6 +307,7 @@ cvar_t *g_bot_aim_noise;
 cvar_t *g_bot_debug_coverage;
 cvar_t *g_bot_debug_planner;
 cvar_t *g_bot_debug_reaction;
+cvar_t *g_bot_debug_scorer;
 cvar_t *g_bot_debug_state;
 cvar_t *g_bot_debug_visibility;
 cvar_t *g_bot_profile_override;
@@ -742,6 +743,7 @@ void CVAR_Init(void)
     g_bot_debug_coverage         = gi.Cvar_Get("g_bot_debug_coverage", "0", 0);
     g_bot_debug_planner          = gi.Cvar_Get("g_bot_debug_planner", "0", 0);
     g_bot_debug_reaction         = gi.Cvar_Get("g_bot_debug_reaction", "0", 0);
+    g_bot_debug_scorer           = gi.Cvar_Get("g_bot_debug_scorer", "0", 0);
     g_bot_debug_state            = gi.Cvar_Get("g_bot_debug_state", "0", 0);
     g_bot_debug_visibility       = gi.Cvar_Get("g_bot_debug_visibility", "0", 0);
     g_bot_profile_override       = gi.Cvar_Get("g_bot_profile_override", "", 0);

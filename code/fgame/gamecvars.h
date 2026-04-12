@@ -350,6 +350,7 @@ extern cvar_t *g_bot_debug_coverage;
 extern cvar_t *g_bot_debug_planner;
 
 extern cvar_t *g_bot_debug_reaction;
+extern cvar_t *g_bot_debug_scorer;
 extern cvar_t *g_bot_debug_state;
 extern cvar_t *g_bot_debug_visibility;
 

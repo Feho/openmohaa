@@ -270,7 +270,7 @@ struct BotCombatState {
  */
 struct BotEnemyState {
     SafePtr<Sentient> enemy;
-    int               eyesTag;  // Bone tag for enemy's eyes
+    int               eyesTag; // Bone tag for enemy's eyes
     int               lastSightingTime;
     Vector            oldPos;   // Previous known enemy position
     Vector            lastPos;  // Last known enemy position
@@ -502,11 +502,12 @@ public:
     void GotKill(const Event& ev);
     void EventStuffText(const str& text);
 
-    BotMovement&      GetMovement();
-    BotMemory&        GetMemory();
-    BotCoverageMap&   GetCoverage();
-    const BotProfile& GetProfile() const;
-    const BotGoal&    GetCurrentGoal() const;
+    BotMovement&       GetMovement();
+    const BotMovement& GetMovement() const;
+    BotMemory&         GetMemory();
+    BotCoverageMap&    GetCoverage();
+    const BotProfile&  GetProfile() const;
+    const BotGoal&     GetCurrentGoal() const;
 
     void DrawDebugCoverage();
 

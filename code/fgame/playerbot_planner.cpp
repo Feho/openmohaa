@@ -6,6 +6,7 @@
 
 #include "playerbot.h"
 #include "playerbot_planner.h"
+#include "playerbot_target_scorer.h"
 #include "gamecvars.h"
 
 static constexpr int kPlanIntervalMs = 250; // ~4 Hz
@@ -14,6 +15,7 @@ static constexpr int kPlanIntervalMs = 250; // ~4 Hz
 // These prevent the planner from flipping between goals every tick
 // when multiple options score closely.
 static constexpr int kCommitEngage      = 2000;
+static constexpr int kCommitFlank       = 3000;
 static constexpr int kCommitInvestigate = 8000;
 static constexpr int kCommitExplore     = 5000;
 static constexpr int kCommitIdle        = 0;
@@ -153,9 +155,9 @@ bool BotPlanner::HasHardTrigger(int now) const
         return true;
     }
 
-    // Current engage target became invalid (died, disconnected, etc.)
-    if (m_currentGoal.type == BotGoalType::Engage && m_currentGoal.targetEnemy
-        && !m_controller->IsValidEnemy(m_currentGoal.targetEnemy)) {
+    // Current engage/flank target became invalid (died, disconnected, etc.)
+    if ((m_currentGoal.type == BotGoalType::Engage || m_currentGoal.type == BotGoalType::Flank)
+        && m_currentGoal.targetEnemy && !m_controller->IsValidEnemy(m_currentGoal.targetEnemy)) {
         return true;
     }
 
@@ -172,16 +174,17 @@ bool BotPlanner::HasHardTrigger(int now) const
     return false;
 }
 
-Sentient *BotPlanner::FindBestVisibleEnemy() const
+BotPlanner::TargetPick BotPlanner::FindBestTarget() const
 {
+    TargetPick best;
+
     Player *controlledEnt = m_controller->getControlledEntity();
     if (!controlledEnt) {
-        return NULL;
+        return best;
     }
 
-    float     maxDistance = Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828);
-    Sentient *bestEnemy   = NULL;
-    float     bestDistSq  = 999999999.0f;
+    BotTargetScorer scorer;
+    bool            debug = g_bot_debug_scorer->integer != 0;
 
     for (int i = 1; i <= SentientList.NumObjects(); i++) {
         Sentient *sent = SentientList.ObjectAt(i);
@@ -190,19 +193,39 @@ Sentient *BotPlanner::FindBestVisibleEnemy() const
             continue;
         }
 
-        float distSq = (sent->origin - controlledEnt->origin).lengthSquared();
+        BotTargetScorer::Score score = scorer.Evaluate(*m_controller, sent);
 
-        // Match combat visibility so the planner does not grant wider acquisition
-        // than the execution layer can sustain.
-        if (controlledEnt->CanSee(sent, 120, maxDistance, false)) {
-            if (distSq < bestDistSq) {
-                bestDistSq = distSq;
-                bestEnemy  = sent;
+        if (debug) {
+            const char *enemyName = "unknown";
+            if (sent->IsSubclassOfPlayer()) {
+                enemyName = static_cast<Player *>(sent)->client->pers.netname;
             }
+            gi.Printf(
+                "BOT %s: SCORE %s ttk=%.2f travel=%.2f aim=%.2f dmg=%.2f shootNode=%d%s\n",
+                controlledEnt->client->pers.netname,
+                enemyName,
+                score.ttk,
+                score.travelTime,
+                score.aimTime,
+                score.damageTime,
+                score.shootFromNode,
+                score.reachable ? "" : " (unreachable)"
+            );
+        }
+
+        if (!score.reachable) {
+            continue;
+        }
+
+        if (!best.valid || score.ttk < best.ttk) {
+            best.valid         = true;
+            best.enemy         = sent;
+            best.shootFromNode = score.shootFromNode;
+            best.ttk           = score.ttk;
         }
     }
 
-    return bestEnemy;
+    return best;
 }
 
 BotGoal BotPlanner::ChooseGoal(int now) const
@@ -218,12 +241,35 @@ BotGoal BotPlanner::ChooseGoal(int now) const
 
     // --- Engage priority (highest) ---
 
-    // 1. Visible enemy
-    Sentient *bestEnemy = FindBestVisibleEnemy();
-    if (bestEnemy) {
+    // 1. Best TTK target (visible or reachable via flanking)
+    TargetPick picked = FindBestTarget();
+    if (picked.valid && picked.enemy) {
+        goal.targetEnemy = picked.enemy;
+
+        if (picked.shootFromNode < 0) {
+            // Already at a shooting position: engage directly.
+            goal.type           = BotGoalType::Engage;
+            goal.targetPos      = picked.enemy->origin;
+            goal.committedUntil = now + kCommitEngage;
+            return goal;
+        }
+
+        // Need to reposition first. Emit a Flank goal pointing at the
+        // nav node with a sightline; once there (or once the enemy
+        // becomes visible along the way) the next planner tick will
+        // promote to Engage.
+        PathNode *node = PathSearch::pathnodes[picked.shootFromNode];
+        if (node) {
+            goal.type           = BotGoalType::Flank;
+            goal.targetPos      = Vector(node->origin[0], node->origin[1], node->origin[2]);
+            goal.committedUntil = now + kCommitFlank;
+            return goal;
+        }
+
+        // Defensive fallback: the scorer validated the node, but if
+        // it's gone for some reason, still engage directly.
         goal.type           = BotGoalType::Engage;
-        goal.targetEnemy    = bestEnemy;
-        goal.targetPos      = bestEnemy->origin;
+        goal.targetPos      = picked.enemy->origin;
         goal.committedUntil = now + kCommitEngage;
         return goal;
     }

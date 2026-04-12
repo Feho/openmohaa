@@ -49,10 +49,23 @@ public:
     const BotGoal& Current() const { return m_currentGoal; }
 
 private:
-    BotGoal   ChooseGoal(int now) const;
-    bool      ShouldReplan(int now) const;
-    bool      HasHardTrigger(int now) const;
-    Sentient *FindBestVisibleEnemy() const;
+    struct TargetPick {
+        SafePtr<Sentient> enemy;
+        int               shootFromNode; // -1 = already at a shooting position
+        float             ttk;
+        bool              valid;
+
+        TargetPick()
+            : shootFromNode(-1)
+            , ttk(0.0f)
+            , valid(false)
+        {}
+    };
+
+    BotGoal    ChooseGoal(int now) const;
+    bool       ShouldReplan(int now) const;
+    bool       HasHardTrigger(int now) const;
+    TargetPick FindBestTarget() const;
 
     static int GoalPriority(BotGoalType type);
 

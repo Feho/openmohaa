@@ -4199,6 +4199,22 @@ float Weapon::GetBulletRange(firemode_t mode)
     return bulletrange[mode];
 }
 
+//=======================
+//Weapon::GetBulletDamage
+//=======================
+float Weapon::GetBulletDamage(firemode_t mode)
+{
+    return bulletdamage[mode];
+}
+
+//======================
+//Weapon::GetBulletCount
+//======================
+float Weapon::GetBulletCount(firemode_t mode)
+{
+    return bulletcount[mode];
+}
+
 //======================
 //Weapon::GetSpreadFactor
 //======================

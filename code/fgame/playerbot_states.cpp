@@ -255,7 +255,7 @@ void BotController::State_Idle(void)
         int   targetNode = m_coverage.PickExplorationTarget(controlledEnt->origin, roamRadius, level.inttime);
 
         if (targetNode >= 0 && targetNode < PathSearch::nodecount && PathSearch::pathnodes[targetNode]) {
-            PathNode *node = PathSearch::pathnodes[targetNode];
+            PathNode *node      = PathSearch::pathnodes[targetNode];
             Vector    targetPos = node->origin;
             movement.MoveTo(targetPos);
 
@@ -313,7 +313,11 @@ void BotController::State_BeginCurious(void)
     m_idle.reset();
 
     // Seed execution state from the planner goal.
-    if (goal.type == BotGoalType::Investigate && goal.targetPos != vec_zero) {
+    //
+    // Flank goals share the same "move to a position" execution path
+    // as Investigate. The planner swaps to Engage as soon as the
+    // enemy becomes visible, so this state does not need to fire.
+    if ((goal.type == BotGoalType::Investigate || goal.type == BotGoalType::Flank) && goal.targetPos != vec_zero) {
         m_curious.time      = level.inttime + 20000;
         m_curious.targetPos = goal.targetPos;
     } else if (m_senses.heardTime) {
@@ -349,7 +353,10 @@ void BotController::State_BeginCurious(void)
 
 bool BotController::CheckCondition_Curious(void)
 {
-    return m_planner.Current().type == BotGoalType::Investigate;
+    const BotGoalType type = m_planner.Current().type;
+    // Investigate and Flank both route through Curious, but flanking
+    // must reach the exact tactical node rather than "close enough".
+    return type == BotGoalType::Investigate || type == BotGoalType::Flank;
 }
 
 void BotController::State_Curious(void)
@@ -389,13 +396,13 @@ void BotController::State_Curious(void)
     //  In Curious state, prioritize investigating the sound location over
     //  wandering to attractive points. Attractive points are for idle patrol,
     //  not for investigating threats.
-    //  Use MoveNear instead of MoveTo - the sound position might not be
-    //  exactly on the navigation mesh, so find a path to anywhere within
-    //  512 units of the target.
+    //  Flank goals must reach the exact tactical node that has LOS;
+    //  ordinary investigate goals can stop near the sensed position.
     {
         Vector memPos = vec_zero;
         m_memory.GetMostRelevantPos(controlledEnt->origin, level.inttime, memPos);
-        Vector targetPos = goal.targetPos != vec_zero ? goal.targetPos : m_curious.targetPos;
+        Vector     targetPos   = goal.targetPos != vec_zero ? goal.targetPos : m_curious.targetPos;
+        const bool preciseMove = goal.type == BotGoalType::Flank;
         if (targetPos == vec_zero) {
             targetPos = memPos;
         }
@@ -405,22 +412,28 @@ void BotController::State_Curious(void)
         }
 
         if (targetPos != vec_zero && m_curious.lastPos != targetPos) {
-            movement.MoveNear(targetPos, 512);
+            if (preciseMove) {
+                movement.MoveTo(targetPos);
+            } else {
+                movement.MoveNear(targetPos, 512);
+            }
             m_curious.lastPos = targetPos;
 
             if (g_bot_debug_state->integer >= 2) {
                 if (movement.IsMoving()) {
                     gi.Printf(
-                        "BOT %s: Curious moving to investigate (%.0f, %.0f, %.0f)\n",
+                        "BOT %s: Curious moving to %s (%.0f, %.0f, %.0f)\n",
                         controlledEnt->client->pers.netname,
+                        preciseMove ? "flank" : "investigate",
                         targetPos.x,
                         targetPos.y,
                         targetPos.z
                     );
                 } else {
                     gi.Printf(
-                        "BOT %s: Curious can't path to (%.0f, %.0f, %.0f) - will look toward it\n",
+                        "BOT %s: Curious can't path to %s target (%.0f, %.0f, %.0f) - will look toward it\n",
                         controlledEnt->client->pers.netname,
+                        preciseMove ? "flank" : "investigate",
                         targetPos.x,
                         targetPos.y,
                         targetPos.z
@@ -431,13 +444,18 @@ void BotController::State_Curious(void)
     }
 
     if (movement.MoveDone()) {
-        float distToTarget = (m_curious.targetPos - controlledEnt->origin).length();
+        float       distToTarget  = (m_curious.targetPos - controlledEnt->origin).length();
+        const bool  preciseMove   = goal.type == BotGoalType::Flank;
+        const float arrivalRadius = preciseMove ? 64.0f : 256.0f;
 
         // If we arrived close to the target, clear curious
-        if (distToTarget < 256) {
+        if (distToTarget < arrivalRadius) {
             if (g_bot_debug_state->integer >= 2) {
                 gi.Printf(
-                    "BOT %s: Curious arrived at target (dist=%.0f)\n", controlledEnt->client->pers.netname, distToTarget
+                    "BOT %s: Curious arrived at %s target (dist=%.0f)\n",
+                    controlledEnt->client->pers.netname,
+                    preciseMove ? "flank" : "investigate",
+                    distToTarget
                 );
             }
             m_curious.reset();
@@ -689,8 +707,8 @@ void BotController::State_Attack(void)
 
             const int maxcontinuousFireTime = fireDelay + m_profile.continuousFireMinTime * 1000
                                             + G_Random(m_profile.continuousFireRandomTime * 1000);
-            const int maxBurstTime = fireDelay + m_profile.burstMinTime * 1000
-                                   + G_Random(m_profile.burstRandomDelay * 1000);
+            const int maxBurstTime =
+                fireDelay + m_profile.burstMinTime * 1000 + G_Random(m_profile.burstRandomDelay * 1000);
 
             //
             // check the fire movement speed if the weapon has a max fire movement
