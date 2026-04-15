@@ -305,23 +305,31 @@ struct BotGrenadeState {
  * @brief Human-like idle/movement behavior state.
  */
 struct BotIdleBehavior {
-    int  pauseTime; // When current idle pause ends
-    int  lookTime;  // When to change look direction during pause
-    int  walkTime;  // When to stop walking and run again
-    int  leanTime;  // When to change lean state
-    int  leanDir;   // Current lean direction: -1 left, 0 none, 1 right
-    bool pausing;   // Currently in idle pause
-    bool walking;   // Currently walking instead of running
+    int   pauseTime;      // When current idle pause ends
+    int   lookTime;       // When to change look direction during pause
+    int   walkTime;       // When to stop walking and run again
+    int   leanTime;       // When to change lean state
+    int   leanDir;        // Current lean direction: -1 left, 0 none, 1 right
+    bool  pausing;        // Currently in idle pause
+    bool  walking;        // Currently walking instead of running
+    // Added in OPM
+    //  Patrol look-around: occasionally glance at a point of interest while moving
+    Vector scanTarget;   // World-space point the bot is currently staring at (vec_zero = not staring)
+    int    scanUntil;    // Timestamp when the current stare ends
+    int    scanNextTime; // Timestamp when the bot may pick the next point of interest
 
     void reset()
     {
-        pauseTime = 0;
-        lookTime  = 0;
-        walkTime  = 0;
-        leanTime  = 0;
-        leanDir   = 0;
-        pausing   = false;
-        walking   = false;
+        pauseTime     = 0;
+        lookTime      = 0;
+        walkTime      = 0;
+        leanTime      = 0;
+        leanDir       = 0;
+        pausing       = false;
+        walking       = false;
+        scanTarget   = vec_zero;
+        scanUntil    = 0;
+        scanNextTime = 0;
     }
 };
 

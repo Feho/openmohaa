@@ -204,11 +204,20 @@ void BotController::State_Idle(void)
             if (level.inttime >= m_idle.lookTime) {
                 m_idle.lookTime = level.inttime + 800 + (int)G_Random(1200);
 
-                // Pick a random look direction
-                Vector lookAngles = controlledEnt->angles;
-                lookAngles.y += G_CRandom(90);
-                lookAngles.x = G_CRandom(15);
-                rotation.SetTargetAngles(lookAngles);
+                // Added in OPM
+                //  Prioritize facing toward the highest-belief threat position
+                //  so the bot can actually see enemies that approach while paused.
+                //  Only fall back to a random scan angle when no threat is known.
+                Vector beliefPos = beliefMap.GetHighestBeliefPos(controlledEnt->origin);
+                if (beliefPos != vec_zero) {
+                    rotation.AimAt(beliefPos);
+                } else {
+                    // Pick a random look direction
+                    Vector lookAngles = controlledEnt->angles;
+                    lookAngles.y += G_CRandom(90);
+                    lookAngles.x = G_CRandom(15);
+                    rotation.SetTargetAngles(lookAngles);
+                }
             }
             return;
         }
@@ -241,6 +250,46 @@ void BotController::State_Idle(void)
             rotation.AimAt(beliefPos);
         } else {
             AimAtAimNode();
+
+            // Added in OPM
+            //  Patrol look-around: while moving with no known threat, occasionally
+            //  glance at a distant point of interest (a wall, window, doorway),
+            //  hold it for 0.5-2s, then return to looking along the path.
+            if (movement.IsMoving()) {
+                if (m_idle.scanTarget != vec_zero) {
+                    // Currently staring — check if time is up
+                    if (level.inttime >= m_idle.scanUntil) {
+                        m_idle.scanTarget   = vec_zero;
+                        // Wait 2-5 seconds before glancing again
+                        m_idle.scanNextTime = level.inttime + 2000 + (int)G_Random(3000);
+                    } else {
+                        rotation.AimAt(m_idle.scanTarget);
+                    }
+                } else if (level.inttime >= m_idle.scanNextTime) {
+                    // Time to pick a new point of interest
+                    Vector  eyePos     = controlledEnt->EyePosition();
+                    Vector  tryAngles  = rotation.GetTargetAngles();
+                    tryAngles.y       += G_CRandom(60.0f);
+                    tryAngles.x        = G_CRandom(15.0f);
+
+                    Vector forward;
+                    AngleVectors(tryAngles, forward, NULL, NULL);
+
+                    trace_t tr = G_Trace(
+                        eyePos, vec_zero, vec_zero,
+                        eyePos + forward * 4096.0f,
+                        controlledEnt, MASK_SOLID, false, "BotPatrolScan"
+                    );
+
+                    if (tr.fraction > 0 && (tr.endpos - eyePos).lengthSquared() >= 256.0f * 256.0f) {
+                        m_idle.scanTarget = tr.endpos;
+                        m_idle.scanUntil  = level.inttime + 500 + (int)G_Random(1500);
+                    } else {
+                        // Nothing far enough — try again shortly
+                        m_idle.scanNextTime = level.inttime + 500;
+                    }
+                }
+            }
         }
     }
 
