@@ -16,6 +16,8 @@ class DM_Team;
 
 struct BeliefZone {
     Vector centroid;
+    Vector investigatePos;
+    bool   hasInvestigatePos;
     float  belief;
     int    lastUpdateTime;
 };
@@ -50,6 +52,7 @@ public:
 
 private:
     int   FindZoneForPos(const Vector& pos) const;
+    bool  ResolveInvestigatePos(const Vector& centroid, Vector& investigatePos) const;
     void  AddBelief(int zoneIndex, float amount);
     float GetDeathDecayRate() const;
 

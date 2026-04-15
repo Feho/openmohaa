@@ -25,6 +25,47 @@ BotBeliefMap::BotBeliefMap()
     , m_iTargetLockTime(0)
 {}
 
+bool BotBeliefMap::ResolveInvestigatePos(const Vector& centroid, Vector& investigatePos) const
+{
+    const float traceMargin  = 256.0f;
+    const float sampleOffset = m_fCellSize * 0.25f;
+    const Vector sampleOffsets[] = {
+        Vector(0, 0, 0),
+        Vector(sampleOffset, 0, 0),
+        Vector(-sampleOffset, 0, 0),
+        Vector(0, sampleOffset, 0),
+        Vector(0, -sampleOffset, 0)
+    };
+
+    for (int i = 0; i < (int)(sizeof(sampleOffsets) / sizeof(sampleOffsets[0])); i++) {
+        Vector sample = centroid + sampleOffsets[i];
+        sample.x      = Q_clamp_float(sample.x, m_vWorldMins.x, m_vWorldMaxs.x);
+        sample.y      = Q_clamp_float(sample.y, m_vWorldMins.y, m_vWorldMaxs.y);
+
+        Vector start(sample.x, sample.y, m_vWorldMaxs.z + traceMargin);
+        Vector end(sample.x, sample.y, m_vWorldMins.z - traceMargin);
+
+        trace_t trace = G_Trace(
+            start,
+            vec_zero,
+            vec_zero,
+            end,
+            NULL,
+            MASK_PLAYERSOLID,
+            false,
+            "BotBeliefMap::ResolveInvestigatePos"
+        );
+
+        if (!trace.startsolid && !trace.allsolid && trace.fraction < 1.0f && trace.plane.normal[2] >= MIN_WALK_NORMAL) {
+            investigatePos = trace.endpos;
+            return true;
+        }
+    }
+
+    investigatePos = vec_zero;
+    return false;
+}
+
 /*
 ====================
 Init
@@ -60,6 +101,7 @@ void BotBeliefMap::Init(const Vector& worldMins, const Vector& worldMaxs, float 
             zone.centroid.x     = worldMins.x + (x + 0.5f) * m_fCellSize;
             zone.centroid.y     = worldMins.y + (y + 0.5f) * m_fCellSize;
             zone.centroid.z     = (worldMins.z + worldMaxs.z) * 0.5f;
+            zone.hasInvestigatePos = ResolveInvestigatePos(zone.centroid, zone.investigatePos);
             zone.belief         = 0.0f;
             zone.lastUpdateTime = 0;
             m_zones.AddObject(zone);
@@ -331,11 +373,11 @@ void BotBeliefMap::ClearZonesVisibleFrom(Player *player)
         int i = ((m_iVisClearIndex + n) % m_zones.NumObjects());
 
         BeliefZone& zone = m_zones.ObjectAt(i + 1);
-        if (zone.belief <= 0.0f) {
+        if (zone.belief <= 0.0f || !zone.hasInvestigatePos) {
             continue;
         }
 
-        if (player->CanSee(zone.centroid, 80, 2048, false)) {
+        if (player->CanSee(zone.investigatePos, 80, 2048, false)) {
             zone.belief         = 0.0f;
             zone.lastUpdateTime = level.inttime;
         }
@@ -366,7 +408,8 @@ int BotBeliefMap::GetBestZone(Vector myPos)
     // for a minimum time to avoid flip-flopping
     if (m_iCurrentTargetZone >= 0 && m_iCurrentTargetZone < m_zones.NumObjects()) {
         const BeliefZone& currentZone = m_zones.ObjectAt(m_iCurrentTargetZone + 1);
-        if (currentZone.belief >= g_bot_belief_min_patrol->value && level.inttime < m_iTargetLockTime) {
+        if (currentZone.hasInvestigatePos && currentZone.belief >= g_bot_belief_min_patrol->value
+            && level.inttime < m_iTargetLockTime) {
             return m_iCurrentTargetZone;
         }
     }
@@ -382,7 +425,7 @@ int BotBeliefMap::GetBestZone(Vector myPos)
 
     for (int i = 1; i <= m_zones.NumObjects(); i++) {
         const BeliefZone& zone = m_zones.ObjectAt(i);
-        if (zone.belief < minBelief) {
+        if (!zone.hasInvestigatePos || zone.belief < minBelief) {
             continue;
         }
 
@@ -447,7 +490,7 @@ Vector BotBeliefMap::GetHighestBeliefDir(Vector myPos)
         return vec_zero;
     }
 
-    Vector dir = m_zones.ObjectAt(bestIndex + 1).centroid - myPos;
+    Vector dir = m_zones.ObjectAt(bestIndex + 1).investigatePos - myPos;
     dir.z      = 0;
     VectorNormalize(dir);
     return dir;
@@ -457,7 +500,7 @@ Vector BotBeliefMap::GetHighestBeliefDir(Vector myPos)
 ====================
 GetHighestBeliefPos
 
-Return the centroid of the best zone to investigate.
+Return the grounded investigation point of the best zone.
 Returns vec_zero if no zone has significant belief.
 ====================
 */
@@ -468,7 +511,7 @@ Vector BotBeliefMap::GetHighestBeliefPos(Vector myPos)
         return vec_zero;
     }
 
-    return m_zones.ObjectAt(bestIndex + 1).centroid;
+    return m_zones.ObjectAt(bestIndex + 1).investigatePos;
 }
 
 int BotBeliefMap::GetZoneCount() const

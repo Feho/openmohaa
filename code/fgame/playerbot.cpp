@@ -76,6 +76,7 @@ BotController::BotController()
 
     m_iNextTauntTime = 0;
     m_iLastFireTime  = 0;
+    m_iLastPosDebugTime = 0;
 
     m_StateFlags = 0;
 }
@@ -307,6 +308,20 @@ void BotController::UpdateBotStates(void)
     CheckUse();
 
     CheckValidWeapon();
+
+    if (g_bot_debug_state->integer && level.inttime >= m_iLastPosDebugTime + 2000) {
+        m_iLastPosDebugTime = level.inttime;
+
+        const Vector& pos = controlledEnt->origin;
+        gi.Printf(
+            "BOT %s: pos=(%.0f, %.0f, %.0f) moving=%d\n",
+            controlledEnt->client->pers.netname,
+            pos.x,
+            pos.y,
+            pos.z,
+            movement.IsMoving() ? 1 : 0
+        );
+    }
 
     // Added in OPM
     //  Debug visualization of belief zones

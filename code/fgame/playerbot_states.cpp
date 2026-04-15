@@ -300,9 +300,8 @@ void BotController::State_Idle(void)
     if (!movement.IsMoving()) {
         Vector beliefPos = beliefMap.GetHighestBeliefPos(controlledEnt->origin);
         if (beliefPos != vec_zero) {
-            // Belief targets are zone centroids, not guaranteed to sit on a
-            // pathable point. Move near the zone instead of demanding an
-            // exact path to the centroid.
+            // Belief targets are grounded investigation points, but they may
+            // still not sit on an exact nav point, so move near the zone.
             movement.MoveNear(beliefPos, 512);
 
             // Fixed in OPM

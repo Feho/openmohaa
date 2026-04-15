@@ -369,6 +369,7 @@ private:
     // Taunts
     int m_iNextTauntTime;
     int m_iLastFireTime;
+    int m_iLastPosDebugTime;
 
 private:
     DelegateHandle delegateHandle_gotKill;
