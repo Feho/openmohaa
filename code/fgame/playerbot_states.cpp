@@ -302,13 +302,17 @@ void BotController::State_Idle(void)
         if (beliefPos != vec_zero) {
             movement.MoveTo(beliefPos);
 
-            if (movement.MoveDone()) {
+            // Fixed in OPM
+            //  Only clear the zone when the bot actually arrived near it.
+            //  MoveDone() returns true even when pathing failed (no nodes found),
+            //  which was clearing high-belief zones the bot never visited.
+            if (movement.MoveDone() && (beliefPos - controlledEnt->origin).lengthSquared() <= Square(256)) {
                 beliefMap.ClearZone(beliefPos);
             }
         } else if (m_enemy.deathPos != vec_zero) {
             movement.MoveTo(m_enemy.deathPos);
 
-            if (movement.MoveDone()) {
+            if (movement.MoveDone() && (m_enemy.deathPos - controlledEnt->origin).lengthSquared() <= Square(256)) {
                 m_enemy.deathPos = vec_zero;
             }
         } else {
