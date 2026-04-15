@@ -214,7 +214,7 @@ void BotController::State_Idle(void)
         }
     } else {
         // Check if we should start a pause
-        if (rand() % 400 == 0 && !movement.MoveToBestAttractivePoint(1)) {
+        if (rand() % 400 == 0) {
             m_idle.pausing   = true;
             m_idle.pauseTime = level.inttime + 1500 + (int)G_Random(2500);
             m_idle.lookTime  = level.inttime + 500;
@@ -246,9 +246,9 @@ void BotController::State_Idle(void)
 
     // Changed in OPM
     //  Belief-driven patrol: move toward the highest-belief zone instead
-    //  of wandering randomly. Falls back to attractive nodes and random
+    //  of wandering randomly. Falls back to death positions and random
     //  movement when no zone has significant belief.
-    if (!movement.MoveToBestAttractivePoint() && !movement.IsMoving()) {
+    if (!movement.IsMoving()) {
         Vector beliefPos = beliefMap.GetHighestBeliefPos(controlledEnt->origin);
         if (beliefPos != vec_zero) {
             movement.MoveTo(beliefPos);
@@ -1052,8 +1052,7 @@ void BotController::State_Attack(void)
     if (bCanSee && bCanAttack && !bMelee) {
         // Can see and shoot — stop and fight, let strafing handle lateral movement
         movement.ClearMove();
-    } else if ((!movement.MoveToBestAttractivePoint(5) && !movement.IsMoving())
-               || (m_enemy.oldPos != m_enemy.lastPos && !movement.MoveDone())) {
+    } else if ((!movement.IsMoving()) || (m_enemy.oldPos != m_enemy.lastPos && !movement.MoveDone())) {
         // Can't see enemy or using melee — close the distance
         movement.MoveTo(m_enemy.lastPos);
 
