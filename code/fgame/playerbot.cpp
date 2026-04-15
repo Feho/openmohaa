@@ -833,20 +833,30 @@ void BotController::Killed(const Event& ev)
         m_enemy.deathPos = vec_zero;
     }
 
-    // Choose a new random primary weapon
-    Event event(EV_Player_PrimaryDMWeapon);
-    event.AddString("auto");
+    // Added in OPM
+    //  Only randomize weapon and model on the first spawn (when not yet assigned).
+    //  Once a bot has a weapon and player model, keep them across respawns so the
+    //  bot retains a consistent identity during the match.
+    if (!controlledEnt->client->pers.dm_primary[0]) {
+        Event event(EV_Player_PrimaryDMWeapon);
+        event.AddString("auto");
+        controlledEnt->ProcessEvent(event);
+    }
 
-    controlledEnt->ProcessEvent(event);
+    const char *userinfo = controlledEnt->client->pers.userinfo;
+    if (!Info_ValueForKey(userinfo, "dm_playermodel")[0]
+        || !Info_ValueForKey(userinfo, "dm_playergermanmodel")[0]) {
+        //
+        // This is useful to change nationality in Spearhead and Breakthrough
+        // this allows the AI to use more weapons
+        //
+        Info_SetValueForKey(controlledEnt->client->pers.userinfo, "dm_playermodel", G_GetRandomAlliedPlayerModel());
+        Info_SetValueForKey(
+            controlledEnt->client->pers.userinfo, "dm_playergermanmodel", G_GetRandomGermanPlayerModel()
+        );
 
-    //
-    // This is useful to change nationality in Spearhead and Breakthrough
-    // this allows the AI to use more weapons
-    //
-    Info_SetValueForKey(controlledEnt->client->pers.userinfo, "dm_playermodel", G_GetRandomAlliedPlayerModel());
-    Info_SetValueForKey(controlledEnt->client->pers.userinfo, "dm_playergermanmodel", G_GetRandomGermanPlayerModel());
-
-    G_ClientUserinfoChanged(controlledEnt->edict, controlledEnt->client->pers.userinfo);
+        G_ClientUserinfoChanged(controlledEnt->edict, controlledEnt->client->pers.userinfo);
+    }
 }
 
 // Added in OPM
