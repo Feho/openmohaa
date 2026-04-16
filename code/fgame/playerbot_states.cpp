@@ -1249,22 +1249,14 @@ void BotController::InitState_Overwatch(botfunc_t *func)
 
 bool BotController::CheckCondition_Overwatch(void)
 {
-    // Combat, curiosity, and grenade avoidance all suppress overwatch
-    if (m_combat.attackTime > level.inttime) {
-        return false;
-    }
-    if (m_curious.time > level.inttime) {
-        return false;
-    }
-    if (m_grenade.avoidTime > level.inttime) {
-        return false;
-    }
     // Per-window cooldown prevents re-entry immediately after leaving
     if (m_overwatch.cooldownUntil > level.inttime) {
         return false;
     }
 
-    // If the dwell timer is still running, remain in overwatch.
+    // Existing anchors remain valid until an explicit abandonment rule clears
+    // them. Combat and hazards may suppress how the anchor is used, but they do
+    // not implicitly destroy it.
     if (m_overwatch.dwellUntil > level.inttime) {
         return true;
     }
@@ -1274,6 +1266,18 @@ bool BotController::CheckCondition_Overwatch(void)
     if (m_overwatch.dwellUntil) {
         m_overwatch.cooldownUntil = level.inttime + 10000 + (int)G_Random(20000);
         m_overwatch.dwellUntil    = 0;
+        return false;
+    }
+
+    // Combat, curiosity, and grenade avoidance suppress only fresh anchor
+    // acquisition.
+    if (m_combat.attackTime > level.inttime) {
+        return false;
+    }
+    if (m_curious.time > level.inttime) {
+        return false;
+    }
+    if (m_grenade.avoidTime > level.inttime) {
         return false;
     }
 
@@ -1333,6 +1337,8 @@ bool BotController::CheckCondition_Overwatch(void)
     m_overwatch.lookDir    = lookDir;
     m_overwatch.dwellUntil = level.inttime + 3000 + (int)G_Random(4000);
     m_overwatch.scanTime   = 0;
+    m_overwatch.displacedSince = 0;
+    m_overwatch.pathFailCount  = 0;
 
     return true;
 }

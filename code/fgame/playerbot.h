@@ -325,6 +325,8 @@ struct BotOverwatchState {
     int    dwellUntil;    // When to give up and resume patrol
     int    scanTime;      // When to next update scan angle
     int    cooldownUntil; // Earliest time this window can be used again (anti-reentry)
+    int    displacedSince;
+    int    pathFailCount;
 
     void reset()
     {
@@ -334,6 +336,8 @@ struct BotOverwatchState {
         dwellUntil    = 0;
         scanTime      = 0;
         cooldownUntil = 0;
+        displacedSince = 0;
+        pathFailCount  = 0;
     }
 };
 
@@ -428,6 +432,9 @@ struct BotPerceptionSnapshot {
     bool overwatchActive;
     bool idleActive;
     bool moving;
+    bool anchorActive;
+    float anchorDistSq;
+    float enemyAnchorDistSq;
 };
 
 struct BotCombatIntent {
@@ -502,6 +509,8 @@ struct BotTacticalIntent {
     bool               reload;
     bool               clearMove;
     bool               run;
+    bool               anchorActive;
+    bool               anchorReturning;
     bool               updatedLastFireTime;
 
     void reset()
@@ -519,6 +528,8 @@ struct BotTacticalIntent {
         reload              = false;
         clearMove           = false;
         run                 = true;
+        anchorActive        = false;
+        anchorReturning     = false;
         updatedLastFireTime = false;
     }
 };
@@ -685,6 +696,7 @@ private:
     const char *GetEngagementModeName(BotEngagementMode mode) const;
     const char *GetTacticalModeName(BotTacticalMode mode) const;
     const char *GetHazardModeName(BotHazardMode mode) const;
+    void ClearOverwatchAnchor(const char *reason, bool startCooldown);
 
 public:
     CLASS_PROTOTYPE(BotController);

@@ -36,6 +36,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "weaputils.h"
 #include "g_bot.h"
 #include "gamecvars.h"
+#include <float.h>
 
 // We assume that we have limited access to the server-side
 // and that most logic come from the playerstate_s structure
@@ -297,8 +298,46 @@ BotPerceptionSnapshot BotController::BuildPerceptionSnapshot(void)
     snapshot.overwatchActive = CheckCondition_Overwatch();
     snapshot.idleActive      = CheckCondition_Idle();
     snapshot.moving          = movement.IsMoving();
+    snapshot.anchorActive    = (m_overwatch.dwellUntil > level.inttime);
+    snapshot.anchorDistSq    = FLT_MAX;
+    snapshot.enemyAnchorDistSq = FLT_MAX;
+
+    if (snapshot.anchorActive) {
+        Vector flatOffset = controlledEnt->origin - m_overwatch.standPos;
+        flatOffset.z      = 0;
+        snapshot.anchorDistSq = flatOffset.lengthSquared();
+
+        if (m_enemy.enemy && IsValidEnemy(m_enemy.enemy)) {
+            Vector enemyOffset = m_enemy.enemy->origin - m_overwatch.standPos;
+            enemyOffset.z      = 0;
+            snapshot.enemyAnchorDistSq = enemyOffset.lengthSquared();
+        } else if (m_enemy.lastPos != vec_zero) {
+            Vector enemyOffset = m_enemy.lastPos - m_overwatch.standPos;
+            enemyOffset.z      = 0;
+            snapshot.enemyAnchorDistSq = enemyOffset.lengthSquared();
+        }
+    }
 
     return snapshot;
+}
+
+void BotController::ClearOverwatchAnchor(const char *reason, bool startCooldown)
+{
+    if (g_bot_debug_state->integer && m_overwatch.dwellUntil) {
+        gi.Printf("BOT %s: Overwatch anchor cleared (%s)\n", controlledEnt->client->pers.netname, reason);
+    }
+
+    if (startCooldown) {
+        m_overwatch.cooldownUntil = level.inttime + 10000 + (int)G_Random(20000);
+    }
+
+    m_overwatch.windowPos      = vec_zero;
+    m_overwatch.standPos       = vec_zero;
+    m_overwatch.lookDir        = vec_zero;
+    m_overwatch.dwellUntil     = 0;
+    m_overwatch.scanTime       = 0;
+    m_overwatch.displacedSince = 0;
+    m_overwatch.pathFailCount  = 0;
 }
 
 void BotController::UpdateModeTransitions(const BotPerceptionSnapshot& snapshot)
@@ -399,6 +438,7 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
         bool    bMelee              = false;
         bool    bCanSee             = false;
         bool    bCanAttack          = false;
+        bool    bPrimaryOutOfRange  = false;
         float   fEnemyDistanceSquared;
         float   fDistanceSquared = 0.0f;
         Weapon *pWeap            = controlledEnt->GetActiveWeapon(WEAPON_MAIN);
@@ -487,6 +527,7 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
                         controlledEnt->SelectNextWeapon(&ev);
                     }
                 } else if (fDistanceSquared > fPrimaryBulletRangeSquared) {
+                    bPrimaryOutOfRange = true;
                     if (g_bot_debug_state->integer >= 2) {
                         gi.Printf(
                             "BOT %s: Attack - out of range (dist=%.0f, range=%.0f)\n",
@@ -715,7 +756,7 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
 
         if (bCanSee && bCanAttack && !bMelee) {
             intent.clearMove = true;
-        } else if ((!movement.IsMoving()) || (m_enemy.oldPos != m_enemy.lastPos && !movement.MoveDone())) {
+        } else if (bMelee || !bCanSee || bPrimaryOutOfRange) {
             intent.moveType   = BotMoveRequestType::MoveTo;
             intent.moveTarget = m_enemy.lastPos;
 
@@ -813,26 +854,58 @@ BotTacticalIntent BotController::BuildTacticalIntent(const BotPerceptionSnapshot
     BotTacticalIntent intent;
     intent.reset();
 
-    if (snapshot.overwatchActive) {
-        if (level.inttime >= m_overwatch.dwellUntil) {
-            m_overwatch.cooldownUntil = level.inttime + 10000 + (int)G_Random(20000);
-            m_overwatch.dwellUntil    = 0;
-            return intent;
-        }
-
+    if (snapshot.anchorActive && snapshot.overwatchActive) {
         intent.mode = BotTacticalMode::Overwatch;
+        intent.anchorActive = true;
 
-        Vector flatOffset = controlledEnt->origin - m_overwatch.standPos;
-        flatOffset.z      = 0;
-        float distSq      = flatOffset.lengthSquared();
-        if (distSq > Square(32)) {
-            intent.moveType   = BotMoveRequestType::MoveTo;
-            intent.moveTarget = m_overwatch.standPos;
+        const float holdRadiusSq    = Square(32.0f);
+        const float combatLeashSq   = Square(1024.0f);
+        const int   returnTimeoutMs = 4000;
+        const int   maxPathFailures = 2;
+
+        if (snapshot.grenadeActive) {
+            m_overwatch.displacedSince = 0;
+            m_overwatch.pathFailCount  = 0;
+            return intent;
         } else {
-            intent.clearMove = true;
+            if (snapshot.anchorDistSq > holdRadiusSq) {
+                intent.anchorReturning = true;
+
+                if (!movement.CanMoveTo(m_overwatch.standPos)) {
+                    m_overwatch.pathFailCount++;
+                    if (m_overwatch.pathFailCount >= maxPathFailures) {
+                        ClearOverwatchAnchor("path failure", true);
+                        intent.reset();
+                        return intent;
+                    }
+                } else {
+                    m_overwatch.pathFailCount = 0;
+                }
+
+                if (!m_overwatch.displacedSince) {
+                    m_overwatch.displacedSince = level.inttime;
+                } else if (level.inttime >= m_overwatch.displacedSince + returnTimeoutMs) {
+                    ClearOverwatchAnchor("return timeout", true);
+                    intent.reset();
+                    return intent;
+                }
+
+                if (snapshot.attackActive && snapshot.enemyAnchorDistSq > combatLeashSq) {
+                    ClearOverwatchAnchor("combat leash", true);
+                    intent.reset();
+                    return intent;
+                }
+
+                intent.moveType   = BotMoveRequestType::MoveTo;
+                intent.moveTarget = m_overwatch.standPos;
+            } else {
+                intent.clearMove             = true;
+                m_overwatch.displacedSince  = 0;
+                m_overwatch.pathFailCount   = 0;
+            }
         }
 
-        if (level.inttime >= m_overwatch.scanTime) {
+        if (!snapshot.attackActive && level.inttime >= m_overwatch.scanTime) {
             m_overwatch.scanTime = level.inttime + 800 + (int)G_Random(700);
 
             Vector lookAngles;
@@ -847,9 +920,11 @@ BotTacticalIntent BotController::BuildTacticalIntent(const BotPerceptionSnapshot
             intent.aimTarget = m_overwatch.standPos + perturbedDir * 1024.0f;
         }
 
-        intent.attackLeft  = BotButtonAction::Clear;
-        intent.attackRight = BotButtonAction::Clear;
-        intent.reload      = true;
+        if (!snapshot.attackActive) {
+            intent.attackLeft  = BotButtonAction::Clear;
+            intent.attackRight = BotButtonAction::Clear;
+            intent.reload      = true;
+        }
         return intent;
     }
 
@@ -1069,8 +1144,15 @@ BotController::ResolveIntents(const BotCombatIntent& combat, const BotHazardInte
 
 void BotController::DebugResolvedCommand(const BotResolvedCommand& command) const
 {
+    float anchorDist = -1.0f;
+    if (m_overwatch.dwellUntil > level.inttime) {
+        Vector flatOffset = controlledEnt->origin - m_overwatch.standPos;
+        flatOffset.z      = 0;
+        anchorDist = sqrtf(flatOffset.lengthSquared());
+    }
+
     gi.Printf(
-        "BOT %s: resolved engagement=%s tactical=%s hazard=%s move=%d aim=%d rm=%d um=%d clear=%d\n",
+        "BOT %s: resolved engagement=%s tactical=%s hazard=%s move=%d aim=%d rm=%d um=%d clear=%d anchor=%d dist=%.0f returning=%d\n",
         controlledEnt->client->pers.netname,
         GetEngagementModeName(command.engagementMode),
         GetTacticalModeName(command.tacticalMode),
@@ -1079,7 +1161,10 @@ void BotController::DebugResolvedCommand(const BotResolvedCommand& command) cons
         (int)command.aimType,
         command.rightmove,
         command.upmove,
-        command.clearMove ? 1 : 0
+        command.clearMove ? 1 : 0,
+        (m_overwatch.dwellUntil > level.inttime) ? 1 : 0,
+        anchorDist,
+        (m_overwatch.displacedSince != 0) ? 1 : 0
     );
 }
 
