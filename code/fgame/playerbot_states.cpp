@@ -1264,9 +1264,17 @@ bool BotController::CheckCondition_Overwatch(void)
         return false;
     }
 
-    // If the dwell timer is still running, remain in overwatch
+    // If the dwell timer is still running, remain in overwatch.
     if (m_overwatch.dwellUntil > level.inttime) {
         return true;
+    }
+
+    // Expired dwell must transition through cooldown before the bot is allowed
+    // to reacquire the same or another nearby window.
+    if (m_overwatch.dwellUntil) {
+        m_overwatch.cooldownUntil = level.inttime + 10000 + (int)G_Random(20000);
+        m_overwatch.dwellUntil    = 0;
+        return false;
     }
 
     // Fresh detection: cast a 192-unit trace forward for a WindowObject.
@@ -1283,15 +1291,22 @@ bool BotController::CheckCondition_Overwatch(void)
         return false;
     }
 
-    // Compute standPos: move toward the window up to 64 units from current position
+    // Compute standPos in the horizontal plane so the bot anchors on walkable
+    // ground near the window instead of trying to stand partway up the window.
     Vector windowCentroid = trace.ent->entity->centroid;
     Vector toWindow       = windowCentroid - controlledEnt->origin;
-    float  distToWindow   = toWindow.length();
+    toWindow.z            = 0;
+    float distToWindow    = toWindow.length();
+
+    if (distToWindow < 1.0f) {
+        return false;
+    }
 
     Vector moveDir = toWindow;
     VectorNormalizeFast(moveDir);
     float  moveAmount = Q_min(64.0f, Q_max(0.0f, distToWindow - 32.0f));
     Vector standPos   = controlledEnt->origin + moveDir * moveAmount;
+    standPos.z        = controlledEnt->origin.z;
 
     // Confirm standPos is navigable via a short trace
     trace_t standTrace = G_Trace(
@@ -1348,7 +1363,9 @@ void BotController::State_Overwatch(void)
     }
 
     // Move to standPos if not already there
-    float distSq = (controlledEnt->origin - m_overwatch.standPos).lengthSquared();
+    Vector flatOffset = controlledEnt->origin - m_overwatch.standPos;
+    flatOffset.z      = 0;
+    float distSq      = flatOffset.lengthSquared();
     if (distSq > 32.0f * 32.0f) {
         movement.MoveTo(m_overwatch.standPos);
     } else {

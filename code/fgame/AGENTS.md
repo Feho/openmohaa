@@ -6,8 +6,8 @@ This directory contains the current multiplayer bot system. Use this file as the
 
 The active bot system lives primarily in:
 
-- `playerbot.h` / `playerbot.cpp`: `BotController`, event hooks, frame updates, weapon selection, spawn/death handling.
-- `playerbot_states.cpp`: high-level state machine and state transitions.
+- `playerbot.h` / `playerbot.cpp`: `BotController`, intent types, mode transitions, event hooks, frame updates, weapon selection, spawn/death handling.
+- `playerbot_states.cpp`: legacy state handlers plus condition helpers still reused by the intent pipeline.
 - `playerbot_movement.cpp`: pathing, obstacle handling, jump logic, attractive nodes.
 - `playerbot_rotation.cpp`: aim and turn dynamics.
 - `playerbot_beliefs.h` / `playerbot_beliefs.cpp`: belief-map storage and patrol targeting.
@@ -37,7 +37,7 @@ Keep controller logic server-side and deterministic. Avoid UI-style or menu-styl
 
 Preserve the current separation of responsibilities:
 
-- Per-frame decisions belong in `BotController` and the state files.
+- Per-frame decisions belong in `BotController` intent builders and resolver code.
 - Motion/path execution belongs in `BotMovement`.
 - Aim smoothing and turn behavior belong in `BotRotation`.
 - Spatial suspicion and patrol memory belong in `BotBeliefMap`.
@@ -45,15 +45,30 @@ Preserve the current separation of responsibilities:
 
 Grouped state structs in `playerbot.h` exist to avoid partial resets. Prefer extending those structs over scattering new ad hoc fields across the controller.
 
-## State Machine Expectations
+## Intent Pipeline Expectations
 
-The main states are initialized in `BotController::Init()` and implemented in `playerbot_states.cpp`.
+The current runtime path is layered:
 
-- Default idle/combat/curious/grenade behavior should continue to flow through `CheckStates()`.
-- Event handlers like `Damaged()` and `NoticeEvent()` should write to sense or belief state first.
-- State `Think` methods should be the place that converts those inputs into movement, aiming, and firing decisions.
+- `BuildPerceptionSnapshot()` gathers condition results and short-lived reaction data.
+- `UpdateModeTransitions()` updates explicit engagement/tactical/hazard modes for debug visibility and state cleanup.
+- `BuildCombatIntent()`, `BuildHazardIntent()`, and `BuildTacticalIntent()` each produce a per-frame intent value.
+- `ResolveIntents()` is the single place that decides precedence between layers.
+- `ExecuteResolvedCommand()` is the only place that should write final move goals, aim directives, lean/run flags, and attack buttons.
 
-Avoid direct movement or rotation writes from perception/event handlers unless there is a strong reason and the boundary is updated consistently everywhere.
+`playerbot_states.cpp` is no longer the main per-frame command path. Its condition helpers still gate the new modes, and the older state handlers remain as migration-era reference logic. Do not route new behavior back through `CheckStates()` unless the architecture is being intentionally reverted.
+
+Avoid direct movement or rotation writes from perception/event handlers. Event handlers should update durable state, belief state, enemies, timers, or short-lived reaction inputs, then let the next frame's resolver decide the final command.
+
+## Layer Ownership Rules
+
+Keep layer responsibilities explicit:
+
+- Combat owns target choice, fire requests, combat strafing, crouch/lean preferences, and combat-facing aim targets.
+- Tactical owns idle patrol, curious investigation movement, overwatch anchoring, and non-combat look behavior.
+- Hazard owns safety-driven movement overrides such as grenade avoidance.
+- Movement and rotation remain execution backends; they should consume resolved requests, not absorb competing decisions from multiple call sites.
+
+If two features need the same output, resolve the conflict in `ResolveIntents()` instead of letting both write directly to `movement`, `rotation`, or `m_botCmd`.
 
 ## Spawn, Respawn, and Persistence
 
@@ -108,7 +123,9 @@ When changing bot behavior:
 - Trace the full lifecycle, not just the local method.
 - Check interactions with `Player` respawn and weapon-selection code.
 - Preserve debug cvar behavior where it already exists.
-- Prefer small, explicit state additions over hidden side effects.
+- Prefer small, explicit state additions or intent fields over hidden side effects.
+- Keep decisions as data where practical: compute intent first, mutate engine-facing objects at the edge.
+- Make impossible combinations harder to represent by extending the explicit mode/intent structs instead of adding unrelated controller booleans.
 - Keep comments factual and short. The bot code already carries a lot of historical commentary.
 
 ## Verification Checklist

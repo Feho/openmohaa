@@ -76,13 +76,17 @@ BotController::BotController()
     m_grenade.reset();
     m_overwatch.reset();
     m_idle.reset();
+    m_reaction.reset();
 
     m_iNextTauntTime    = 0;
     m_iLastFireTime     = 0;
     m_iLastPosDebugTime = 0;
 
-    m_StateFlags  = 0;
-    m_bFirstSpawn = true;
+    m_StateFlags      = 0;
+    m_bFirstSpawn     = true;
+    m_engagementMode  = BotEngagementMode::None;
+    m_tacticalMode    = BotTacticalMode::None;
+    m_hazardMode      = BotHazardMode::None;
 }
 
 BotController::~BotController()
@@ -227,6 +231,926 @@ void BotController::GetEyeInfo(usereyes_t *eyeinfo)
     *eyeinfo = m_botEyes;
 }
 
+const char *BotController::GetEngagementModeName(BotEngagementMode mode) const
+{
+    switch (mode) {
+    case BotEngagementMode::Attack:
+        return "Attack";
+    case BotEngagementMode::Curious:
+        return "Curious";
+    default:
+        return "None";
+    }
+}
+
+const char *BotController::GetTacticalModeName(BotTacticalMode mode) const
+{
+    switch (mode) {
+    case BotTacticalMode::Idle:
+        return "Idle";
+    case BotTacticalMode::Overwatch:
+        return "Overwatch";
+    default:
+        return "None";
+    }
+}
+
+const char *BotController::GetHazardModeName(BotHazardMode mode) const
+{
+    switch (mode) {
+    case BotHazardMode::Grenade:
+        return "Grenade";
+    default:
+        return "None";
+    }
+}
+
+void BotController::ApplyButtonAction(int buttonMask, BotButtonAction action)
+{
+    switch (action) {
+    case BotButtonAction::Clear:
+        m_botCmd.buttons &= ~buttonMask;
+        break;
+    case BotButtonAction::Hold:
+        m_botCmd.buttons |= buttonMask;
+        break;
+    case BotButtonAction::Toggle:
+        m_botCmd.buttons ^= buttonMask;
+        break;
+    case BotButtonAction::Leave:
+    default:
+        break;
+    }
+}
+
+BotPerceptionSnapshot BotController::BuildPerceptionSnapshot(void)
+{
+    BotPerceptionSnapshot snapshot = {};
+
+    if (m_reaction.lookUntil && level.inttime >= m_reaction.lookUntil) {
+        m_reaction.reset();
+    }
+
+    snapshot.attackActive    = CheckCondition_Attack();
+    snapshot.curiousActive   = !snapshot.attackActive && CheckCondition_Curious();
+    snapshot.grenadeActive   = CheckCondition_Grenade();
+    snapshot.overwatchActive = CheckCondition_Overwatch();
+    snapshot.idleActive      = CheckCondition_Idle();
+    snapshot.moving          = movement.IsMoving();
+
+    return snapshot;
+}
+
+void BotController::UpdateModeTransitions(const BotPerceptionSnapshot& snapshot)
+{
+    BotEngagementMode nextEngagement = BotEngagementMode::None;
+    if (snapshot.attackActive) {
+        nextEngagement = BotEngagementMode::Attack;
+    } else if (snapshot.curiousActive) {
+        nextEngagement = BotEngagementMode::Curious;
+    }
+
+    BotTacticalMode nextTactical = BotTacticalMode::None;
+    if (snapshot.overwatchActive) {
+        nextTactical = BotTacticalMode::Overwatch;
+    } else if (snapshot.idleActive) {
+        nextTactical = BotTacticalMode::Idle;
+    }
+
+    BotHazardMode nextHazard = snapshot.grenadeActive ? BotHazardMode::Grenade : BotHazardMode::None;
+
+    if (m_engagementMode != nextEngagement) {
+        if (g_bot_debug_state->integer) {
+            gi.Printf(
+                "BOT %s: engagement %s -> %s\n",
+                controlledEnt->client->pers.netname,
+                GetEngagementModeName(m_engagementMode),
+                GetEngagementModeName(nextEngagement)
+            );
+        }
+
+        if (nextEngagement == BotEngagementMode::Attack || nextEngagement == BotEngagementMode::Curious) {
+            m_idle.reset();
+        }
+
+        if (m_engagementMode == BotEngagementMode::Attack && nextEngagement != BotEngagementMode::Attack) {
+            m_combat.strafeTime    = 0;
+            m_combat.strafeDir     = 0;
+            m_combat.standingStill = false;
+            m_combat.crouching     = false;
+            m_combat.crouchDecided = false;
+            m_idle.leanDir         = 0;
+            controlledEnt->ZoomOff();
+        }
+
+        m_engagementMode = nextEngagement;
+    }
+
+    if (m_tacticalMode != nextTactical) {
+        if (g_bot_debug_state->integer) {
+            gi.Printf(
+                "BOT %s: tactical %s -> %s\n",
+                controlledEnt->client->pers.netname,
+                GetTacticalModeName(m_tacticalMode),
+                GetTacticalModeName(nextTactical)
+            );
+        }
+
+        if (nextTactical == BotTacticalMode::Overwatch) {
+            m_idle.reset();
+            if (g_bot_debug_state->integer) {
+                gi.Printf(
+                    "BOT %s: Overwatch anchor at (%.0f, %.0f, %.0f)\n",
+                    controlledEnt->client->pers.netname,
+                    m_overwatch.standPos.x,
+                    m_overwatch.standPos.y,
+                    m_overwatch.standPos.z
+                );
+            }
+        }
+
+        m_tacticalMode = nextTactical;
+    }
+
+    if (m_hazardMode != nextHazard) {
+        if (g_bot_debug_state->integer) {
+            gi.Printf(
+                "BOT %s: hazard %s -> %s\n",
+                controlledEnt->client->pers.netname,
+                GetHazardModeName(m_hazardMode),
+                GetHazardModeName(nextHazard)
+            );
+        }
+
+        if (nextHazard == BotHazardMode::Grenade) {
+            m_idle.reset();
+        }
+
+        m_hazardMode = nextHazard;
+    }
+}
+
+BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& snapshot)
+{
+    BotCombatIntent intent;
+    intent.reset();
+
+    if (snapshot.attackActive) {
+        bool    bMelee              = false;
+        bool    bCanSee             = false;
+        bool    bCanAttack          = false;
+        float   fEnemyDistanceSquared;
+        float   fDistanceSquared = 0.0f;
+        Weapon *pWeap            = controlledEnt->GetActiveWeapon(WEAPON_MAIN);
+        bool    bNoMove          = false;
+        bool    bFiring          = false;
+
+        intent.mode = BotEngagementMode::Attack;
+
+        if (!m_enemy.enemy || !IsValidEnemy(m_enemy.enemy)) {
+            if (level.inttime < m_combat.attackStopAimTime && m_enemy.lastPos != vec_zero) {
+                intent.aimType     = BotAimDirective::AimAtPoint;
+                intent.aimTarget   = m_enemy.lastPos;
+                intent.attackLeft  = BotButtonAction::Clear;
+                intent.attackRight = BotButtonAction::Clear;
+                m_combat.attackTime = level.inttime + 200 + (int)G_Random(300);
+                return intent;
+            }
+
+            m_combat.attackTime = 0;
+            intent.mode         = BotEngagementMode::None;
+            return intent;
+        }
+
+        fDistanceSquared = (m_enemy.enemy->origin - controlledEnt->origin).lengthSquared();
+        m_enemy.oldPos   = m_enemy.lastPos;
+
+        bCanSee = controlledEnt->CanSee(
+            m_enemy.enemy, 120, Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828), false
+        );
+
+        if (bCanSee) {
+            if (!pWeap) {
+                return intent;
+            }
+
+            bCanAttack = true;
+            if (m_combat.lastUnseenTime) {
+                const unsigned int minDelay    = m_profile.reactionMinDelay * 1000;
+                const unsigned int randomDelay = m_profile.reactionRandomDelay * 1000;
+                if (level.inttime <= m_combat.lastUnseenTime + minDelay + G_Random(randomDelay)) {
+                    if (g_bot_debug_state->integer >= 2) {
+                        gi.Printf(
+                            "BOT %s: Attack - waiting for reaction delay (elapsed=%dms, min=%dms)\n",
+                            controlledEnt->client->pers.netname,
+                            level.inttime - m_combat.lastUnseenTime,
+                            minDelay
+                        );
+                    }
+                    bCanAttack = false;
+                } else {
+                    m_combat.lastUnseenTime = 0;
+                }
+            }
+
+            if (bCanAttack) {
+                const int fireDelay                    = pWeap->FireDelay(FIRE_PRIMARY) * 1000;
+                float     fPrimaryBulletRange          = pWeap->GetBulletRange(FIRE_PRIMARY) / 1.25f;
+                float     fPrimaryBulletRangeSquared   = fPrimaryBulletRange * fPrimaryBulletRange;
+                float     fSecondaryBulletRange        = pWeap->GetBulletRange(FIRE_SECONDARY);
+                float     fSecondaryBulletRangeSquared = fSecondaryBulletRange * fSecondaryBulletRange;
+                const int maxcontinuousFireTime        = fireDelay + m_profile.continuousFireMinTime * 1000
+                                                 + G_Random(m_profile.continuousFireRandomTime * 1000);
+                const int maxBurstTime =
+                    fireDelay + m_profile.burstMinTime * 1000 + G_Random(m_profile.burstRandomDelay * 1000);
+
+                if (pWeap->GetMaxFireMovement() < 1 && pWeap->HasAmmoInClip(FIRE_PRIMARY)) {
+                    float length = controlledEnt->velocity.length();
+                    if ((length / sv_runspeed->value) > pWeap->GetMaxFireMovementMult()) {
+                        bNoMove          = true;
+                        intent.clearMove = true;
+                    }
+                }
+
+                if (controlledEnt->client->ps.stats[STAT_AMMO] <= 0
+                    && controlledEnt->client->ps.stats[STAT_CLIPAMMO] <= 0) {
+                    if (g_bot_debug_state->integer >= 2) {
+                        gi.Printf("BOT %s: Attack - no ammo, switching weapon\n", controlledEnt->client->pers.netname);
+                    }
+                    intent.attackLeft  = BotButtonAction::Clear;
+                    intent.attackRight = BotButtonAction::Clear;
+                    controlledEnt->ZoomOff();
+
+                    if (level.inttime > m_combat.lastWeaponSwitchTime + 500) {
+                        m_combat.lastWeaponSwitchTime = level.inttime;
+                        Event ev;
+                        controlledEnt->SelectNextWeapon(&ev);
+                    }
+                } else if (fDistanceSquared > fPrimaryBulletRangeSquared) {
+                    if (g_bot_debug_state->integer >= 2) {
+                        gi.Printf(
+                            "BOT %s: Attack - out of range (dist=%.0f, range=%.0f)\n",
+                            controlledEnt->client->pers.netname,
+                            sqrtf(fDistanceSquared),
+                            fPrimaryBulletRange
+                        );
+                    }
+                    intent.attackLeft  = BotButtonAction::Clear;
+                    intent.attackRight = BotButtonAction::Clear;
+                    controlledEnt->ZoomOff();
+                } else {
+                    if (pWeap->IsSemiAuto()) {
+                        if (controlledEnt->client->ps.iViewModelAnim != VM_ANIM_IDLE
+                            && (controlledEnt->client->ps.iViewModelAnim < VM_ANIM_IDLE_0
+                                || controlledEnt->client->ps.iViewModelAnim > VM_ANIM_IDLE_2)) {
+                            if (g_bot_debug_state->integer >= 2) {
+                                gi.Printf(
+                                    "BOT %s: Attack - waiting for weapon idle (anim=%d)\n",
+                                    controlledEnt->client->pers.netname,
+                                    controlledEnt->client->ps.iViewModelAnim
+                                );
+                            }
+                            intent.attackLeft  = BotButtonAction::Clear;
+                            intent.attackRight = BotButtonAction::Clear;
+                            controlledEnt->ZoomOff();
+                        } else {
+                            bFiring           = true;
+                            intent.attackLeft = BotButtonAction::Toggle;
+                            if (pWeap->GetZoom()) {
+                                intent.attackRight = controlledEnt->IsZoomed() ? BotButtonAction::Clear
+                                                                                : BotButtonAction::Hold;
+                            }
+                        }
+                    } else {
+                        bFiring           = true;
+                        intent.attackLeft = BotButtonAction::Hold;
+                    }
+                }
+
+                if (m_combat.lastBurstTime) {
+                    if (level.inttime > m_combat.lastBurstTime + maxBurstTime) {
+                        m_combat.lastBurstTime      = 0;
+                        m_combat.continuousFireTime = 0;
+                    } else {
+                        intent.attackLeft = BotButtonAction::Clear;
+                    }
+                } else {
+                    if (bFiring) {
+                        m_combat.continuousFireTime += level.intframetime;
+                    } else {
+                        m_combat.continuousFireTime = 0;
+                    }
+
+                    if (!m_combat.lastBurstTime && m_combat.continuousFireTime > maxcontinuousFireTime) {
+                        m_combat.lastBurstTime      = level.inttime;
+                        m_combat.continuousFireTime = 0;
+                    }
+                }
+
+                if (pWeap->GetFireType(FIRE_SECONDARY) == FT_MELEE) {
+                    if (controlledEnt->client->ps.stats[STAT_AMMO] <= 0
+                        && controlledEnt->client->ps.stats[STAT_CLIPAMMO] <= 0) {
+                        bMelee = true;
+                    } else if (fDistanceSquared <= fSecondaryBulletRangeSquared) {
+                        bMelee = true;
+                    }
+                }
+
+                if (bMelee) {
+                    intent.attackLeft = BotButtonAction::Clear;
+                    intent.attackRight =
+                        (fDistanceSquared <= fSecondaryBulletRangeSquared) ? BotButtonAction::Toggle
+                                                                           : BotButtonAction::Clear;
+                }
+
+                if (intent.attackLeft == BotButtonAction::Toggle || intent.attackLeft == BotButtonAction::Hold
+                    || intent.attackRight == BotButtonAction::Toggle || intent.attackRight == BotButtonAction::Hold) {
+                    intent.updatedLastFireTime = true;
+                }
+
+                m_combat.attackTime        = level.inttime + 500 + (int)G_Random(1000);
+                m_combat.attackStopAimTime = level.inttime + 500 + (int)G_Random(1000);
+                m_combat.lastSeenTime      = level.inttime;
+                m_enemy.lastPos            = m_enemy.enemy->origin;
+            }
+        } else {
+            intent.attackLeft  = BotButtonAction::Clear;
+            intent.attackRight = BotButtonAction::Clear;
+
+            if (level.inttime > m_combat.lastSeenTime + 2000) {
+                m_combat.lastUnseenTime = level.inttime;
+            }
+        }
+
+        if (bCanSee || level.inttime < m_combat.attackStopAimTime) {
+            Vector        vTarget;
+            orientation_t eyes_or;
+
+            if (m_enemy.eyesTag == -1) {
+                m_enemy.eyesTag = gi.Tag_NumForName(m_enemy.enemy->edict->tiki, "eyes bone");
+            }
+
+            if (m_enemy.eyesTag != -1) {
+                m_enemy.enemy->GetTag(m_enemy.eyesTag, &eyes_or);
+                vTarget = eyes_or.origin;
+            } else {
+                vTarget = m_enemy.enemy->origin;
+            }
+
+            if (level.inttime >= m_combat.lastAimTime + 300 + (int)G_Random(300)) {
+                float halfW     = (m_enemy.enemy->maxs.x - m_enemy.enemy->mins.x) * 0.5f;
+                float halfD     = (m_enemy.enemy->maxs.y - m_enemy.enemy->mins.y) * 0.5f;
+                float fDist     = sqrtf(fDistanceSquared);
+                float distScale = Q_clamp_float((fDist - 256) / 768, 0.15, 1.0);
+
+                if (m_enemy.eyesTag != -1) {
+                    m_combat.aimOffsetTarget[0] = G_CRandom(halfW) * distScale;
+                    m_combat.aimOffsetTarget[1] = G_CRandom(halfD) * distScale;
+                    m_combat.aimOffsetTarget[2] = -G_Random(m_enemy.enemy->maxs.z * 0.5f) * distScale;
+                } else {
+                    m_combat.aimOffsetTarget[0] = G_CRandom(halfW) * distScale;
+                    m_combat.aimOffsetTarget[1] = G_CRandom(halfD) * distScale;
+                    m_combat.aimOffsetTarget[2] = 16 + G_Random(m_enemy.enemy->viewheight - 16) * distScale;
+                }
+
+                m_combat.lastAimTime      = level.inttime;
+                m_combat.aimLerpStartTime = level.inttime;
+            }
+
+            float dt       = level.frametime * m_profile.aimLerpSpeed;
+            float lerpFrac = Q_clamp_float(dt, 0.0, 1.0);
+
+            m_combat.aimOffset[0] += (m_combat.aimOffsetTarget[0] - m_combat.aimOffset[0]) * lerpFrac;
+            m_combat.aimOffset[1] += (m_combat.aimOffsetTarget[1] - m_combat.aimOffset[1]) * lerpFrac;
+            m_combat.aimOffset[2] += (m_combat.aimOffsetTarget[2] - m_combat.aimOffset[2]) * lerpFrac;
+
+            intent.aimType   = BotAimDirective::AimAtPoint;
+            intent.aimTarget = vTarget + m_combat.aimOffset * m_profile.aimSpreadMult;
+        } else {
+            intent.aimType = BotAimDirective::AimAlongPath;
+        }
+
+        if (bNoMove) {
+            m_combat.standingStill = true;
+            intent.run             = false;
+            return intent;
+        }
+
+        fEnemyDistanceSquared = (controlledEnt->origin - m_enemy.lastPos).lengthSquared();
+
+        const float longRangeThreshold = 800 * 800;
+        const float midRangeThreshold  = 400 * 400;
+
+        if (bCanSee && bFiring && fEnemyDistanceSquared > longRangeThreshold) {
+            m_combat.standingStill = true;
+            intent.clearMove       = true;
+        } else if (bCanSee && bFiring && fEnemyDistanceSquared > midRangeThreshold) {
+            if (rand() % 100 < 30) {
+                m_combat.standingStill = true;
+                intent.clearMove       = true;
+            } else {
+                m_combat.standingStill = false;
+            }
+        } else {
+            m_combat.standingStill = false;
+        }
+
+        if (bCanSee && m_combat.standingStill) {
+            if (level.inttime >= m_idle.leanTime) {
+                m_idle.leanTime = level.inttime + 1500 + (int)G_Random(2000);
+                int roll = rand() % 5;
+                if (roll < 2) {
+                    m_idle.leanDir = -1;
+                } else if (roll < 4) {
+                    m_idle.leanDir = 1;
+                } else {
+                    m_idle.leanDir = 0;
+                }
+            }
+        } else {
+            m_idle.leanDir = 0;
+        }
+
+        if (m_combat.standingStill) {
+            if (!m_combat.crouching && !m_combat.crouchDecided) {
+                m_combat.crouchDecided = true;
+                if (rand() % 100 < (int)m_profile.crouchChance) {
+                    m_combat.crouching = true;
+                }
+            }
+        } else {
+            m_combat.crouching     = false;
+            m_combat.crouchDecided = false;
+        }
+
+        intent.upmove  = m_combat.crouching ? -127 : 0;
+        intent.leanDir = m_idle.leanDir;
+        intent.run     = !m_combat.standingStill;
+
+        if (bCanSee && !bMelee) {
+            if (level.inttime >= m_combat.strafeTime) {
+                int roll = rand() % 10;
+
+                if (roll < 2) {
+                    m_combat.strafeTime = level.inttime + 150 + (int)G_Random(250);
+                    m_combat.strafeDir  = (rand() % 2) ? 127 : -127;
+                } else if (roll < 4) {
+                    m_combat.strafeTime = level.inttime + 600 + (int)G_Random(1200);
+                    m_combat.strafeDir  = (rand() % 2) ? 127 : -127;
+                } else if (roll < 8) {
+                    m_combat.strafeTime = level.inttime + 300 + (int)G_Random(700);
+                    m_combat.strafeDir  = 0;
+                } else {
+                    m_combat.strafeTime = level.inttime + 100 + (int)G_Random(200);
+                    m_combat.strafeDir  = m_combat.strafeDir > 0 ? -127 : 127;
+                }
+            }
+
+            intent.rightmove = m_combat.strafeDir;
+        }
+
+        if (m_combat.standingStill) {
+            return intent;
+        }
+
+        if (bCanSee && bCanAttack && !bMelee) {
+            intent.clearMove = true;
+        } else if ((!movement.IsMoving()) || (m_enemy.oldPos != m_enemy.lastPos && !movement.MoveDone())) {
+            intent.moveType   = BotMoveRequestType::MoveTo;
+            intent.moveTarget = m_enemy.lastPos;
+
+            if (!bCanSee && movement.MoveDone()) {
+                ClearEnemy();
+                return intent;
+            }
+        }
+
+        if (movement.IsMoving() || intent.moveType == BotMoveRequestType::MoveTo) {
+            m_combat.attackTime = level.inttime + 500 + (int)G_Random(1000);
+        }
+
+        return intent;
+    }
+
+    if (snapshot.curiousActive) {
+        intent.mode = BotEngagementMode::Curious;
+
+        Vector targetPos = (m_curious.targetPos != vec_zero) ? m_curious.targetPos
+                                                             : beliefMap.GetHighestBeliefPos(controlledEnt->origin);
+
+        if (CheckWindows()) {
+            intent.attackLeft          = BotButtonAction::Toggle;
+            intent.updatedLastFireTime = true;
+        } else {
+            intent.attackLeft  = BotButtonAction::Clear;
+            intent.attackRight = BotButtonAction::Clear;
+        }
+
+        if (targetPos != vec_zero && controlledEnt->CanSee(targetPos, 120, 2048, false)) {
+            intent.aimType   = BotAimDirective::AimAtPoint;
+            intent.aimTarget = targetPos;
+        } else if (movement.IsMoving()) {
+            intent.aimType = BotAimDirective::AimAlongPath;
+        } else if (targetPos != vec_zero) {
+            intent.aimType   = BotAimDirective::AimAtPoint;
+            intent.aimTarget = targetPos;
+        }
+
+        if (targetPos != vec_zero && m_curious.lastPos != targetPos) {
+            intent.moveType   = BotMoveRequestType::MoveNear;
+            intent.moveTarget = targetPos;
+            intent.radius     = 512.0f;
+            m_curious.lastPos = targetPos;
+
+            if (g_bot_debug_state->integer >= 2) {
+                gi.Printf(
+                    "BOT %s: Curious investigating (%.0f, %.0f, %.0f)\n",
+                    controlledEnt->client->pers.netname,
+                    targetPos.x,
+                    targetPos.y,
+                    targetPos.z
+                );
+            }
+        }
+
+        if (movement.MoveDone()) {
+            float distToTarget = (m_curious.targetPos - controlledEnt->origin).length();
+            if (distToTarget < 256) {
+                beliefMap.ClearZone(controlledEnt->origin);
+                m_curious.time = 0;
+            } else if (!movement.IsMoving() && level.inttime + 17000 > m_curious.time) {
+                m_curious.time = 0;
+            }
+        }
+
+        return intent;
+    }
+
+    return intent;
+}
+
+BotHazardIntent BotController::BuildHazardIntent(const BotPerceptionSnapshot& snapshot)
+{
+    BotHazardIntent intent;
+    intent.reset();
+
+    if (!snapshot.grenadeActive || !m_grenade.grenade) {
+        return intent;
+    }
+
+    intent.mode         = BotHazardMode::Grenade;
+    intent.moveType     = BotMoveRequestType::AvoidPath;
+    intent.moveTarget   = m_grenade.grenade->origin;
+    intent.preferredDir = controlledEnt->origin - m_grenade.grenade->origin;
+    VectorNormalizeFast(intent.preferredDir);
+    intent.preferredDir *= 512.0f;
+    intent.radius = g_bot_grenade_avoid_radius->value;
+    return intent;
+}
+
+BotTacticalIntent BotController::BuildTacticalIntent(const BotPerceptionSnapshot& snapshot)
+{
+    BotTacticalIntent intent;
+    intent.reset();
+
+    if (snapshot.overwatchActive) {
+        if (level.inttime >= m_overwatch.dwellUntil) {
+            m_overwatch.cooldownUntil = level.inttime + 10000 + (int)G_Random(20000);
+            m_overwatch.dwellUntil    = 0;
+            return intent;
+        }
+
+        intent.mode = BotTacticalMode::Overwatch;
+
+        Vector flatOffset = controlledEnt->origin - m_overwatch.standPos;
+        flatOffset.z      = 0;
+        float distSq      = flatOffset.lengthSquared();
+        if (distSq > Square(32)) {
+            intent.moveType   = BotMoveRequestType::MoveTo;
+            intent.moveTarget = m_overwatch.standPos;
+        } else {
+            intent.clearMove = true;
+        }
+
+        if (level.inttime >= m_overwatch.scanTime) {
+            m_overwatch.scanTime = level.inttime + 800 + (int)G_Random(700);
+
+            Vector lookAngles;
+            vectoangles(m_overwatch.lookDir, lookAngles);
+            lookAngles.y += G_CRandom(20.0f);
+            lookAngles.x += G_CRandom(5.0f);
+
+            Vector perturbedDir;
+            AngleVectors(lookAngles, perturbedDir, NULL, NULL);
+
+            intent.aimType   = BotAimDirective::AimAtPoint;
+            intent.aimTarget = m_overwatch.standPos + perturbedDir * 1024.0f;
+        }
+
+        intent.attackLeft  = BotButtonAction::Clear;
+        intent.attackRight = BotButtonAction::Clear;
+        intent.reload      = true;
+        return intent;
+    }
+
+    if (!snapshot.idleActive) {
+        return intent;
+    }
+
+    intent.mode = BotTacticalMode::Idle;
+
+    if (CheckWindows()) {
+        intent.attackLeft          = BotButtonAction::Toggle;
+        intent.updatedLastFireTime = true;
+    } else {
+        intent.attackLeft  = BotButtonAction::Clear;
+        intent.attackRight = BotButtonAction::Clear;
+        intent.reload      = true;
+    }
+
+    if (m_idle.pausing) {
+        if (level.inttime >= m_idle.pauseTime) {
+            m_idle.pausing = false;
+            if (rand() % 4 == 0) {
+                m_idle.walking  = true;
+                m_idle.walkTime = level.inttime + 2000 + (int)G_Random(3000);
+            }
+        } else {
+            intent.clearMove = true;
+            intent.run       = false;
+
+            if (level.inttime >= m_idle.lookTime) {
+                m_idle.lookTime = level.inttime + 800 + (int)G_Random(1200);
+
+                Vector beliefPos = beliefMap.GetHighestBeliefPos(controlledEnt->origin);
+                if (beliefPos != vec_zero) {
+                    intent.aimType   = BotAimDirective::AimAtPoint;
+                    intent.aimTarget = beliefPos;
+                } else {
+                    Vector lookAngles = controlledEnt->angles;
+                    lookAngles.y += G_CRandom(90);
+                    lookAngles.x = G_CRandom(15);
+                    intent.aimType   = BotAimDirective::SetAngles;
+                    intent.aimAngles = lookAngles;
+                }
+            }
+
+            return intent;
+        }
+    } else if (rand() % 400 == 0) {
+        m_idle.pausing   = true;
+        m_idle.pauseTime = level.inttime + 1500 + (int)G_Random(2500);
+        m_idle.lookTime  = level.inttime + 500;
+        intent.clearMove = true;
+        intent.run       = false;
+        return intent;
+    }
+
+    if (m_idle.walking && level.inttime >= m_idle.walkTime) {
+        m_idle.walking = false;
+    }
+
+    intent.run = !m_idle.walking;
+
+    Vector beliefPos = beliefMap.GetHighestBeliefPos(controlledEnt->origin);
+    if (beliefPos != vec_zero && controlledEnt->CanSee(beliefPos, 120, 2048, false)) {
+        intent.aimType   = BotAimDirective::AimAtPoint;
+        intent.aimTarget = beliefPos;
+    } else {
+        intent.aimType = BotAimDirective::AimAlongPath;
+
+        if (movement.IsMoving()) {
+            if (m_idle.scanTarget != vec_zero) {
+                if (level.inttime >= m_idle.scanUntil) {
+                    m_idle.scanTarget   = vec_zero;
+                    m_idle.scanNextTime = level.inttime + 2000 + (int)G_Random(3000);
+                } else {
+                    intent.aimType   = BotAimDirective::AimAtPoint;
+                    intent.aimTarget = m_idle.scanTarget;
+                }
+            } else if (level.inttime >= m_idle.scanNextTime) {
+                Vector eyePos    = controlledEnt->EyePosition();
+                Vector tryAngles = rotation.GetTargetAngles();
+                tryAngles.y += G_CRandom(60.0f);
+                tryAngles.x = G_CRandom(15.0f);
+
+                Vector forward;
+                AngleVectors(tryAngles, forward, NULL, NULL);
+
+                trace_t tr = G_Trace(
+                    eyePos, vec_zero, vec_zero, eyePos + forward * 4096.0f, controlledEnt, MASK_SOLID, false, "BotPatrolScan"
+                );
+
+                if (tr.fraction > 0 && (tr.endpos - eyePos).lengthSquared() >= Square(256)) {
+                    m_idle.scanTarget = tr.endpos;
+                    m_idle.scanUntil  = level.inttime + 500 + (int)G_Random(1500);
+                } else {
+                    m_idle.scanNextTime = level.inttime + 500;
+                }
+            }
+        }
+    }
+
+    if (!movement.IsMoving()) {
+        if (beliefPos != vec_zero) {
+            intent.moveType   = BotMoveRequestType::MoveNear;
+            intent.moveTarget = beliefPos;
+            intent.radius     = 512.0f;
+
+            if (movement.MoveDone() && (beliefPos - controlledEnt->origin).lengthSquared() <= Square(256)) {
+                beliefMap.ClearZone(beliefPos);
+            }
+        } else if (m_enemy.deathPos != vec_zero) {
+            intent.moveType   = BotMoveRequestType::MoveTo;
+            intent.moveTarget = m_enemy.deathPos;
+
+            if (movement.MoveDone() && (m_enemy.deathPos - controlledEnt->origin).lengthSquared() <= Square(256)) {
+                m_enemy.deathPos = vec_zero;
+            }
+        } else {
+            Vector randomDir(G_CRandom(16), G_CRandom(16), G_CRandom(16));
+            Vector preferredDir;
+            preferredDir += Vector(controlledEnt->orientation[0]) * (rand() % 5 ? 1024 : -1024);
+            preferredDir += Vector(controlledEnt->orientation[2]) * (rand() % 5 ? 1024 : -1024);
+
+            intent.moveType     = BotMoveRequestType::AvoidPath;
+            intent.moveTarget   = controlledEnt->origin + randomDir;
+            intent.preferredDir = preferredDir;
+            intent.radius       = 512 + G_Random(2048);
+        }
+    }
+
+    return intent;
+}
+
+BotResolvedCommand
+BotController::ResolveIntents(const BotCombatIntent& combat, const BotHazardIntent& hazard, const BotTacticalIntent& tactical)
+{
+    BotResolvedCommand resolved;
+    resolved.reset();
+
+    resolved.engagementMode = combat.mode;
+    resolved.tacticalMode   = tactical.mode;
+    resolved.hazardMode     = hazard.mode;
+    resolved.attackLeft     = BotButtonAction::Clear;
+    resolved.attackRight    = BotButtonAction::Clear;
+    resolved.run     = !(m_idle.pausing || m_combat.standingStill || m_idle.walking);
+    resolved.leanDir = m_idle.leanDir;
+
+    if (hazard.mode != BotHazardMode::None) {
+        resolved.hazardMode    = hazard.mode;
+        resolved.moveType      = hazard.moveType;
+        resolved.moveTarget    = hazard.moveTarget;
+        resolved.preferredDir  = hazard.preferredDir;
+        resolved.radius        = hazard.radius;
+        resolved.clearMove     = hazard.clearMove;
+    }
+
+    if (tactical.mode != BotTacticalMode::None) {
+        resolved.tacticalMode        = tactical.mode;
+        resolved.reload              = tactical.reload;
+        resolved.run                 = tactical.run && resolved.run;
+        resolved.updatedLastFireTime = tactical.updatedLastFireTime;
+        resolved.attackLeft          = tactical.attackLeft;
+        resolved.attackRight         = tactical.attackRight;
+
+        if (resolved.moveType == BotMoveRequestType::None && tactical.moveType != BotMoveRequestType::None) {
+            resolved.moveType     = tactical.moveType;
+            resolved.moveTarget   = tactical.moveTarget;
+            resolved.preferredDir = tactical.preferredDir;
+            resolved.radius       = tactical.radius;
+        }
+        if (tactical.clearMove) {
+            resolved.clearMove = true;
+        }
+        if (tactical.aimType != BotAimDirective::None) {
+            resolved.aimType   = tactical.aimType;
+            resolved.aimTarget = tactical.aimTarget;
+            resolved.aimAngles = tactical.aimAngles;
+        }
+    }
+
+    if (combat.mode != BotEngagementMode::None) {
+        resolved.engagementMode       = combat.mode;
+        resolved.attackLeft          = combat.attackLeft;
+        resolved.attackRight         = combat.attackRight;
+        resolved.rightmove           = combat.rightmove;
+        resolved.upmove              = combat.upmove;
+        resolved.leanDir             = combat.leanDir;
+        resolved.run                 = combat.run && resolved.run;
+        resolved.updatedLastFireTime = resolved.updatedLastFireTime || combat.updatedLastFireTime;
+
+        if (combat.moveType != BotMoveRequestType::None) {
+            resolved.moveType     = combat.moveType;
+            resolved.moveTarget   = combat.moveTarget;
+            resolved.preferredDir = combat.preferredDir;
+            resolved.radius       = combat.radius;
+        }
+        if (combat.clearMove) {
+            resolved.clearMove = true;
+        }
+        if (combat.aimType != BotAimDirective::None) {
+            resolved.aimType   = combat.aimType;
+            resolved.aimTarget = combat.aimTarget;
+            resolved.aimAngles = combat.aimAngles;
+        }
+    }
+
+    if (resolved.aimType == BotAimDirective::None && m_reaction.lookUntil > level.inttime && m_reaction.lookPos != vec_zero) {
+        resolved.aimType   = BotAimDirective::AimAtPoint;
+        resolved.aimTarget = m_reaction.lookPos;
+        if (m_reaction.clearMove) {
+            resolved.clearMove = true;
+        }
+    }
+
+    return resolved;
+}
+
+void BotController::DebugResolvedCommand(const BotResolvedCommand& command) const
+{
+    gi.Printf(
+        "BOT %s: resolved engagement=%s tactical=%s hazard=%s move=%d aim=%d rm=%d um=%d clear=%d\n",
+        controlledEnt->client->pers.netname,
+        GetEngagementModeName(command.engagementMode),
+        GetTacticalModeName(command.tacticalMode),
+        GetHazardModeName(command.hazardMode),
+        (int)command.moveType,
+        (int)command.aimType,
+        command.rightmove,
+        command.upmove,
+        command.clearMove ? 1 : 0
+    );
+}
+
+void BotController::ExecuteResolvedCommand(const BotResolvedCommand& command)
+{
+    m_botCmd.forwardmove = 0;
+    m_botCmd.rightmove   = command.rightmove;
+    m_botCmd.upmove      = command.upmove;
+
+    if (command.clearMove) {
+        movement.ClearMove();
+    }
+
+    switch (command.moveType) {
+    case BotMoveRequestType::Clear:
+        movement.ClearMove();
+        break;
+    case BotMoveRequestType::MoveTo:
+        movement.MoveTo(command.moveTarget);
+        break;
+    case BotMoveRequestType::MoveNear:
+        movement.MoveNear(command.moveTarget, command.radius);
+        break;
+    case BotMoveRequestType::AvoidPath:
+        movement.AvoidPath(command.moveTarget, command.radius, command.preferredDir);
+        break;
+    case BotMoveRequestType::None:
+    default:
+        break;
+    }
+
+    switch (command.aimType) {
+    case BotAimDirective::AimAtPoint:
+        rotation.AimAt(command.aimTarget);
+        break;
+    case BotAimDirective::AimAlongPath:
+        AimAtAimNode();
+        break;
+    case BotAimDirective::SetAngles:
+        rotation.SetTargetAngles(command.aimAngles);
+        break;
+    case BotAimDirective::None:
+    default:
+        break;
+    }
+
+    ApplyButtonAction(BUTTON_ATTACKLEFT, command.attackLeft);
+    ApplyButtonAction(BUTTON_ATTACKRIGHT, command.attackRight);
+
+    if (command.updatedLastFireTime) {
+        m_iLastFireTime = level.inttime;
+    }
+
+    m_botCmd.buttons &= ~(BUTTON_LEAN_LEFT | BUTTON_LEAN_RIGHT);
+    if (command.leanDir < 0) {
+        m_botCmd.buttons |= BUTTON_LEAN_LEFT;
+    } else if (command.leanDir > 0) {
+        m_botCmd.buttons |= BUTTON_LEAN_RIGHT;
+    }
+
+    if (command.run) {
+        m_botCmd.buttons |= BUTTON_RUN;
+    } else {
+        m_botCmd.buttons &= ~BUTTON_RUN;
+    }
+
+    if (command.reload) {
+        CheckReload();
+    }
+}
+
 void BotController::UpdateBotStates(void)
 {
     m_botCmd.serverTime = level.svsTime;
@@ -262,29 +1186,6 @@ void BotController::UpdateBotStates(void)
         return;
     }
 
-    //
-    // Added in OPM
-    //  Determine run/walk behavior based on context
-    //  - Walk when idle pausing, standing still to aim, or randomly walking
-    //  - Run otherwise
-    //
-    if (m_idle.pausing || m_combat.standingStill || m_idle.walking) {
-        m_botCmd.buttons &= ~BUTTON_RUN;
-    } else {
-        m_botCmd.buttons |= BUTTON_RUN;
-    }
-
-    //
-    // Added in OPM
-    //  Handle leaning during combat
-    //
-    m_botCmd.buttons &= ~(BUTTON_LEAN_LEFT | BUTTON_LEAN_RIGHT);
-    if (m_idle.leanDir < 0) {
-        m_botCmd.buttons |= BUTTON_LEAN_LEFT;
-    } else if (m_idle.leanDir > 0) {
-        m_botCmd.buttons |= BUTTON_LEAN_RIGHT;
-    }
-
     m_botEyes.ofs[0]    = 0;
     m_botEyes.ofs[1]    = 0;
     m_botEyes.ofs[2]    = controlledEnt->viewheight;
@@ -296,13 +1197,23 @@ void BotController::UpdateBotStates(void)
     beliefMap.Decay(level.frametime);
     beliefMap.ClearZonesVisibleFrom(controlledEnt);
 
-    CheckStates();
+    BotPerceptionSnapshot snapshot = BuildPerceptionSnapshot();
+    UpdateModeTransitions(snapshot);
+    BotCombatIntent    combat   = BuildCombatIntent(snapshot);
+    BotHazardIntent    hazard   = BuildHazardIntent(snapshot);
+    BotTacticalIntent  tactical = BuildTacticalIntent(snapshot);
+    BotResolvedCommand command  = ResolveIntents(combat, hazard, tactical);
+    ExecuteResolvedCommand(command);
 
     movement.MoveThink(m_botCmd);
     rotation.TurnThink(m_botCmd, m_botEyes);
     CheckUse();
 
     CheckValidWeapon();
+
+    if (g_bot_debug_state->integer >= 2) {
+        DebugResolvedCommand(command);
+    }
 
     if (g_bot_debug_state->integer && level.inttime >= m_iLastPosDebugTime + 2000) {
         m_iLastPosDebugTime = level.inttime;
@@ -679,8 +1590,9 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
                 vPos.z
             );
         }
-        rotation.AimAt(vPos);
-        movement.ClearMove();
+        m_reaction.lookPos   = vPos;
+        m_reaction.lookUntil = level.inttime + 500;
+        m_reaction.clearMove = true;
         m_idle.reset();
     }
 }
@@ -803,6 +1715,13 @@ void BotController::Spawned(void)
     ClearEnemy();
     m_curious.time   = 0;
     m_botCmd.buttons = 0;
+    m_grenade.reset();
+    m_overwatch.reset();
+    m_idle.reset();
+    m_reaction.reset();
+    m_engagementMode = BotEngagementMode::None;
+    m_tacticalMode   = BotTacticalMode::None;
+    m_hazardMode     = BotHazardMode::None;
 
     // Added in OPM
     //  Assign a personality profile at first spawn and keep it across deaths.
@@ -921,8 +1840,9 @@ void BotController::Damaged(const Event& ev)
         return;
     }
 
-    // Immediately look toward the attacker
-    rotation.AimAt(attacker->centroid);
+    m_reaction.lookPos   = attacker->centroid;
+    m_reaction.lookUntil = level.inttime + 750;
+    m_reaction.clearMove = true;
 
     // If the attacker is a valid sentient enemy, enter attack mode
     if (sentAttacker) {
@@ -949,9 +1869,6 @@ void BotController::Damaged(const Event& ev)
         m_combat.lastSeenTime      = level.inttime;
         m_combat.attackStopAimTime = level.inttime + 2000;
         m_combat.lastUnseenTime    = level.inttime; // Start reaction delay - need time to aim
-
-        // Clear movement so we don't keep walking away from threat
-        movement.ClearMove();
 
         // Clear any curious state - we have a real threat now
         m_curious.time = 0;

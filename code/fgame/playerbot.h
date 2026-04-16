@@ -369,6 +369,205 @@ struct BotIdleBehavior {
     }
 };
 
+enum class BotEngagementMode {
+    None,
+    Attack,
+    Curious
+};
+
+enum class BotTacticalMode {
+    None,
+    Idle,
+    Overwatch
+};
+
+enum class BotHazardMode {
+    None,
+    Grenade
+};
+
+enum class BotMoveRequestType {
+    None,
+    Clear,
+    MoveTo,
+    MoveNear,
+    AvoidPath
+};
+
+enum class BotAimDirective {
+    None,
+    AimAtPoint,
+    AimAlongPath,
+    SetAngles
+};
+
+enum class BotButtonAction {
+    Leave,
+    Clear,
+    Hold,
+    Toggle
+};
+
+struct BotReactionState {
+    Vector lookPos;
+    int    lookUntil;
+    bool   clearMove;
+
+    void reset()
+    {
+        lookPos    = vec_zero;
+        lookUntil  = 0;
+        clearMove  = false;
+    }
+};
+
+struct BotPerceptionSnapshot {
+    bool attackActive;
+    bool curiousActive;
+    bool grenadeActive;
+    bool overwatchActive;
+    bool idleActive;
+    bool moving;
+};
+
+struct BotCombatIntent {
+    BotEngagementMode mode;
+    BotMoveRequestType moveType;
+    Vector            moveTarget;
+    Vector            preferredDir;
+    float             radius;
+    BotAimDirective   aimType;
+    Vector            aimTarget;
+    Vector            aimAngles;
+    BotButtonAction   attackLeft;
+    BotButtonAction   attackRight;
+    int               rightmove;
+    int               upmove;
+    int               leanDir;
+    bool              clearMove;
+    bool              run;
+    bool              updatedLastFireTime;
+
+    void reset()
+    {
+        mode                = BotEngagementMode::None;
+        moveType            = BotMoveRequestType::None;
+        moveTarget          = vec_zero;
+        preferredDir        = vec_zero;
+        radius              = 0.0f;
+        aimType             = BotAimDirective::None;
+        aimTarget           = vec_zero;
+        aimAngles           = vec_zero;
+        attackLeft          = BotButtonAction::Leave;
+        attackRight         = BotButtonAction::Leave;
+        rightmove           = 0;
+        upmove              = 0;
+        leanDir             = 0;
+        clearMove           = false;
+        run                 = true;
+        updatedLastFireTime = false;
+    }
+};
+
+struct BotHazardIntent {
+    BotHazardMode      mode;
+    BotMoveRequestType moveType;
+    Vector             moveTarget;
+    Vector             preferredDir;
+    float              radius;
+    bool               clearMove;
+
+    void reset()
+    {
+        mode         = BotHazardMode::None;
+        moveType     = BotMoveRequestType::None;
+        moveTarget   = vec_zero;
+        preferredDir = vec_zero;
+        radius       = 0.0f;
+        clearMove    = false;
+    }
+};
+
+struct BotTacticalIntent {
+    BotTacticalMode    mode;
+    BotMoveRequestType moveType;
+    Vector             moveTarget;
+    Vector             preferredDir;
+    float              radius;
+    BotAimDirective    aimType;
+    Vector             aimTarget;
+    Vector             aimAngles;
+    BotButtonAction    attackLeft;
+    BotButtonAction    attackRight;
+    bool               reload;
+    bool               clearMove;
+    bool               run;
+    bool               updatedLastFireTime;
+
+    void reset()
+    {
+        mode                = BotTacticalMode::None;
+        moveType            = BotMoveRequestType::None;
+        moveTarget          = vec_zero;
+        preferredDir        = vec_zero;
+        radius              = 0.0f;
+        aimType             = BotAimDirective::None;
+        aimTarget           = vec_zero;
+        aimAngles           = vec_zero;
+        attackLeft          = BotButtonAction::Leave;
+        attackRight         = BotButtonAction::Leave;
+        reload              = false;
+        clearMove           = false;
+        run                 = true;
+        updatedLastFireTime = false;
+    }
+};
+
+struct BotResolvedCommand {
+    BotEngagementMode  engagementMode;
+    BotTacticalMode    tacticalMode;
+    BotHazardMode      hazardMode;
+    BotMoveRequestType moveType;
+    Vector             moveTarget;
+    Vector             preferredDir;
+    float              radius;
+    BotAimDirective    aimType;
+    Vector             aimTarget;
+    Vector             aimAngles;
+    BotButtonAction    attackLeft;
+    BotButtonAction    attackRight;
+    int                rightmove;
+    int                upmove;
+    int                leanDir;
+    bool               reload;
+    bool               run;
+    bool               clearMove;
+    bool               updatedLastFireTime;
+
+    void reset()
+    {
+        engagementMode      = BotEngagementMode::None;
+        tacticalMode        = BotTacticalMode::None;
+        hazardMode          = BotHazardMode::None;
+        moveType            = BotMoveRequestType::None;
+        moveTarget          = vec_zero;
+        preferredDir        = vec_zero;
+        radius              = 0.0f;
+        aimType             = BotAimDirective::None;
+        aimTarget           = vec_zero;
+        aimAngles           = vec_zero;
+        attackLeft          = BotButtonAction::Leave;
+        attackRight         = BotButtonAction::Leave;
+        rightmove           = 0;
+        upmove              = 0;
+        leanDir             = 0;
+        reload              = false;
+        run                 = true;
+        clearMove           = false;
+        updatedLastFireTime = false;
+    }
+};
+
 class BotController : public Listener
 {
 public:
@@ -398,6 +597,7 @@ private:
     BotGrenadeState  m_grenade;
     BotOverwatchState m_overwatch;
     BotIdleBehavior  m_idle;
+    BotReactionState m_reaction;
 
     // Input
     usercmd_t  m_botCmd;
@@ -412,6 +612,9 @@ private:
     int m_iNextTauntTime;
     int m_iLastFireTime;
     int m_iLastPosDebugTime;
+    BotEngagementMode m_engagementMode;
+    BotTacticalMode   m_tacticalMode;
+    BotHazardMode     m_hazardMode;
 
 private:
     DelegateHandle delegateHandle_gotKill;
@@ -466,6 +669,22 @@ private:
     void        State_Weapon(void);
 
     void CheckStates(void);
+    BotPerceptionSnapshot BuildPerceptionSnapshot(void);
+    void                 UpdateModeTransitions(const BotPerceptionSnapshot& snapshot);
+    BotCombatIntent      BuildCombatIntent(const BotPerceptionSnapshot& snapshot);
+    BotHazardIntent      BuildHazardIntent(const BotPerceptionSnapshot& snapshot);
+    BotTacticalIntent    BuildTacticalIntent(const BotPerceptionSnapshot& snapshot);
+    BotResolvedCommand   ResolveIntents(
+          const BotCombatIntent&   combat,
+          const BotHazardIntent&   hazard,
+          const BotTacticalIntent& tactical
+      );
+    void ExecuteResolvedCommand(const BotResolvedCommand& command);
+    void DebugResolvedCommand(const BotResolvedCommand& command) const;
+    void ApplyButtonAction(int buttonMask, BotButtonAction action);
+    const char *GetEngagementModeName(BotEngagementMode mode) const;
+    const char *GetTacticalModeName(BotTacticalMode mode) const;
+    const char *GetHazardModeName(BotHazardMode mode) const;
 
 public:
     CLASS_PROTOTYPE(BotController);
