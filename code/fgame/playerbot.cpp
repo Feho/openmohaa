@@ -74,6 +74,7 @@ BotController::BotController()
     m_enemy.reset();
     m_curious.reset();
     m_grenade.reset();
+    m_overwatch.reset();
     m_idle.reset();
 
     m_iNextTauntTime    = 0;
@@ -211,8 +212,9 @@ void BotController::Init(void)
     InitState_Attack(&botfuncs[0]);
     InitState_Curious(&botfuncs[1]);
     InitState_Grenade(&botfuncs[2]);
-    InitState_Idle(&botfuncs[3]);
-    //InitState_Weapon(&botfuncs[4]);
+    InitState_Overwatch(&botfuncs[3]);
+    InitState_Idle(&botfuncs[4]);
+    //InitState_Weapon(&botfuncs[5]); // future, needs MAX_BOT_FUNCTIONS = 6
 }
 
 void BotController::GetUsercmd(usercmd_t *ucmd)

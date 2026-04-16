@@ -316,6 +316,28 @@ struct BotGrenadeState {
 };
 
 /**
+ * @brief Window overwatch state — bot holds position at a window to scan.
+ */
+struct BotOverwatchState {
+    Vector windowPos;     // World position of the window entity's centroid
+    Vector standPos;      // Where the bot should stand (close to window, with sightline)
+    Vector lookDir;       // Normalized direction from standPos through the window
+    int    dwellUntil;    // When to give up and resume patrol
+    int    scanTime;      // When to next update scan angle
+    int    cooldownUntil; // Earliest time this window can be used again (anti-reentry)
+
+    void reset()
+    {
+        windowPos     = vec_zero;
+        standPos      = vec_zero;
+        lookDir       = vec_zero;
+        dwellUntil    = 0;
+        scanTime      = 0;
+        cooldownUntil = 0;
+    }
+};
+
+/**
  * @brief Human-like idle/movement behavior state.
  */
 struct BotIdleBehavior {
@@ -370,11 +392,12 @@ private:
     bool       m_bFirstSpawn;
 
     // Grouped state structs (prevents partial-reset bugs)
-    BotCombatState  m_combat;
-    BotEnemyState   m_enemy;
-    BotCuriousState m_curious;
-    BotGrenadeState m_grenade;
-    BotIdleBehavior m_idle;
+    BotCombatState   m_combat;
+    BotEnemyState    m_enemy;
+    BotCuriousState  m_curious;
+    BotGrenadeState  m_grenade;
+    BotOverwatchState m_overwatch;
+    BotIdleBehavior  m_idle;
 
     // Input
     usercmd_t  m_botCmd;
@@ -404,7 +427,7 @@ private:
     void    ApplyProfilePrimaryWeapon(bool force = false);
 
     void CheckUse(void);
-    bool CheckWindows(void);
+    bool CheckWindows(Vector *outWindowPos = nullptr, Vector *outLookDir = nullptr);
     void CheckValidWeapon(void);
 
     void State_DefaultBegin(void);
@@ -431,6 +454,11 @@ private:
     bool        CheckCondition_Grenade(void);
     void        State_BeginGrenade(void);
     void        State_Grenade(void);
+
+    static void InitState_Overwatch(botfunc_t *func);
+    bool        CheckCondition_Overwatch(void);
+    void        State_BeginOverwatch(void);
+    void        State_Overwatch(void);
 
     static void InitState_Weapon(botfunc_t *func);
     bool        CheckCondition_Weapon(void);

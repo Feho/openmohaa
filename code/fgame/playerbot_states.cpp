@@ -34,7 +34,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 // Added in OPM
 //  State names for debug output
-static const char *botStateNames[] = {"Attack", "Curious", "Grenade", "Idle", "Weapon"};
+static const char *botStateNames[] = {"Attack", "Curious", "Grenade", "Overwatch", "Idle"};
 
 static const char *GetStateName(int index)
 {
@@ -148,6 +148,7 @@ void BotController::State_Reset(void)
     m_curious.reset();
     m_combat.reset();
     m_enemy.reset();
+    m_overwatch.reset();
 }
 
 /*
@@ -173,11 +174,22 @@ bool BotController::CheckCondition_Idle(void)
         return false;
     }
 
+    // Added in OPM
+    //  Gate off while Overwatch is active so State_Idle doesn't restart
+    //  movement that Overwatch just cleared.
+    if (m_overwatch.dwellUntil > level.inttime) {
+        return false;
+    }
+
     return true;
 }
 
 void BotController::State_Idle(void)
 {
+    // Changed in OPM
+    //  When a window is directly in front (blocking the path), shoot it open.
+    //  Overwatch handles intentional window-scanning; this handles the case where
+    //  a window blocks navigation and must be cleared.
     if (CheckWindows()) {
         m_botCmd.buttons ^= BUTTON_ATTACKLEFT;
         m_iLastFireTime = level.inttime;
@@ -1223,6 +1235,150 @@ void BotController::State_Grenade(void)
 
 /*
 ====================
+Overwatch state
+
+Bot detects a nearby window, moves to stand at it, and scans for enemies.
+====================
+*/
+void BotController::InitState_Overwatch(botfunc_t *func)
+{
+    func->CheckCondition = &BotController::CheckCondition_Overwatch;
+    func->BeginState     = &BotController::State_BeginOverwatch;
+    func->ThinkState     = &BotController::State_Overwatch;
+}
+
+bool BotController::CheckCondition_Overwatch(void)
+{
+    // Combat, curiosity, and grenade avoidance all suppress overwatch
+    if (m_combat.attackTime > level.inttime) {
+        return false;
+    }
+    if (m_curious.time > level.inttime) {
+        return false;
+    }
+    if (m_grenade.avoidTime > level.inttime) {
+        return false;
+    }
+    // Per-window cooldown prevents re-entry immediately after leaving
+    if (m_overwatch.cooldownUntil > level.inttime) {
+        return false;
+    }
+
+    // If the dwell timer is still running, remain in overwatch
+    if (m_overwatch.dwellUntil > level.inttime) {
+        return true;
+    }
+
+    // Fresh detection: cast a 192-unit trace forward for a WindowObject.
+    // Any live WindowObject hit is intact — broken windows are removed as
+    // entities by WindowKilled(), so no deadflag check is needed.
+    Vector dir;
+    controlledEnt->angles.AngleVectorsLeft(&dir);
+    Vector eyePos = controlledEnt->origin + Vector(0, 0, controlledEnt->viewheight);
+    Vector end    = eyePos + dir * 192.0f;
+
+    trace_t trace = G_Trace(eyePos, vec_zero, vec_zero, end, controlledEnt, MASK_PLAYERSOLID, false, "BotOverwatchCondition");
+
+    if (trace.fraction == 1 || !trace.ent || !trace.ent->entity->isSubclassOf(WindowObject)) {
+        return false;
+    }
+
+    // Compute standPos: move toward the window up to 64 units from current position
+    Vector windowCentroid = trace.ent->entity->centroid;
+    Vector toWindow       = windowCentroid - controlledEnt->origin;
+    float  distToWindow   = toWindow.length();
+
+    Vector moveDir = toWindow;
+    VectorNormalizeFast(moveDir);
+    float  moveAmount = Q_min(64.0f, Q_max(0.0f, distToWindow - 32.0f));
+    Vector standPos   = controlledEnt->origin + moveDir * moveAmount;
+
+    // Confirm standPos is navigable via a short trace
+    trace_t standTrace = G_Trace(
+        controlledEnt->origin + Vector(0, 0, controlledEnt->viewheight),
+        vec_zero,
+        vec_zero,
+        standPos + Vector(0, 0, controlledEnt->viewheight),
+        controlledEnt,
+        MASK_PLAYERSOLID,
+        false,
+        "BotOverwatchStand"
+    );
+    if (standTrace.fraction < 1.0f) {
+        // Blocked — stay at current position
+        standPos = controlledEnt->origin;
+    }
+
+    // Compute lookDir: from standPos through the window centroid
+    Vector lookDir = windowCentroid - standPos;
+    VectorNormalizeFast(lookDir);
+
+    m_overwatch.windowPos  = windowCentroid;
+    m_overwatch.standPos   = standPos;
+    m_overwatch.lookDir    = lookDir;
+    m_overwatch.dwellUntil = level.inttime + 3000 + (int)G_Random(4000);
+    m_overwatch.scanTime   = 0;
+
+    return true;
+}
+
+void BotController::State_BeginOverwatch(void)
+{
+    movement.ClearMove();
+    m_idle.reset();
+
+    if (g_bot_debug_state->integer) {
+        gi.Printf(
+            "BOT %s: Overwatch - standing at window (%.0f, %.0f, %.0f)\n",
+            controlledEnt->client->pers.netname,
+            m_overwatch.standPos.x,
+            m_overwatch.standPos.y,
+            m_overwatch.standPos.z
+        );
+    }
+}
+
+void BotController::State_Overwatch(void)
+{
+    // Break condition: dwell timer expired
+    if (level.inttime >= m_overwatch.dwellUntil) {
+        m_overwatch.cooldownUntil = level.inttime + 10000 + (int)G_Random(10000);
+        m_overwatch.dwellUntil    = 0;
+        return;
+    }
+
+    // Move to standPos if not already there
+    float distSq = (controlledEnt->origin - m_overwatch.standPos).lengthSquared();
+    if (distSq > 32.0f * 32.0f) {
+        movement.MoveTo(m_overwatch.standPos);
+    } else {
+        movement.ClearMove();
+    }
+
+    // Scan through the window: every 800-1500 ms aim at a perturbed point beyond
+    if (level.inttime >= m_overwatch.scanTime) {
+        m_overwatch.scanTime = level.inttime + 800 + (int)G_Random(700);
+
+        // Apply ±20° yaw and ±5° pitch perturbation to lookDir
+        Vector  lookAngles;
+        vectoangles(m_overwatch.lookDir, lookAngles);
+        lookAngles.y += G_CRandom(20.0f);
+        lookAngles.x += G_CRandom(5.0f);
+
+        Vector perturbedDir;
+        AngleVectors(lookAngles, perturbedDir, NULL, NULL);
+
+        Vector aimPoint = m_overwatch.standPos + perturbedDir * 1024.0f;
+        rotation.AimAt(aimPoint);
+    }
+
+    // Clear fire buttons — no shooting in overwatch unless Attack state triggers
+    m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
+    CheckReload();
+}
+
+/*
+====================
 Weapon state
 
 Change weapon when necessary
@@ -1260,20 +1416,31 @@ Check if there is a window in front of the bot
 Returns true if a window is blocking
 ====================
 */
-bool BotController::CheckWindows(void)
+bool BotController::CheckWindows(Vector *outWindowPos, Vector *outLookDir)
 {
     trace_t trace;
     Vector  start, end;
     Vector  dir;
 
+    // Changed in OPM
+    //  Extended detection radius from 64 to 128 units so the bot can detect
+    //  a window before walking into it, giving time to stop and position.
     controlledEnt->angles.AngleVectorsLeft(&dir);
     start = controlledEnt->origin + Vector(0, 0, controlledEnt->viewheight);
-    end   = controlledEnt->origin + Vector(0, 0, controlledEnt->viewheight) + dir * 64;
+    end   = controlledEnt->origin + Vector(0, 0, controlledEnt->viewheight) + dir * 128;
 
-    trace = G_Trace(start, vec_zero, vec_zero, end, controlledEnt, MASK_PLAYERSOLID, false, "BotController::CheckUse");
+    trace = G_Trace(start, vec_zero, vec_zero, end, controlledEnt, MASK_PLAYERSOLID, false, "BotController::CheckWindows");
 
     if (trace.fraction != 1 && trace.ent) {
         if (trace.ent->entity->isSubclassOf(WindowObject)) {
+            if (outWindowPos) {
+                *outWindowPos = trace.ent->entity->centroid;
+            }
+            if (outLookDir) {
+                Vector d = trace.ent->entity->centroid - start;
+                VectorNormalizeFast(d);
+                *outLookDir = d;
+            }
             return true;
         }
     }
