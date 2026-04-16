@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // to improve code organization and make state transitions easier to reason about.
 
 #include "playerbot.h"
+#include "playerbot_profile.h"
 #include "gamecvars.h"
 #include "vehicleturret.h"
 #include "weaputils.h"
@@ -742,8 +743,8 @@ void BotController::State_Attack(void)
         bCanAttack = true;
         if (m_combat.lastUnseenTime) {
             const float        reactionTime = Q_min(1000 * Q_min(1, fDistanceSquared / Square(2048)), 1000);
-            const unsigned int minDelay     = g_bot_attack_react_min_delay->value * 1000;
-            const unsigned int randomDelay  = g_bot_attack_react_random_delay->value * 1000;
+            const unsigned int minDelay     = m_profile.reactionMinDelay * 1000;
+            const unsigned int randomDelay  = m_profile.reactionRandomDelay * 1000;
             if (level.inttime <= m_combat.lastUnseenTime + minDelay + G_Random(randomDelay)) {
                 if (g_bot_debug_state->integer >= 2) {
                     gi.Printf(
@@ -766,10 +767,10 @@ void BotController::State_Attack(void)
             float     fSecondaryBulletRange        = pWeap->GetBulletRange(FIRE_SECONDARY);
             float     fSecondaryBulletRangeSquared = fSecondaryBulletRange * fSecondaryBulletRange;
 
-            const int maxcontinuousFireTime = fireDelay + g_bot_attack_continuousfire_min_firetime->value * 1000
-                                            + G_Random(g_bot_attack_continuousfire_random_firetime->value * 1000);
-            const int maxBurstTime = fireDelay + g_bot_attack_burst_min_time->value * 1000
-                                   + G_Random(g_bot_attack_burst_random_delay->value * 1000);
+            const int maxcontinuousFireTime = fireDelay + m_profile.continuousFireMinTime * 1000
+                                            + G_Random(m_profile.continuousFireRandomTime * 1000);
+            const int maxBurstTime = fireDelay + m_profile.burstMinTime * 1000
+                                   + G_Random(m_profile.burstRandomDelay * 1000);
 
             //
             // check the fire movement speed if the weapon has a max fire movement
@@ -966,7 +967,7 @@ void BotController::State_Attack(void)
 
         // Smoothly lerp current offset toward target offset
         {
-            float dt       = level.frametime * g_bot_aim_lerp_speed->value;
+            float dt       = level.frametime * m_profile.aimLerpSpeed;
             float lerpFrac = Q_clamp_float(dt, 0.0, 1.0);
 
             m_combat.aimOffset[0] =
@@ -977,7 +978,7 @@ void BotController::State_Attack(void)
                 m_combat.aimOffset[2] + (m_combat.aimOffsetTarget[2] - m_combat.aimOffset[2]) * lerpFrac;
         }
 
-        rotation.AimAt(vTarget + m_combat.aimOffset * g_bot_attack_spreadmult->value);
+        rotation.AimAt(vTarget + m_combat.aimOffset * m_profile.aimSpreadMult);
     } else {
         AimAtAimNode();
     }
@@ -1044,7 +1045,7 @@ void BotController::State_Attack(void)
     if (m_combat.standingStill) {
         if (!m_combat.crouching && !m_combat.crouchDecided) {
             m_combat.crouchDecided = true;
-            if (rand() % 100 < g_bot_crouch_chance->integer) {
+            if (rand() % 100 < (int)m_profile.crouchChance) {
                 m_combat.crouching = true;
             }
         }

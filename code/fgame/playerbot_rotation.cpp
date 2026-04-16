@@ -27,15 +27,30 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 BotRotation::BotRotation()
 {
-    m_vAngDelta      = vec_zero;
-    m_vAngSpeed      = vec_zero;
-    m_vTargetAng     = vec_zero;
-    m_vCurrentAng    = vec_zero;
-    m_vPrevTargetAng = vec_zero;
+    m_vAngDelta       = vec_zero;
+    m_vAngSpeed       = vec_zero;
+    m_vTargetAng      = vec_zero;
+    m_vCurrentAng     = vec_zero;
+    m_vPrevTargetAng  = vec_zero;
     m_bOvershootPhase = false;
     m_fSettleFrac     = 1.0;
     m_fOvershootYaw   = 0;
     m_fOvershootPitch = 0;
+
+    // Per-bot aim parameters: initialize from cvar defaults.
+    // SetAimParameters() overwrites these when a profile is assigned.
+    m_fTurnSpeed      = 15.0f;
+    m_fAimNoise       = 0.3f;
+    m_fAimOvershoot   = 0.1f;
+    m_fAimSettleSpeed = 8.0f;
+}
+
+void BotRotation::SetAimParameters(float turnSpeed, float aimNoise, float aimOvershoot, float aimSettleSpeed)
+{
+    m_fTurnSpeed      = turnSpeed;
+    m_fAimNoise       = aimNoise;
+    m_fAimOvershoot   = aimOvershoot;
+    m_fAimSettleSpeed = aimSettleSpeed;
 }
 
 void BotRotation::SetControlledEntity(Player *newEntity)
@@ -65,9 +80,12 @@ float AngleDifference(float ang1, float ang2)
 //  When the target changes significantly (>15 degrees), the bot flicks
 //  past the target by a random amount, then smoothly settles back.
 //  Small tracking adjustments use smooth interpolation with micro-noise.
+//
+//  All tuning parameters come from per-bot members (m_fTurnSpeed etc.)
+//  set by SetAimParameters() at spawn. Cvars are no longer read here.
 void BotRotation::TurnThink(usercmd_t& botcmd, usereyes_t& eyeinfo)
 {
-    float maxChange = Q_max(360, g_bot_turn_speed->integer);
+    float maxChange = Q_max(360, m_fTurnSpeed);
 
     if (m_vTargetAng[PITCH] > 180) {
         m_vTargetAng[PITCH] -= 360;
@@ -81,14 +99,12 @@ void BotRotation::TurnThink(usercmd_t& botcmd, usereyes_t& eyeinfo)
 
     if (yawDelta > 15 || pitchDelta > 10) {
         // New target acquired - start overshoot phase
-        float overshootScale = g_bot_aim_overshoot->value;
-
         m_bOvershootPhase = true;
         m_fSettleFrac     = 0;
 
         // Overshoot proportional to angle change, with randomness
-        m_fOvershootYaw   = AngleDifference(m_vPrevTargetAng[YAW], m_vTargetAng[YAW]) * overshootScale * (0.7 + G_Random(0.6));
-        m_fOvershootPitch = AngleDifference(m_vPrevTargetAng[PITCH], m_vTargetAng[PITCH]) * overshootScale * (0.5 + G_Random(0.5));
+        m_fOvershootYaw   = AngleDifference(m_vPrevTargetAng[YAW], m_vTargetAng[YAW]) * m_fAimOvershoot * (0.7 + G_Random(0.6));
+        m_fOvershootPitch = AngleDifference(m_vPrevTargetAng[PITCH], m_vTargetAng[PITCH]) * m_fAimOvershoot * (0.5 + G_Random(0.5));
     }
 
     m_vPrevTargetAng = m_vTargetAng;
@@ -99,8 +115,7 @@ void BotRotation::TurnThink(usercmd_t& botcmd, usereyes_t& eyeinfo)
     Vector effectiveTarget = m_vTargetAng;
 
     if (m_bOvershootPhase) {
-        float settleSpeed = g_bot_aim_settle_speed->value;
-        m_fSettleFrac += level.frametime * settleSpeed;
+        m_fSettleFrac += level.frametime * m_fAimSettleSpeed;
 
         if (m_fSettleFrac >= 1.0) {
             m_fSettleFrac     = 1.0;
@@ -118,15 +133,14 @@ void BotRotation::TurnThink(usercmd_t& botcmd, usereyes_t& eyeinfo)
     //
     // Add micro-noise to simulate hand tremor
     //
-    float noiseScale = g_bot_aim_noise->value;
-    effectiveTarget[YAW]   += G_CRandom(noiseScale);
-    effectiveTarget[PITCH] += G_CRandom(noiseScale * 0.5);
+    effectiveTarget[YAW]   += G_CRandom(m_fAimNoise);
+    effectiveTarget[PITCH] += G_CRandom(m_fAimNoise * 0.5);
 
     //
     // Smooth interpolation toward effective target
     //
     for (int i = 0; i < 2; i++) {
-        m_vCurrentAng[i]  = AngleMod(m_vCurrentAng[i]);
+        m_vCurrentAng[i]   = AngleMod(m_vCurrentAng[i]);
         effectiveTarget[i] = AngleMod(effectiveTarget[i]);
 
         float diff      = AngleDifference(m_vCurrentAng[i], effectiveTarget[i]);
@@ -138,12 +152,11 @@ void BotRotation::TurnThink(usercmd_t& botcmd, usereyes_t& eyeinfo)
         }
 
         // Acceleration: faster rotation for larger differences
-        float changeSpeed = g_bot_turn_speed->integer;
         if (deltaDiff >= 20) {
-            m_vAngSpeed[i] = Q_min(1.0, m_vAngSpeed[i] + changeSpeed * level.frametime);
+            m_vAngSpeed[i] = Q_min(1.0, m_vAngSpeed[i] + m_fTurnSpeed * level.frametime);
             maxChangeDelta *= m_vAngSpeed[i];
         } else {
-            m_vAngSpeed[i] = Q_max(0.0, m_vAngSpeed[i] - changeSpeed * level.frametime);
+            m_vAngSpeed[i] = Q_max(0.0, m_vAngSpeed[i] - m_fTurnSpeed * level.frametime);
         }
 
         float speed      = diff * level.frametime * 10;

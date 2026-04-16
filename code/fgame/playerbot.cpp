@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "g_local.h"
 #include "actor.h"
 #include "playerbot.h"
+#include "playerbot_profile.h"
 #include "consoleevent.h"
 #include "debuglines.h"
 #include "dm_manager.h"
@@ -34,6 +35,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "vehicleturret.h"
 #include "weaputils.h"
 #include "g_bot.h"
+#include "gamecvars.h"
 
 // We assume that we have limited access to the server-side
 // and that most logic come from the playerstate_s structure
@@ -74,11 +76,12 @@ BotController::BotController()
     m_grenade.reset();
     m_idle.reset();
 
-    m_iNextTauntTime = 0;
-    m_iLastFireTime  = 0;
+    m_iNextTauntTime    = 0;
+    m_iLastFireTime     = 0;
     m_iLastPosDebugTime = 0;
 
-    m_StateFlags = 0;
+    m_StateFlags  = 0;
+    m_bFirstSpawn = true;
 }
 
 BotController::~BotController()
@@ -233,15 +236,26 @@ void BotController::UpdateBotStates(void)
     }
 
     if (!controlledEnt->client->pers.dm_primary[0]) {
-        Event *event;
-
         //
-        // Primary weapon
+        // Primary weapon - use profile preference if the category is available,
+        // otherwise let "auto" pick from whatever is allowed on this server.
         //
-        event = new Event(EV_Player_PrimaryDMWeapon);
-        event->AddString("auto");
+        const char *weaponPref =
+            (m_profile.preferredWeapon.length() > 0 && Q_stricmp(m_profile.preferredWeapon.c_str(), "auto") != 0)
+                ? m_profile.preferredWeapon.c_str()
+                : "auto";
 
+        Event *event = new Event(EV_Player_PrimaryDMWeapon);
+        event->AddString(weaponPref);
         controlledEnt->ProcessEvent(event);
+
+        // If the preferred category was banned, pers.dm_primary is still empty.
+        // Retry with "auto" so the bot always gets a legal weapon.
+        if (!controlledEnt->client->pers.dm_primary[0] && Q_stricmp(weaponPref, "auto") != 0) {
+            Event *fallback = new Event(EV_Player_PrimaryDMWeapon);
+            fallback->AddString("auto");
+            controlledEnt->ProcessEvent(fallback);
+        }
     }
 
     if (controlledEnt->GetTeam() == TEAM_NONE || controlledEnt->GetTeam() == TEAM_SPECTATOR) {
@@ -786,6 +800,28 @@ void BotController::Spawned(void)
     m_botCmd.buttons = 0;
 
     // Added in OPM
+    //  Assign a personality profile at first spawn and keep it across deaths.
+    //  Profile drives per-bot aim tuning, combat timing, and weapon preference.
+    if (m_bFirstSpawn) {
+        m_profile = botProfileManager.PickProfile(g_bot_profile_override->string);
+        rotation.SetAimParameters(
+            m_profile.turnSpeed,
+            m_profile.aimNoise,
+            m_profile.aimOvershoot,
+            m_profile.aimSettleSpeed
+        );
+        m_bFirstSpawn = false;
+
+        if (g_bot_debug_state->integer) {
+            gi.Printf(
+                "BOT %s: assigned profile '%s'\n",
+                controlledEnt->client->pers.netname,
+                m_profile.name.c_str()
+            );
+        }
+    }
+
+    // Added in OPM
     //  Seed belief map with enemy spawn points so bots patrol toward
     //  likely spawn areas on round start.
     beliefMap.SeedFromSpawnPoints(controlledEnt);
@@ -834,12 +870,17 @@ void BotController::Killed(const Event& ev)
     }
 
     // Added in OPM
-    //  Only randomize weapon and model on the first spawn (when not yet assigned).
-    //  Once a bot has a weapon and player model, keep them across respawns so the
-    //  bot retains a consistent identity during the match.
+    //  Only select a weapon when not yet assigned (first spawn or after reset).
+    //  Once a bot has a weapon, keep it across respawns for consistent identity.
+    //  Uses profile weapon preference; falls back to "auto" if not set.
     if (!controlledEnt->client->pers.dm_primary[0]) {
+        const char *weaponPref =
+            (m_profile.preferredWeapon.length() > 0 && Q_stricmp(m_profile.preferredWeapon.c_str(), "auto") != 0)
+                ? m_profile.preferredWeapon.c_str()
+                : "auto";
+
         Event event(EV_Player_PrimaryDMWeapon);
-        event.AddString("auto");
+        event.AddString(weaponPref);
         controlledEnt->ProcessEvent(event);
     }
 

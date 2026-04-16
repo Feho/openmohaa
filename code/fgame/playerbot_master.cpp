@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "g_local.h"
 #include "actor.h"
 #include "playerbot.h"
+#include "playerbot_profile.h"
 #include "consoleevent.h"
 #include "debuglines.h"
 #include "scriptexception.h"
@@ -43,6 +44,7 @@ CLASS_DECLARATION(Listener, BotManager, NULL) {
 
 void BotManager::Init()
 {
+    botProfileManager.LoadProfiles("bots/profiles");
     botControllerManager.Init();
 }
 

@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "navigate.h"
 #include "navigation_path.h"
 #include "playerbot_beliefs.h"
+#include "playerbot_profile.h"
 
 #define MAX_BOT_FUNCTIONS 5
 
@@ -180,6 +181,12 @@ public:
     void          SetTargetAngles(Vector vAngles);
     void          AimAt(Vector vPos);
 
+    // Added in OPM
+    //  Per-bot aim parameters set from BotProfile at spawn time.
+    //  Constructor initializes from cvar defaults so bots without profiles
+    //  behave identically to the pre-profile baseline.
+    void SetAimParameters(float turnSpeed, float aimNoise, float aimOvershoot, float aimSettleSpeed);
+
 private:
     SafePtr<Player> controlledEntity;
 
@@ -195,6 +202,13 @@ private:
     float  m_fSettleFrac;     // 0..1 progress through settle phase
     float  m_fOvershootYaw;   // Overshoot amount applied to yaw
     float  m_fOvershootPitch; // Overshoot amount applied to pitch
+
+    // Added in OPM
+    //  Per-bot aim parameters (set from BotProfile, fall back to cvar defaults)
+    float m_fTurnSpeed;
+    float m_fAimNoise;
+    float m_fAimOvershoot;
+    float m_fAimSettleSpeed;
 };
 
 class BotState
@@ -349,6 +363,11 @@ private:
     BotMovement  movement;
     BotRotation  rotation;
     BotBeliefMap beliefMap;
+
+    // Added in OPM
+    //  Personality profile assigned at first spawn; kept for the lifetime of the bot.
+    BotProfile m_profile;
+    bool       m_bFirstSpawn;
 
     // Grouped state structs (prevents partial-reset bugs)
     BotCombatState  m_combat;
