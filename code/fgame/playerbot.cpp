@@ -858,7 +858,7 @@ BotTacticalIntent BotController::BuildTacticalIntent(const BotPerceptionSnapshot
         intent.mode = BotTacticalMode::Overwatch;
         intent.anchorActive = true;
 
-        const float holdRadiusSq    = Square(32.0f);
+        const float holdRadiusSq    = Square(16.0f);
         const float combatLeashSq   = Square(1024.0f);
         const int   returnTimeoutMs = 4000;
         const int   maxPathFailures = 2;
@@ -916,8 +916,9 @@ BotTacticalIntent BotController::BuildTacticalIntent(const BotPerceptionSnapshot
             Vector perturbedDir;
             AngleVectors(lookAngles, perturbedDir, NULL, NULL);
 
+            Vector aimOrigin = m_overwatch.standPos + Vector(0, 0, controlledEnt->viewheight);
             intent.aimType   = BotAimDirective::AimAtPoint;
-            intent.aimTarget = m_overwatch.standPos + perturbedDir * 1024.0f;
+            intent.aimTarget = aimOrigin + perturbedDir * 1024.0f;
         }
 
         if (!snapshot.attackActive) {

@@ -1308,7 +1308,7 @@ bool BotController::CheckCondition_Overwatch(void)
 
     Vector moveDir = toWindow;
     VectorNormalizeFast(moveDir);
-    float  moveAmount = Q_min(64.0f, Q_max(0.0f, distToWindow - 32.0f));
+    float  moveAmount = Q_min(96.0f, Q_max(0.0f, distToWindow - 12.0f));
     Vector standPos   = controlledEnt->origin + moveDir * moveAmount;
     standPos.z        = controlledEnt->origin.z;
 
@@ -1328,8 +1328,15 @@ bool BotController::CheckCondition_Overwatch(void)
         standPos = controlledEnt->origin;
     }
 
-    // Compute lookDir: from standPos through the window centroid
+    // Compute lookDir in the horizontal plane so overwatch scans toward the
+    // horizon through the window instead of staring up at the frame.
     Vector lookDir = windowCentroid - standPos;
+    lookDir.z      = 0;
+
+    if (lookDir.lengthSquared() < Square(1.0f)) {
+        lookDir = moveDir;
+    }
+
     VectorNormalizeFast(lookDir);
 
     m_overwatch.windowPos  = windowCentroid;
@@ -1372,7 +1379,7 @@ void BotController::State_Overwatch(void)
     Vector flatOffset = controlledEnt->origin - m_overwatch.standPos;
     flatOffset.z      = 0;
     float distSq      = flatOffset.lengthSquared();
-    if (distSq > 32.0f * 32.0f) {
+    if (distSq > 16.0f * 16.0f) {
         movement.MoveTo(m_overwatch.standPos);
     } else {
         movement.ClearMove();
@@ -1391,7 +1398,8 @@ void BotController::State_Overwatch(void)
         Vector perturbedDir;
         AngleVectors(lookAngles, perturbedDir, NULL, NULL);
 
-        Vector aimPoint = m_overwatch.standPos + perturbedDir * 1024.0f;
+        Vector aimOrigin = m_overwatch.standPos + Vector(0, 0, controlledEnt->viewheight);
+        Vector aimPoint  = aimOrigin + perturbedDir * 1024.0f;
         rotation.AimAt(aimPoint);
     }
 
