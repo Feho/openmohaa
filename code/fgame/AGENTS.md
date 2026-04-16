@@ -83,6 +83,24 @@ The belief map is persistent bot memory for likely enemy presence.
 
 If you add new perception inputs, prefer feeding the belief map rather than adding separate one-off patrol heuristics.
 
+## Weapon Selection API
+
+`Player::EventPrimaryDMWeapon` accepts these strings: `"shotgun"`, `"rifle"`, `"sniper"`, `"smg"`, `"mg"`, `"heavy"`, `"landmine"`, `"auto"`. A banned category leaves `pers.dm_primary` empty without error — callers must retry with `"auto"` if the first attempt fails (check `pers.dm_primary[0]` after the event).
+
+## Cvar-Dependent Initialization
+
+Global constructors in fgame run before `G_InitCvars()` registers cvars. Any class that reads cvar values at construction time will see null pointers. Defer cvar reads to a method called from `BotManager::Init()` (or equivalent post-cvar hook), not from the constructor.
+
+## Bot Profile System
+
+Each bot is assigned a `BotProfile` at first spawn (`m_bFirstSpawn`) and retains it for its lifetime. Profiles are loaded by `BotProfileManager::LoadProfiles("bots/profiles")` called from `BotManager::Init()`.
+
+- Profile files live in `main/bots/profiles/*.cfg` — flat `key value` format, `//` and `#` comments
+- `BotProfileManager::PickProfile()` does weighted random selection; `g_bot_profile_override` forces a named profile for testing
+- The default profile (used when no files exist) is populated from live `g_bot_*` cvar values inside `LoadProfiles()`, preserving any server-operator tuning
+- Profile fields cover: aim tuning (fed into `BotRotation` via `SetAimParameters()`), combat timing, weapon preference, crouch chance, and aim spread
+- Weapon preference falls back to `"auto"` if the preferred category is banned — see Weapon Selection API above
+
 ## Editing Guidance
 
 When changing bot behavior:

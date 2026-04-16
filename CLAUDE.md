@@ -12,6 +12,8 @@ OpenMoHAA is an open-source preservation project for Medal of Honor: Allied Assa
 
 OpenMoHAA uses CMake as its build system. New `.cpp`/`.h` files added to `code/fgame/` or `code/cgame/` are automatically picked up via `GLOB_RECURSE` in `cmake/basegame.cmake` — no manual `CMakeLists.txt` edits needed.
 
+**Important:** GLOB_RECURSE is evaluated at configure time. After adding new source files, run `cmake ..` from `.cmake/` before `cmake --build` or the new files will be silently ignored.
+
 The conventional build directory is `.cmake/` (gitignored). Basic build commands:
 
 ```bash
