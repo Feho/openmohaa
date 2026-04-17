@@ -28,6 +28,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "navigation_path.h"
 #include "playerbot_beliefs.h"
 #include "playerbot_profile.h"
+#include "playerbot_tactical_memory.h"
 
 #define MAX_BOT_FUNCTIONS 5
 
@@ -289,15 +290,19 @@ struct BotEnemyState {
  * @brief Curious state for investigating sounds/events.
  */
 struct BotCuriousState {
-    int    time;      // When curious state should expire
-    Vector lastPos;   // Last curious position investigated
-    Vector targetPos; // Current position to investigate
+    int    time;               // When curious state should expire
+    int    stimulusType;       // AI_EVENT_* that triggered curiosity
+    float  stimulusDistanceSq; // Distance to the stimulus when it triggered
+    Vector lastPos;            // Last curious position investigated
+    Vector targetPos;          // Current position to investigate
 
     void reset()
     {
-        time      = 0;
-        lastPos   = vec_zero;
-        targetPos = vec_zero;
+        time               = 0;
+        stimulusType       = 0;
+        stimulusDistanceSq = 0.0f;
+        lastPos            = vec_zero;
+        targetPos          = vec_zero;
     }
 };
 
@@ -322,22 +327,28 @@ struct BotOverwatchState {
     Vector windowPos;     // World position of the window entity's centroid
     Vector standPos;      // Where the bot should stand (close to window, with sightline)
     Vector lookDir;       // Normalized direction from standPos through the window
+    Vector anchorPos;     // Logical aim anchor for scan behavior
     int    dwellUntil;    // When to give up and resume patrol
     int    scanTime;      // When to next update scan angle
     int    cooldownUntil; // Earliest time this window can be used again (anti-reentry)
     int    displacedSince;
+    int    committedSince;
     int    pathFailCount;
+    int    spotIndex;
 
     void reset()
     {
-        windowPos     = vec_zero;
-        standPos      = vec_zero;
-        lookDir       = vec_zero;
-        dwellUntil    = 0;
-        scanTime      = 0;
-        cooldownUntil = 0;
-        displacedSince = 0;
-        pathFailCount  = 0;
+        windowPos       = vec_zero;
+        standPos        = vec_zero;
+        lookDir         = vec_zero;
+        anchorPos       = vec_zero;
+        dwellUntil      = 0;
+        scanTime        = 0;
+        cooldownUntil   = 0;
+        displacedSince  = 0;
+        committedSince  = 0;
+        pathFailCount   = 0;
+        spotIndex       = -1;
     }
 };
 
@@ -769,6 +780,7 @@ public:
 
 public:
     BotControllerManager& getControllerManager();
+    BotTacticalMemory&    GetTacticalMemory();
 
     void Init();
     void Cleanup();
@@ -777,6 +789,8 @@ public:
 
 private:
     BotControllerManager botControllerManager;
+    BotTacticalMemory    m_tacticalMemory;
+    int                  m_nextTacticalRevalidateTime;
 };
 
 extern BotManager botManager;

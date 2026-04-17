@@ -93,6 +93,7 @@ BotController::BotController()
 BotController::~BotController()
 {
     if (controlledEnt) {
+        botManager.GetTacticalMemory().ReleaseOccupant(controlledEnt->entnum);
         controlledEnt->delegate_gotKill.Remove(delegateHandle_gotKill);
         controlledEnt->delegate_killed.Remove(delegateHandle_killed);
         controlledEnt->delegate_stufftext.Remove(delegateHandle_stufftext);
@@ -331,13 +332,18 @@ void BotController::ClearOverwatchAnchor(const char *reason, bool startCooldown)
         m_overwatch.cooldownUntil = level.inttime + 10000 + (int)G_Random(20000);
     }
 
-    m_overwatch.windowPos      = vec_zero;
-    m_overwatch.standPos       = vec_zero;
-    m_overwatch.lookDir        = vec_zero;
-    m_overwatch.dwellUntil     = 0;
-    m_overwatch.scanTime       = 0;
-    m_overwatch.displacedSince = 0;
-    m_overwatch.pathFailCount  = 0;
+    botManager.GetTacticalMemory().ReleaseOccupant(controlledEnt ? controlledEnt->entnum : -1);
+
+    m_overwatch.windowPos       = vec_zero;
+    m_overwatch.standPos        = vec_zero;
+    m_overwatch.lookDir         = vec_zero;
+    m_overwatch.anchorPos       = vec_zero;
+    m_overwatch.dwellUntil      = 0;
+    m_overwatch.scanTime        = 0;
+    m_overwatch.displacedSince  = 0;
+    m_overwatch.committedSince  = 0;
+    m_overwatch.pathFailCount   = 0;
+    m_overwatch.spotIndex       = -1;
 }
 
 void BotController::UpdateModeTransitions(const BotPerceptionSnapshot& snapshot)
@@ -902,14 +908,33 @@ BotTacticalIntent BotController::BuildTacticalIntent(const BotPerceptionSnapshot
                 intent.clearMove             = true;
                 m_overwatch.displacedSince  = 0;
                 m_overwatch.pathFailCount   = 0;
+
+                if (m_overwatch.committedSince == 0) {
+                    m_overwatch.committedSince = level.inttime;
+                    botManager.GetTacticalMemory().TryRecordSpot(
+                        m_overwatch.standPos,
+                        m_overwatch.lookDir,
+                        (int)controlledEnt->GetTeam(),
+                        controlledEnt
+                    );
+                }
             }
         }
 
         if (!snapshot.attackActive && level.inttime >= m_overwatch.scanTime) {
             m_overwatch.scanTime = level.inttime + 800 + (int)G_Random(700);
 
+            Vector baseDir = m_overwatch.lookDir;
+            if (m_overwatch.anchorPos != vec_zero) {
+                baseDir = m_overwatch.anchorPos - m_overwatch.standPos;
+            }
+            if (baseDir.lengthSquared() < Square(1.0f)) {
+                baseDir = m_overwatch.lookDir;
+            }
+            VectorNormalizeFast(baseDir);
+
             Vector lookAngles;
-            vectoangles(m_overwatch.lookDir, lookAngles);
+            vectoangles(baseDir, lookAngles);
             lookAngles.y += G_CRandom(20.0f);
             lookAngles.x += G_CRandom(5.0f);
 
@@ -1644,8 +1669,10 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     case AI_EVENT_FOOTSTEP:
     case AI_EVENT_GRENADE:
     default:
-        m_curious.time      = level.inttime + 20000;
-        m_curious.targetPos = vPos;
+        m_curious.time               = level.inttime + 20000;
+        m_curious.targetPos          = vPos;
+        m_curious.stimulusType       = iType;
+        m_curious.stimulusDistanceSq = fDistanceSquared;
         if (g_bot_debug_state->integer >= 2) {
             gi.Printf(
                 "BOT %s: NoticeEvent set curious (time=%d, pos=(%.0f,%.0f,%.0f))\n",
@@ -1799,7 +1826,8 @@ void BotController::UseWeaponWithAmmo()
 void BotController::Spawned(void)
 {
     ClearEnemy();
-    m_curious.time   = 0;
+    ClearOverwatchAnchor("spawned", false);
+    m_curious.reset();
     m_botCmd.buttons = 0;
     m_grenade.reset();
     m_overwatch.reset();
@@ -1852,6 +1880,8 @@ void BotController::Think()
 void BotController::Killed(const Event& ev)
 {
     Entity *attacker;
+
+    ClearOverwatchAnchor("killed", false);
 
     // send the respawn buttons
     if (!(m_botCmd.buttons & BUTTON_ATTACKLEFT)) {
@@ -2010,6 +2040,10 @@ void BotController::EventStuffText(const str& text)
 
 void BotController::setControlledEntity(Player *player)
 {
+    if (controlledEnt && controlledEnt != player) {
+        botManager.GetTacticalMemory().ReleaseOccupant(controlledEnt->entnum);
+    }
+
     controlledEnt = player;
     movement.SetControlledEntity(player);
     rotation.SetControlledEntity(player);

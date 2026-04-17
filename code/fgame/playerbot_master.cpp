@@ -46,16 +46,25 @@ void BotManager::Init()
 {
     botProfileManager.LoadProfiles("bots/profiles");
     botControllerManager.Init();
+    m_tacticalMemory.Init();
+    m_nextTacticalRevalidateTime = level.inttime + 30000;
 }
 
 void BotManager::Cleanup()
 {
     botControllerManager.Cleanup();
+    m_tacticalMemory.Cleanup();
+    m_nextTacticalRevalidateTime = 0;
 }
 
 void BotManager::Frame()
 {
     botControllerManager.ThinkControllers();
+
+    if (level.inttime >= m_nextTacticalRevalidateTime) {
+        m_tacticalMemory.RevalidateSpots(NULL);
+        m_nextTacticalRevalidateTime = level.inttime + 30000;
+    }
 }
 
 void BotManager::BroadcastEvent(Entity *originator, Vector origin, int iType, float radius)
@@ -137,4 +146,9 @@ void BotManager::BroadcastEvent(Entity *originator, Vector origin, int iType, fl
 BotControllerManager& BotManager::getControllerManager()
 {
     return botControllerManager;
+}
+
+BotTacticalMemory& BotManager::GetTacticalMemory()
+{
+    return m_tacticalMemory;
 }

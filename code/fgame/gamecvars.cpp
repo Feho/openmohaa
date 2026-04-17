@@ -310,6 +310,11 @@ cvar_t *g_bot_belief_min_patrol;
 cvar_t *g_bot_debug_beliefs;
 cvar_t *g_bot_debug_reaction;
 cvar_t *g_bot_debug_state;
+cvar_t *g_bot_tactical_commit_ms;
+cvar_t *g_bot_tactical_break_dist;
+cvar_t *g_bot_tactical_min_score;
+cvar_t *g_bot_tactical_min_reach;
+cvar_t *g_bot_debug_tactical_spots;
 cvar_t *g_bot_profile_override;
 
 cvar_t *g_rankedserver;
@@ -746,6 +751,11 @@ void CVAR_Init(void)
     g_bot_debug_beliefs          = gi.Cvar_Get("g_bot_debug_beliefs", "0", 0);
     g_bot_debug_reaction         = gi.Cvar_Get("g_bot_debug_reaction", "0", 0);
     g_bot_debug_state            = gi.Cvar_Get("g_bot_debug_state", "0", 0);
+    g_bot_tactical_commit_ms     = gi.Cvar_Get("g_bot_tactical_commit_ms", "300", 0);
+    g_bot_tactical_break_dist    = gi.Cvar_Get("g_bot_tactical_break_dist", "512", 0);
+    g_bot_tactical_min_score     = gi.Cvar_Get("g_bot_tactical_min_score", "0.25", 0);
+    g_bot_tactical_min_reach     = gi.Cvar_Get("g_bot_tactical_min_reach", "512", 0);
+    g_bot_debug_tactical_spots   = gi.Cvar_Get("g_bot_debug_tactical_spots", "0", 0);
     g_bot_profile_override       = gi.Cvar_Get("g_bot_profile_override", "", 0);
 
     g_teambalance = gi.Cvar_Get("g_teambalance", "0", 0);

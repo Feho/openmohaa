@@ -46,6 +46,8 @@ struct BotProfile {
     // Weapon preference: "auto", "rifle", "sniper", "smg", "mg", "heavy", "shotgun"
     // "auto" means use rank-based selection (existing behavior)
     str preferredWeapon;
+
+    bool IsSniperRole() const { return !Q_stricmp(preferredWeapon.c_str(), "sniper"); }
 };
 
 /**

@@ -401,6 +401,27 @@ bool BotController::CheckCondition_Curious(void)
         return false;
     }
 
+    const bool committedHold =
+        m_overwatch.committedSince != 0 && m_overwatch.displacedSince == 0
+        && level.inttime >= m_overwatch.committedSince + g_bot_tactical_commit_ms->integer;
+
+    if (committedHold && m_curious.time > level.inttime) {
+        const bool strongType = (m_curious.stimulusType == AI_EVENT_WEAPON_FIRE
+                                 || m_curious.stimulusType == AI_EVENT_EXPLOSION);
+        const bool closeRange = (m_curious.stimulusDistanceSq < Square(g_bot_tactical_break_dist->value));
+
+        if (!strongType && !closeRange) {
+            if (m_reaction.lookUntil < level.inttime) {
+                m_reaction.lookPos   = m_curious.targetPos;
+                m_reaction.lookUntil = level.inttime + 1500;
+            }
+            m_curious.time = 0;
+            return false;
+        }
+
+        ClearOverwatchAnchor("strong curious stimulus", true);
+    }
+
     if (level.inttime > m_curious.time) {
         if (m_curious.time) {
             if (g_bot_debug_state->integer >= 2) {
@@ -1281,51 +1302,124 @@ bool BotController::CheckCondition_Overwatch(void)
         return false;
     }
 
-    // Fresh detection: cast a 192-unit trace forward for a WindowObject.
-    // Any live WindowObject hit is intact — broken windows are removed as
-    // entities by WindowKilled(), so no deadflag check is needed.
-    Vector dir;
-    controlledEnt->angles.AngleVectorsLeft(&dir);
-    Vector eyePos = controlledEnt->origin + Vector(0, 0, controlledEnt->viewheight);
-    Vector end    = eyePos + dir * 192.0f;
+    if (m_profile.IsSniperRole()) {
+        int team = (int)controlledEnt->GetTeam();
 
-    trace_t trace = G_Trace(eyePos, vec_zero, vec_zero, end, controlledEnt, MASK_PLAYERSOLID, false, "BotOverwatchCondition");
+        PathSearchParameter params;
+        params.entity     = controlledEnt;
+        params.fallHeight = 128.0f;
 
-    if (trace.fraction == 1 || !trace.ent || !trace.ent->entity->isSubclassOf(WindowObject)) {
+        int idx = botManager.GetTacticalMemory().QueryBestSpot(team, controlledEnt->origin, 2048.0f, controlledEnt, params);
+        if (idx >= 0) {
+            const TacticalSpot& spot = botManager.GetTacticalMemory().GetSpot(idx);
+            m_overwatch.standPos       = spot.standPos;
+            m_overwatch.lookDir        = spot.lookDir;
+            m_overwatch.anchorPos      = spot.standPos + spot.lookDir * 256.0f;
+            m_overwatch.windowPos      = m_overwatch.anchorPos;
+            m_overwatch.dwellUntil     = level.inttime + 5000 + (int)G_Random(5000);
+            m_overwatch.scanTime       = 0;
+            m_overwatch.displacedSince = 0;
+            m_overwatch.committedSince = 0;
+            m_overwatch.pathFailCount  = 0;
+            m_overwatch.spotIndex      = idx;
+            botManager.GetTacticalMemory().SetOccupant(idx, controlledEnt->entnum);
+            return true;
+        }
+    }
+
+    // Fresh detection: cast a short forward cone for a WindowObject.
+    // A single trace was too brittle in medium rooms because bots had to be
+    // looking almost exactly at the window to notice it.
+    static const float kWindowDetectDistance = 384.0f;
+    static const float kWindowYawOffsets[]   = {0.0f, 20.0f, -20.0f, 40.0f, -40.0f};
+
+    Vector  eyePos = controlledEnt->origin + Vector(0, 0, controlledEnt->viewheight);
+    trace_t trace;
+    bool    foundWindow = false;
+
+    for (unsigned int i = 0; i < ARRAY_LEN(kWindowYawOffsets); ++i) {
+        Vector testAngles = controlledEnt->angles;
+        testAngles.y += kWindowYawOffsets[i];
+
+        Vector dir;
+        AngleVectorsLeft(testAngles, dir, NULL, NULL);
+
+        Vector end = eyePos + dir * kWindowDetectDistance;
+        trace      = G_Trace(
+            eyePos,
+            vec_zero,
+            vec_zero,
+            end,
+            controlledEnt,
+            MASK_PLAYERSOLID,
+            false,
+            "BotOverwatchCondition"
+        );
+
+        if (trace.fraction < 1.0f && trace.ent && trace.ent->entity->isSubclassOf(WindowObject)) {
+            foundWindow = true;
+            break;
+        }
+    }
+
+    if (!foundWindow) {
         return false;
     }
 
-    // Compute standPos in the horizontal plane so the bot anchors on walkable
-    // ground near the window instead of trying to stand partway up the window.
+    // Compute standPos from the actual window hit so the bot walks up to the
+    // surface and peers through it instead of holding from deeper in the room.
     Vector windowCentroid = trace.ent->entity->centroid;
-    Vector toWindow       = windowCentroid - controlledEnt->origin;
-    toWindow.z            = 0;
-    float distToWindow    = toWindow.length();
+    Vector windowNormal   = trace.plane.normal;
+    windowNormal.z        = 0;
 
-    if (distToWindow < 1.0f) {
+    if (windowNormal.lengthSquared() < Square(0.01f)) {
+        windowNormal = controlledEnt->origin - windowCentroid;
+        windowNormal.z = 0;
+    }
+
+    if (windowNormal.lengthSquared() < Square(0.01f)) {
         return false;
     }
 
-    Vector moveDir = toWindow;
-    VectorNormalizeFast(moveDir);
-    float  moveAmount = Q_min(96.0f, Q_max(0.0f, distToWindow - 12.0f));
-    Vector standPos   = controlledEnt->origin + moveDir * moveAmount;
-    standPos.z        = controlledEnt->origin.z;
+    VectorNormalizeFast(windowNormal);
 
-    // Confirm standPos is navigable via a short trace
-    trace_t standTrace = G_Trace(
-        controlledEnt->origin + Vector(0, 0, controlledEnt->viewheight),
-        vec_zero,
-        vec_zero,
-        standPos + Vector(0, 0, controlledEnt->viewheight),
-        controlledEnt,
-        MASK_PLAYERSOLID,
-        false,
-        "BotOverwatchStand"
-    );
-    if (standTrace.fraction < 1.0f) {
-        // Blocked — stay at current position
-        standPos = controlledEnt->origin;
+    Vector moveDir = windowCentroid - controlledEnt->origin;
+    moveDir.z      = 0;
+
+    if (moveDir.lengthSquared() < Square(1.0f)) {
+        moveDir = -windowNormal;
+    } else {
+        VectorNormalizeFast(moveDir);
+    }
+
+    static const float kWindowStandOffsets[] = {28.0f, 36.0f, 44.0f};
+    Vector             standPos              = vec_zero;
+    bool               foundStandPos         = false;
+
+    for (unsigned int i = 0; i < ARRAY_LEN(kWindowStandOffsets); ++i) {
+        Vector candidate = trace.endpos + windowNormal * kWindowStandOffsets[i];
+        candidate.z      = controlledEnt->origin.z;
+
+        trace_t standTrace = G_Trace(
+            controlledEnt->origin + Vector(0, 0, controlledEnt->viewheight),
+            vec_zero,
+            vec_zero,
+            candidate + Vector(0, 0, controlledEnt->viewheight),
+            controlledEnt,
+            MASK_PLAYERSOLID,
+            false,
+            "BotOverwatchStand"
+        );
+
+        if (standTrace.fraction >= 1.0f) {
+            standPos      = candidate;
+            foundStandPos = true;
+            break;
+        }
+    }
+
+    if (!foundStandPos) {
+        return false;
     }
 
     // Compute lookDir in the horizontal plane so overwatch scans toward the
@@ -1339,13 +1433,19 @@ bool BotController::CheckCondition_Overwatch(void)
 
     VectorNormalizeFast(lookDir);
 
-    m_overwatch.windowPos  = windowCentroid;
-    m_overwatch.standPos   = standPos;
-    m_overwatch.lookDir    = lookDir;
-    m_overwatch.dwellUntil = level.inttime + 3000 + (int)G_Random(4000);
-    m_overwatch.scanTime   = 0;
+    Vector anchorPos = standPos + lookDir * 256.0f;
+    anchorPos.z      = standPos.z + controlledEnt->viewheight;
+
+    m_overwatch.windowPos      = windowCentroid;
+    m_overwatch.standPos       = standPos;
+    m_overwatch.lookDir        = lookDir;
+    m_overwatch.anchorPos      = anchorPos;
+    m_overwatch.dwellUntil     = level.inttime + 3000 + (int)G_Random(4000);
+    m_overwatch.scanTime       = 0;
     m_overwatch.displacedSince = 0;
+    m_overwatch.committedSince = 0;
     m_overwatch.pathFailCount  = 0;
+    m_overwatch.spotIndex      = -1;
 
     return true;
 }
@@ -1389,9 +1489,18 @@ void BotController::State_Overwatch(void)
     if (level.inttime >= m_overwatch.scanTime) {
         m_overwatch.scanTime = level.inttime + 800 + (int)G_Random(700);
 
-        // Apply ±20° yaw and ±5° pitch perturbation to lookDir
-        Vector  lookAngles;
-        vectoangles(m_overwatch.lookDir, lookAngles);
+        Vector baseDir = m_overwatch.lookDir;
+        if (m_overwatch.anchorPos != vec_zero) {
+            baseDir = m_overwatch.anchorPos - m_overwatch.standPos;
+        }
+        if (baseDir.lengthSquared() < Square(1.0f)) {
+            baseDir = m_overwatch.lookDir;
+        }
+        VectorNormalizeFast(baseDir);
+
+        // Apply ±20° yaw and ±5° pitch perturbation to the anchor direction.
+        Vector lookAngles;
+        vectoangles(baseDir, lookAngles);
         lookAngles.y += G_CRandom(20.0f);
         lookAngles.x += G_CRandom(5.0f);
 

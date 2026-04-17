@@ -353,6 +353,11 @@ extern cvar_t *g_bot_debug_beliefs;
 
 extern cvar_t *g_bot_debug_reaction;
 extern cvar_t *g_bot_debug_state;
+extern cvar_t *g_bot_tactical_commit_ms;
+extern cvar_t *g_bot_tactical_break_dist;
+extern cvar_t *g_bot_tactical_min_score;
+extern cvar_t *g_bot_tactical_min_reach;
+extern cvar_t *g_bot_debug_tactical_spots;
 
 // Added in OPM
 //  Bot profile system: force all new bots to use a named profile for testing
