@@ -401,6 +401,7 @@ private:
     Weapon *FindWeaponWithAmmo(void);
     Weapon *FindMeleeWeapon(void);
     void    UseWeaponWithAmmo(void);
+    void    ApplyProfilePrimaryWeapon(bool force = false);
 
     void CheckUse(void);
     bool CheckWindows(void);

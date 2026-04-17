@@ -235,28 +235,7 @@ void BotController::UpdateBotStates(void)
         return;
     }
 
-    if (!controlledEnt->client->pers.dm_primary[0]) {
-        //
-        // Primary weapon - use profile preference if the category is available,
-        // otherwise let "auto" pick from whatever is allowed on this server.
-        //
-        const char *weaponPref =
-            (m_profile.preferredWeapon.length() > 0 && Q_stricmp(m_profile.preferredWeapon.c_str(), "auto") != 0)
-                ? m_profile.preferredWeapon.c_str()
-                : "auto";
-
-        Event *event = new Event(EV_Player_PrimaryDMWeapon);
-        event->AddString(weaponPref);
-        controlledEnt->ProcessEvent(event);
-
-        // If the preferred category was banned, pers.dm_primary is still empty.
-        // Retry with "auto" so the bot always gets a legal weapon.
-        if (!controlledEnt->client->pers.dm_primary[0] && Q_stricmp(weaponPref, "auto") != 0) {
-            Event *fallback = new Event(EV_Player_PrimaryDMWeapon);
-            fallback->AddString("auto");
-            controlledEnt->ProcessEvent(fallback);
-        }
-    }
+    ApplyProfilePrimaryWeapon();
 
     if (controlledEnt->GetTeam() == TEAM_NONE || controlledEnt->GetTeam() == TEAM_SPECTATOR) {
         float time;
@@ -341,6 +320,30 @@ void BotController::UpdateBotStates(void)
     //  Debug visualization of belief zones
     if (g_bot_debug_beliefs->integer) {
         DrawDebugBeliefs();
+    }
+}
+
+void BotController::ApplyProfilePrimaryWeapon(bool force)
+{
+    const char *weaponPref =
+        (m_profile.preferredWeapon.length() > 0 && Q_stricmp(m_profile.preferredWeapon.c_str(), "auto") != 0)
+            ? m_profile.preferredWeapon.c_str()
+            : "auto";
+
+    if (!force && controlledEnt->client->pers.dm_primary[0]) {
+        return;
+    }
+
+    controlledEnt->client->pers.dm_primary[0] = 0;
+
+    Event *event = new Event(EV_Player_PrimaryDMWeapon);
+    event->AddString(weaponPref);
+    controlledEnt->ProcessEvent(event);
+
+    if (!controlledEnt->client->pers.dm_primary[0] && Q_stricmp(weaponPref, "auto") != 0) {
+        Event *fallback = new Event(EV_Player_PrimaryDMWeapon);
+        fallback->AddString("auto");
+        controlledEnt->ProcessEvent(fallback);
     }
 }
 
@@ -869,20 +872,8 @@ void BotController::Killed(const Event& ev)
         m_enemy.deathPos = vec_zero;
     }
 
-    // Added in OPM
-    //  Only select a weapon when not yet assigned (first spawn or after reset).
-    //  Once a bot has a weapon, keep it across respawns for consistent identity.
-    //  Uses profile weapon preference; falls back to "auto" if not set.
-    if (!controlledEnt->client->pers.dm_primary[0]) {
-        const char *weaponPref =
-            (m_profile.preferredWeapon.length() > 0 && Q_stricmp(m_profile.preferredWeapon.c_str(), "auto") != 0)
-                ? m_profile.preferredWeapon.c_str()
-                : "auto";
-
-        Event event(EV_Player_PrimaryDMWeapon);
-        event.AddString(weaponPref);
-        controlledEnt->ProcessEvent(event);
-    }
+    // Re-apply the current profile so the next respawn loadout is profile-driven.
+    ApplyProfilePrimaryWeapon(true);
 
     const char *userinfo = controlledEnt->client->pers.userinfo;
     if (!Info_ValueForKey(userinfo, "dm_playermodel")[0]
