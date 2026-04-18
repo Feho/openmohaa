@@ -122,7 +122,7 @@ public:
     void MoveTo(Vector vPos, float *vLeashHome = NULL, float fLeashRadius = 0.0f);
     bool MoveToBestAttractivePoint(int iMinPriority = 0);
 
-    bool   CanMoveTo(Vector vPos) const;
+    bool   CanMoveTo(Vector vPos);
     bool   MoveDone() const;
     bool   IsMoving() const;
     void   ClearMove();

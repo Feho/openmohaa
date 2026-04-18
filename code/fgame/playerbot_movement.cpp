@@ -988,8 +988,19 @@ CanMoveTo
 Returns true if the bot has done moving
 ====================
 */
-bool BotMovement::CanMoveTo(Vector vPos) const
+bool BotMovement::CanMoveTo(Vector vPos)
 {
+    if (!controlledEntity) {
+        return false;
+    }
+
+    if (!m_pPath) {
+        m_pPath = IPather::CreatePather();
+        if (!m_pPath) {
+            return false;
+        }
+    }
+
     PathSearchParameter parameters;
     parameters.fallHeight = maxFallHeight;
     parameters.entity     = controlledEntity;
@@ -1063,6 +1074,10 @@ Return the current goal, usually the nearest node the player should look at
 */
 Vector BotMovement::GetCurrentGoal() const
 {
+    if (!controlledEntity || !m_pPath) {
+        return m_vCurrentGoal;
+    }
+
     if (!m_pPath->GetNodeCount()) {
         return m_vCurrentGoal;
     }
@@ -1077,5 +1092,9 @@ Vector BotMovement::GetCurrentGoal() const
 
 Vector BotMovement::GetCurrentPathDirection() const
 {
+    if (!m_pPath) {
+        return vec_zero;
+    }
+
     return m_pPath->GetCurrentDirection();
 }
