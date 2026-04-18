@@ -1011,11 +1011,11 @@ void BotController::State_Attack(void)
     const float longRangeThreshold = 800 * 800;
     const float midRangeThreshold  = 400 * 400;
 
-    if (bCanSee && bFiring && fEnemyDistanceSquared > longRangeThreshold) {
+    if (bCanSee && bCanAttack && fEnemyDistanceSquared > longRangeThreshold) {
         // Long range: stop forward movement, strafing handled separately
         m_combat.standingStill = true;
         movement.ClearMove();
-    } else if (bCanSee && bFiring && fEnemyDistanceSquared > midRangeThreshold) {
+    } else if (bCanSee && bCanAttack && fEnemyDistanceSquared > midRangeThreshold) {
         // Mid range: stop periodically to aim, then move
         if (rand() % 100 < 30) {
             m_combat.standingStill = true;
@@ -1084,25 +1084,36 @@ void BotController::State_Attack(void)
     //  Mix of quick direction changes, longer holds, and brief pauses
     //  so the pattern is never consistent.
     if (bCanSee && !bMelee) {
-        if (level.inttime >= m_combat.strafeTime) {
-            int roll = rand() % 10;
+        if (m_combat.standingStill && m_profile.longRangeStrafeChance <= 0.0f) {
+            m_combat.strafeDir  = 0;
+            m_combat.strafeTime = level.inttime + 250;
+        } else if (level.inttime >= m_combat.strafeTime) {
+            const bool allowRangeStrafe =
+                !m_combat.standingStill || (rand() % 100) < (int)m_profile.longRangeStrafeChance;
 
-            if (roll < 2) {
-                // Quick tap: short hold, then switch
-                m_combat.strafeTime = level.inttime + 150 + (int)G_Random(250);
-                m_combat.strafeDir  = (rand() % 2) ? 127 : -127;
-            } else if (roll < 4) {
-                // Hold direction: commit to one side for a while
-                m_combat.strafeTime = level.inttime + 600 + (int)G_Random(1200);
-                m_combat.strafeDir  = (rand() % 2) ? 127 : -127;
-            } else if (roll < 8) {
-                // Pause: stop strafing, longer duration
+            if (!allowRangeStrafe) {
                 m_combat.strafeTime = level.inttime + 300 + (int)G_Random(700);
                 m_combat.strafeDir  = 0;
             } else {
-                // Double-tap: reverse current direction
-                m_combat.strafeTime = level.inttime + 100 + (int)G_Random(200);
-                m_combat.strafeDir  = m_combat.strafeDir > 0 ? -127 : 127;
+                int roll = rand() % 10;
+
+                if (roll < 2) {
+                    // Quick tap: short hold, then switch
+                    m_combat.strafeTime = level.inttime + 150 + (int)G_Random(250);
+                    m_combat.strafeDir  = (rand() % 2) ? 127 : -127;
+                } else if (roll < 4) {
+                    // Hold direction: commit to one side for a while
+                    m_combat.strafeTime = level.inttime + 600 + (int)G_Random(1200);
+                    m_combat.strafeDir  = (rand() % 2) ? 127 : -127;
+                } else if (roll < 8) {
+                    // Pause: stop strafing, longer duration
+                    m_combat.strafeTime = level.inttime + 300 + (int)G_Random(700);
+                    m_combat.strafeDir  = 0;
+                } else {
+                    // Double-tap: reverse current direction
+                    m_combat.strafeTime = level.inttime + 100 + (int)G_Random(200);
+                    m_combat.strafeDir  = m_combat.strafeDir > 0 ? -127 : 127;
+                }
             }
         }
 

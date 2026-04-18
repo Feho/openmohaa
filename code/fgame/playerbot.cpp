@@ -675,10 +675,10 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
         const float longRangeThreshold = 800 * 800;
         const float midRangeThreshold  = 400 * 400;
 
-        if (bCanSee && bFiring && fEnemyDistanceSquared > longRangeThreshold) {
+        if (bCanSee && bCanAttack && fEnemyDistanceSquared > longRangeThreshold) {
             m_combat.standingStill = true;
             intent.clearMove       = true;
-        } else if (bCanSee && bFiring && fEnemyDistanceSquared > midRangeThreshold) {
+        } else if (bCanSee && bCanAttack && fEnemyDistanceSquared > midRangeThreshold) {
             if (rand() % 100 < 30) {
                 m_combat.standingStill = true;
                 intent.clearMove       = true;
@@ -722,21 +722,34 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
         intent.run     = !m_combat.standingStill;
 
         if (bCanSee && !bMelee) {
-            if (level.inttime >= m_combat.strafeTime) {
-                int roll = rand() % 10;
+            if (m_combat.standingStill && m_profile.longRangeStrafeChance <= 0.0f) {
+                m_combat.strafeDir  = 0;
+                m_combat.strafeTime = level.inttime + 250;
+            } else {
+                if (level.inttime >= m_combat.strafeTime) {
+                    const bool allowRangeStrafe =
+                        !m_combat.standingStill || (rand() % 100) < (int)m_profile.longRangeStrafeChance;
 
-                if (roll < 2) {
-                    m_combat.strafeTime = level.inttime + 150 + (int)G_Random(250);
-                    m_combat.strafeDir  = (rand() % 2) ? 127 : -127;
-                } else if (roll < 4) {
-                    m_combat.strafeTime = level.inttime + 600 + (int)G_Random(1200);
-                    m_combat.strafeDir  = (rand() % 2) ? 127 : -127;
-                } else if (roll < 8) {
-                    m_combat.strafeTime = level.inttime + 300 + (int)G_Random(700);
-                    m_combat.strafeDir  = 0;
-                } else {
-                    m_combat.strafeTime = level.inttime + 100 + (int)G_Random(200);
-                    m_combat.strafeDir  = m_combat.strafeDir > 0 ? -127 : 127;
+                    if (!allowRangeStrafe) {
+                        m_combat.strafeTime = level.inttime + 300 + (int)G_Random(700);
+                        m_combat.strafeDir  = 0;
+                    } else {
+                        int roll = rand() % 10;
+
+                        if (roll < 2) {
+                            m_combat.strafeTime = level.inttime + 150 + (int)G_Random(250);
+                            m_combat.strafeDir  = (rand() % 2) ? 127 : -127;
+                        } else if (roll < 4) {
+                            m_combat.strafeTime = level.inttime + 600 + (int)G_Random(1200);
+                            m_combat.strafeDir  = (rand() % 2) ? 127 : -127;
+                        } else if (roll < 8) {
+                            m_combat.strafeTime = level.inttime + 300 + (int)G_Random(700);
+                            m_combat.strafeDir  = 0;
+                        } else {
+                            m_combat.strafeTime = level.inttime + 100 + (int)G_Random(200);
+                            m_combat.strafeDir  = m_combat.strafeDir > 0 ? -127 : 127;
+                        }
+                    }
                 }
             }
 

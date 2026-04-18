@@ -42,6 +42,7 @@ struct BotProfile {
 
     // Movement
     float crouchChance; // 0..100 integer percentage (replaces g_bot_crouch_chance)
+    float longRangeStrafeChance = 100.0f; // 0..100 chance to strafe while holding a visible target at range
 
     // Weapon preference: "auto", "rifle", "sniper", "smg", "mg", "heavy", "shotgun"
     // "auto" means use rank-based selection (existing behavior)
