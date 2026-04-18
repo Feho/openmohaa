@@ -1293,7 +1293,7 @@ bool BotController::CheckCondition_Overwatch(void)
         return false;
     }
 
-    if (m_profile.IsSniperRole()) {
+    {
         int team = (int)controlledEnt->GetTeam();
 
         PathSearchParameter params;

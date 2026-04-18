@@ -820,11 +820,41 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
             }
         }
 
+        if (m_curious.scanUntil) {
+            // Scan phase: arrived at target, now holding and looking around before clearing.
+            if (level.inttime >= m_curious.scanUntil) {
+                beliefMap.ClearZone(controlledEnt->origin);
+                m_curious.time     = 0;
+                m_curious.scanUntil = 0;
+            } else {
+                // Hold position; look at a random nearby point each scan tick.
+                if (m_reaction.lookUntil < level.inttime) {
+                    Vector scanDir(
+                        G_CRandom() * 512.0f,
+                        G_CRandom() * 512.0f,
+                        G_CRandom() * 64.0f
+                    );
+                    m_reaction.lookPos   = controlledEnt->origin + scanDir;
+                    m_reaction.lookUntil = level.inttime + 600 + (int)G_Random(600);
+                }
+                intent.aimType   = BotAimDirective::AimAtPoint;
+                intent.aimTarget = m_reaction.lookPos;
+            }
+            return intent;
+        }
+
         if (movement.MoveDone()) {
             float distToTarget = (m_curious.targetPos - controlledEnt->origin).length();
             if (distToTarget < 256) {
-                beliefMap.ClearZone(controlledEnt->origin);
-                m_curious.time = 0;
+                // Start scan pause instead of immediately clearing.
+                m_curious.scanUntil = level.inttime + 1500 + (int)G_Random(500);
+                if (g_bot_debug_state->integer >= 2) {
+                    gi.Printf(
+                        "BOT %s: Curious arrived - scanning for %.1fs\n",
+                        controlledEnt->client->pers.netname,
+                        (m_curious.scanUntil - level.inttime) / 1000.0f
+                    );
+                }
             } else if (!movement.IsMoving() && level.inttime + 17000 > m_curious.time) {
                 m_curious.time = 0;
             }
@@ -905,7 +935,7 @@ BotTacticalIntent BotController::BuildTacticalIntent(const BotPerceptionSnapshot
                 intent.moveType   = BotMoveRequestType::MoveTo;
                 intent.moveTarget = m_overwatch.standPos;
             } else {
-                intent.clearMove             = true;
+                intent.clearMove            = true;
                 m_overwatch.displacedSince  = 0;
                 m_overwatch.pathFailCount   = 0;
 
@@ -917,6 +947,17 @@ BotTacticalIntent BotController::BuildTacticalIntent(const BotPerceptionSnapshot
                         (int)controlledEnt->GetTeam(),
                         controlledEnt
                     );
+                }
+
+                // At the anchor with a visible enemy: lock position so combat strafing
+                // doesn't push the bot off the window.
+                if (snapshot.attackActive && m_enemy.enemy) {
+                    float visionDist =
+                        Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828f)
+                        * m_profile.visionDistanceMult;
+                    if (controlledEnt->CanSee(m_enemy.enemy, 120, visionDist, false)) {
+                        intent.lockPosition = true;
+                    }
                 }
             }
         }
@@ -1135,13 +1176,13 @@ BotController::ResolveIntents(const BotCombatIntent& combat, const BotHazardInte
         resolved.engagementMode       = combat.mode;
         resolved.attackLeft          = combat.attackLeft;
         resolved.attackRight         = combat.attackRight;
-        resolved.rightmove           = combat.rightmove;
+        resolved.rightmove           = tactical.lockPosition ? 0 : combat.rightmove;
         resolved.upmove              = combat.upmove;
         resolved.leanDir             = combat.leanDir;
         resolved.run                 = combat.run && resolved.run;
         resolved.updatedLastFireTime = resolved.updatedLastFireTime || combat.updatedLastFireTime;
 
-        if (combat.moveType != BotMoveRequestType::None) {
+        if (combat.moveType != BotMoveRequestType::None && !tactical.lockPosition) {
             resolved.moveType     = combat.moveType;
             resolved.moveTarget   = combat.moveTarget;
             resolved.preferredDir = combat.preferredDir;
@@ -1670,6 +1711,7 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
     case AI_EVENT_GRENADE:
     default:
         m_curious.time               = level.inttime + 20000;
+        m_curious.scanUntil          = 0;
         m_curious.targetPos          = vPos;
         m_curious.stimulusType       = iType;
         m_curious.stimulusDistanceSq = fDistanceSquared;
@@ -1987,11 +2029,13 @@ void BotController::Damaged(const Event& ev)
         m_combat.lastUnseenTime    = level.inttime; // Start reaction delay - need time to aim
 
         // Clear any curious state - we have a real threat now
-        m_curious.time = 0;
+        m_curious.time      = 0;
+        m_curious.scanUntil = 0;
     } else {
         // Non-sentient attacker (e.g., explosion, trap) - go curious toward the position
         m_curious.targetPos = attacker->origin;
         m_curious.time      = level.inttime + 5000;
+        m_curious.scanUntil = 0;
     }
 }
 
@@ -2003,9 +2047,10 @@ void BotController::GotKill(const Event& ev)
     //  enemy so CheckCondition_Attack can find a new target. Keep m_combat.attackTime
     //  active so the bot stays in combat mode and continues scanning for enemies.
     //
-    m_enemy.enemy   = NULL;
-    m_enemy.eyesTag = -1;
-    m_curious.time  = 0;
+    m_enemy.enemy       = NULL;
+    m_enemy.eyesTag     = -1;
+    m_curious.time      = 0;
+    m_curious.scanUntil = 0;
 
     // Extend attack time briefly to allow scanning for new targets
     if (m_combat.attackTime) {

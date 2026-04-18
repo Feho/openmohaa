@@ -295,6 +295,7 @@ struct BotCuriousState {
     float  stimulusDistanceSq; // Distance to the stimulus when it triggered
     Vector lastPos;            // Last curious position investigated
     Vector targetPos;          // Current position to investigate
+    int    scanUntil;          // Scan-pause timer: hold and look around until this time
 
     void reset()
     {
@@ -303,6 +304,7 @@ struct BotCuriousState {
         stimulusDistanceSq = 0.0f;
         lastPos            = vec_zero;
         targetPos          = vec_zero;
+        scanUntil          = 0;
     }
 };
 
@@ -522,6 +524,7 @@ struct BotTacticalIntent {
     bool               run;
     bool               anchorActive;
     bool               anchorReturning;
+    bool               lockPosition;   // Prevent combat from overwriting the move (at anchor with visible enemy)
     bool               updatedLastFireTime;
 
     void reset()
@@ -541,6 +544,7 @@ struct BotTacticalIntent {
         run                 = true;
         anchorActive        = false;
         anchorReturning     = false;
+        lockPosition        = false;
         updatedLastFireTime = false;
     }
 };

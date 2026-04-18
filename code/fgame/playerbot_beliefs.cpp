@@ -231,6 +231,26 @@ void BotBeliefMap::UpdateFromEvent(Vector pos, int iType, float fRangeFactor)
 
     int zoneIndex = FindZoneForPos(pos);
     AddBelief(zoneIndex, weight);
+
+    // Spread 10% of the weight to each of the 4 direct neighbors so that events
+    // near a zone boundary influence adjacent zones too, reducing "teleporty" patrol.
+    // Neighbors use raw grid index math — FindZoneForPos would clamp and could
+    // map an off-edge neighbor back to a valid edge cell.
+    if (zoneIndex >= 0) {
+        const float spread = weight * 0.1f;
+        int         x      = zoneIndex % m_iGridWidth;
+        int         y      = zoneIndex / m_iGridWidth;
+
+        const int dx[] = {-1, 1, 0, 0};
+        const int dy[] = {0, 0, -1, 1};
+        for (int i = 0; i < 4; i++) {
+            int nx = x + dx[i];
+            int ny = y + dy[i];
+            if (nx >= 0 && nx < m_iGridWidth && ny >= 0 && ny < m_iGridHeight) {
+                AddBelief(ny * m_iGridWidth + nx, spread);
+            }
+        }
+    }
 }
 
 /*
