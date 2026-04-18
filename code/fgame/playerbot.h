@@ -244,6 +244,8 @@ struct BotCombatState {
     bool   standingStill;        // Standing still to aim
     bool   crouching;            // Currently crouching in combat
     bool   crouchDecided;        // Whether crouch decision was made
+    Vector losRecoverPos;        // Cached probe result for LOS recovery move
+    int    losRecoverTime;       // level.inttime when probe ran; 0 = no valid cache
 
     void reset()
     {
@@ -263,6 +265,8 @@ struct BotCombatState {
         standingStill        = false;
         crouching            = false;
         crouchDecided        = false;
+        losRecoverPos        = vec_zero;
+        losRecoverTime       = 0;
     }
 };
 
@@ -295,6 +299,7 @@ struct BotCuriousState {
     float  stimulusDistanceSq; // Distance to the stimulus when it triggered
     Vector lastPos;            // Last curious position investigated
     Vector targetPos;          // Current position to investigate
+    Vector losProbePos;        // Probe result bot is actually moving toward (vec_zero = none)
     int    scanUntil;          // Scan-pause timer: hold and look around until this time
 
     void reset()
@@ -304,6 +309,7 @@ struct BotCuriousState {
         stimulusDistanceSq = 0.0f;
         lastPos            = vec_zero;
         targetPos          = vec_zero;
+        losProbePos        = vec_zero;
         scanUntil          = 0;
     }
 };
@@ -711,7 +717,8 @@ private:
     const char *GetEngagementModeName(BotEngagementMode mode) const;
     const char *GetTacticalModeName(BotTacticalMode mode) const;
     const char *GetHazardModeName(BotHazardMode mode) const;
-    void ClearOverwatchAnchor(const char *reason, bool startCooldown);
+    void   ClearOverwatchAnchor(const char *reason, bool startCooldown);
+    Vector ProbeLOSPosition(const Vector& targetPos);
 
 public:
     CLASS_PROTOTYPE(BotController);

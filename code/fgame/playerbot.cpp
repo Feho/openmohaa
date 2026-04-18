@@ -435,6 +435,53 @@ void BotController::UpdateModeTransitions(const BotPerceptionSnapshot& snapshot)
     }
 }
 
+Vector BotController::ProbeLOSPosition(const Vector& targetPos)
+{
+    if (targetPos == vec_zero) {
+        return vec_zero;
+    }
+
+    static const float kAngles[] = {30.f, -30.f, 60.f, -60.f, 90.f, -90.f};
+    static const float kRadii[]  = {256.f, 384.f, 512.f};
+
+    Vector forward = targetPos - controlledEnt->origin;
+    forward.z      = 0;
+    if (forward.lengthSquared() < Square(1.0f)) {
+        return vec_zero;
+    }
+    VectorNormalizeFast(forward);
+    Vector right(-forward.y, forward.x, 0);
+
+    Vector eyeOffset(0, 0, controlledEnt->viewheight);
+    Vector targetEye = targetPos + Vector(0, 0, (float)controlledEnt->viewheight);
+
+    // Two-pass: all sight traces first (cheap), CanMoveTo only on those that pass (expensive).
+    Vector sightPassed[18];
+    int    numSightPassed = 0;
+
+    for (int ri = 0; ri < 3; ri++) {
+        for (int ai = 0; ai < 6; ai++) {
+            float  rad       = DEG2RAD(kAngles[ai]);
+            Vector candidate = controlledEnt->origin + (forward * cosf(rad) + right * sinf(rad)) * kRadii[ri];
+            candidate.z      = controlledEnt->origin.z;
+
+            if (G_SightTrace(
+                    candidate + eyeOffset, vec_zero, vec_zero, targetEye,
+                    controlledEnt, (Entity *)NULL, MASK_CANSEE, false, "ProbeLOSPosition"
+                )) {
+                sightPassed[numSightPassed++] = candidate;
+            }
+        }
+    }
+
+    for (int i = 0; i < numSightPassed; i++) {
+        if (movement.CanMoveTo(sightPassed[i])) {
+            return sightPassed[i];
+        }
+    }
+    return vec_zero;
+}
+
 BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& snapshot)
 {
     BotCombatIntent intent;
@@ -660,6 +707,9 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
 
             intent.aimType   = BotAimDirective::AimAtPoint;
             intent.aimTarget = vTarget + m_combat.aimOffset * m_profile.aimSpreadMult;
+        } else if (m_combat.losRecoverPos != vec_zero && m_enemy.lastPos != vec_zero) {
+            intent.aimType   = BotAimDirective::AimAtPoint;
+            intent.aimTarget = m_enemy.lastPos;
         } else {
             intent.aimType = BotAimDirective::AimAlongPath;
         }
@@ -761,10 +811,41 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
         }
 
         if (bCanSee && bCanAttack && !bMelee) {
-            intent.clearMove = true;
+            intent.clearMove        = true;
+            m_combat.losRecoverPos  = vec_zero;
+            m_combat.losRecoverTime = 0;
         } else if (bMelee || !bCanSee) {
+            Vector moveTarget = m_enemy.lastPos;
+
+            if (!bCanSee && !bMelee) {
+                if (m_combat.losRecoverTime == 0 || (m_combat.losRecoverPos == vec_zero && level.inttime >= m_combat.losRecoverTime + 500)) {
+                    m_combat.losRecoverPos  = ProbeLOSPosition(m_enemy.lastPos);
+                    m_combat.losRecoverTime = level.inttime;
+
+                    if (g_bot_debug_state->integer >= 2) {
+                        if (m_combat.losRecoverPos != vec_zero) {
+                            gi.Printf(
+                                "BOT %s: Combat LOS probe -> (%.0f, %.0f, %.0f)\n",
+                                controlledEnt->client->pers.netname,
+                                m_combat.losRecoverPos.x,
+                                m_combat.losRecoverPos.y,
+                                m_combat.losRecoverPos.z
+                            );
+                        } else {
+                            gi.Printf(
+                                "BOT %s: Combat LOS probe - no pos found\n",
+                                controlledEnt->client->pers.netname
+                            );
+                        }
+                    }
+                }
+                if (m_combat.losRecoverPos != vec_zero) {
+                    moveTarget = m_combat.losRecoverPos;
+                }
+            }
+
             intent.moveType   = BotMoveRequestType::MoveTo;
-            intent.moveTarget = m_enemy.lastPos;
+            intent.moveTarget = moveTarget;
 
             if (!bCanSee && movement.MoveDone()) {
                 ClearEnemy();
@@ -804,26 +885,45 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
         }
 
         if (targetPos != vec_zero && m_curious.lastPos != targetPos) {
-            intent.moveType   = BotMoveRequestType::MoveNear;
-            intent.moveTarget = targetPos;
-            intent.radius     = 512.0f;
             m_curious.lastPos = targetPos;
 
+            Vector losPos         = ProbeLOSPosition(targetPos);
+            m_curious.losProbePos = losPos;
+
+            if (losPos != vec_zero) {
+                intent.moveType   = BotMoveRequestType::MoveTo;
+                intent.moveTarget = losPos;
+            } else {
+                intent.moveType   = BotMoveRequestType::MoveNear;
+                intent.moveTarget = targetPos;
+                intent.radius     = 512.0f;
+            }
+
             if (g_bot_debug_state->integer >= 2) {
-                gi.Printf(
-                    "BOT %s: Curious investigating (%.0f, %.0f, %.0f)\n",
-                    controlledEnt->client->pers.netname,
-                    targetPos.x,
-                    targetPos.y,
-                    targetPos.z
-                );
+                if (losPos != vec_zero) {
+                    gi.Printf(
+                        "BOT %s: Curious LOS probe -> (%.0f, %.0f, %.0f)\n",
+                        controlledEnt->client->pers.netname,
+                        losPos.x,
+                        losPos.y,
+                        losPos.z
+                    );
+                } else {
+                    gi.Printf(
+                        "BOT %s: Curious investigating (%.0f, %.0f, %.0f) [no LOS pos]\n",
+                        controlledEnt->client->pers.netname,
+                        targetPos.x,
+                        targetPos.y,
+                        targetPos.z
+                    );
+                }
             }
         }
 
         if (m_curious.scanUntil) {
             // Scan phase: arrived at target, now holding and looking around before clearing.
             if (level.inttime >= m_curious.scanUntil) {
-                beliefMap.ClearZone(controlledEnt->origin);
+                beliefMap.ClearZone(m_curious.targetPos != vec_zero ? m_curious.targetPos : controlledEnt->origin);
                 m_curious.time     = 0;
                 m_curious.scanUntil = 0;
             } else {
@@ -844,7 +944,8 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
         }
 
         if (movement.MoveDone()) {
-            float distToTarget = (m_curious.targetPos - controlledEnt->origin).length();
+            const Vector& arrivalRef = (m_curious.losProbePos != vec_zero) ? m_curious.losProbePos : m_curious.targetPos;
+            float         distToTarget = (arrivalRef - controlledEnt->origin).length();
             if (distToTarget < 256) {
                 // Start scan pause instead of immediately clearing.
                 m_curious.scanUntil = level.inttime + 1500 + (int)G_Random(500);
@@ -1761,11 +1862,13 @@ Clear the bot's enemy
 */
 void BotController::ClearEnemy(void)
 {
-    m_combat.attackTime = 0;
-    m_enemy.enemy       = NULL;
-    m_enemy.eyesTag     = -1;
-    m_enemy.oldPos      = vec_zero;
-    m_enemy.lastPos     = vec_zero;
+    m_combat.attackTime     = 0;
+    m_combat.losRecoverPos  = vec_zero;
+    m_combat.losRecoverTime = 0;
+    m_enemy.enemy           = NULL;
+    m_enemy.eyesTag         = -1;
+    m_enemy.oldPos          = vec_zero;
+    m_enemy.lastPos         = vec_zero;
 }
 
 Weapon *BotController::FindWeaponWithAmmo()
