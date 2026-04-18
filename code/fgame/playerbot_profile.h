@@ -47,6 +47,9 @@ struct BotProfile {
     // "auto" means use rank-based selection (existing behavior)
     str preferredWeapon;
 
+    // Perception
+    float visionDistanceMult = 1.0f; // Multiplier on base vision range
+
     bool IsSniperRole() const { return !Q_stricmp(preferredWeapon.c_str(), "sniper"); }
 };
 

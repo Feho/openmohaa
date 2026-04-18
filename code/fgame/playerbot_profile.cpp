@@ -33,6 +33,7 @@ void BotProfileManager::InitDefault()
     m_default.continuousFireRandomTime = g_bot_attack_continuousfire_random_firetime->value;
     m_default.crouchChance             = (float)g_bot_crouch_chance->integer;
     m_default.preferredWeapon          = "auto";
+    m_default.visionDistanceMult       = 1.0f;
 }
 
 void BotProfileManager::ParseProfileFile(const char *filename, const char *basedir)
@@ -112,6 +113,8 @@ void BotProfileManager::ParseProfileFile(const char *filename, const char *based
             profile.crouchChance = fval;
         } else if (!Q_stricmp(key, "preferredWeapon")) {
             profile.preferredWeapon = val;
+        } else if (!Q_stricmp(key, "visionDistanceMult")) {
+            profile.visionDistanceMult = fval;
         }
     }
 

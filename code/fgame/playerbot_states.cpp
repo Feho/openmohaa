@@ -642,6 +642,7 @@ bool BotController::CheckCondition_Attack(void)
     sents.Sort(sentients_compare);
 
     maxDistance = Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828);
+    maxDistance *= m_profile.visionDistanceMult;
 
     //
     // Changed in OPM
@@ -731,8 +732,6 @@ void BotController::State_Attack(void)
     bool    bMelee              = false;
     bool    bCanSee             = false;
     bool    bCanAttack          = false;
-    float   fMinDistance        = 128;
-    float   fMinDistanceSquared = fMinDistance * fMinDistance;
     float   fEnemyDistanceSquared;
     Weapon *pWeap   = controlledEnt->GetActiveWeapon(WEAPON_MAIN);
     bool    bNoMove = false;
@@ -764,8 +763,9 @@ void BotController::State_Attack(void)
     //  Use 120° FOV instead of 20° so the bot recognizes enemies in peripheral
     //  vision. The narrow 20° FOV caused bots to ignore enemies that appeared
     //  while they were looking elsewhere (e.g., toward a previous target).
+    float visionDist = Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828) * m_profile.visionDistanceMult;
     bCanSee = controlledEnt->CanSee(
-        m_enemy.enemy, 120, Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828), false
+        m_enemy.enemy, 120, visionDist, false
     );
 
     if (bCanSee) {
@@ -795,8 +795,6 @@ void BotController::State_Attack(void)
 
         if (bCanAttack) {
             const int fireDelay                    = pWeap->FireDelay(FIRE_PRIMARY) * 1000;
-            float     fPrimaryBulletRange          = pWeap->GetBulletRange(FIRE_PRIMARY) / 1.25f;
-            float     fPrimaryBulletRangeSquared   = fPrimaryBulletRange * fPrimaryBulletRange;
             float     fSecondaryBulletRange        = pWeap->GetBulletRange(FIRE_SECONDARY);
             float     fSecondaryBulletRangeSquared = fSecondaryBulletRange * fSecondaryBulletRange;
 
@@ -818,14 +816,6 @@ void BotController::State_Attack(void)
                 }
             }
 
-            fMinDistance = fPrimaryBulletRange;
-
-            if (fMinDistance > 256) {
-                fMinDistance = 256;
-            }
-
-            fMinDistanceSquared = fMinDistance * fMinDistance;
-
             if (controlledEnt->client->ps.stats[STAT_AMMO] <= 0
                 && controlledEnt->client->ps.stats[STAT_CLIPAMMO] <= 0) {
                 if (g_bot_debug_state->integer >= 2) {
@@ -841,18 +831,9 @@ void BotController::State_Attack(void)
                     Event ev;
                     controlledEnt->SelectNextWeapon(&ev);
                 }
-            } else if (fDistanceSquared > fPrimaryBulletRangeSquared) {
-                if (g_bot_debug_state->integer >= 2) {
-                    gi.Printf(
-                        "BOT %s: Attack - out of range (dist=%.0f, range=%.0f)\n",
-                        controlledEnt->client->pers.netname,
-                        sqrtf(fDistanceSquared),
-                        fPrimaryBulletRange
-                    );
-                }
-                m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
-                controlledEnt->ZoomOff();
             } else {
+                // Fire at visible targets regardless of the weapon's configured range.
+                // The user-facing request is to keep engaging once the bot has line of sight.
                 //
                 // Attacking
                 //
@@ -942,7 +923,6 @@ void BotController::State_Attack(void)
         }
     } else {
         m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
-        fMinDistanceSquared = 0;
 
         if (level.inttime > m_combat.lastSeenTime + 2000) {
             m_combat.lastUnseenTime = level.inttime;

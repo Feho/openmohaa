@@ -444,7 +444,6 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
         bool    bMelee              = false;
         bool    bCanSee             = false;
         bool    bCanAttack          = false;
-        bool    bPrimaryOutOfRange  = false;
         float   fEnemyDistanceSquared;
         float   fDistanceSquared = 0.0f;
         Weapon *pWeap            = controlledEnt->GetActiveWeapon(WEAPON_MAIN);
@@ -471,8 +470,9 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
         fDistanceSquared = (m_enemy.enemy->origin - controlledEnt->origin).lengthSquared();
         m_enemy.oldPos   = m_enemy.lastPos;
 
+        float visionDist = Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828) * m_profile.visionDistanceMult;
         bCanSee = controlledEnt->CanSee(
-            m_enemy.enemy, 120, Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828), false
+            m_enemy.enemy, 120, visionDist, false
         );
 
         if (bCanSee) {
@@ -501,8 +501,6 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
 
             if (bCanAttack) {
                 const int fireDelay                    = pWeap->FireDelay(FIRE_PRIMARY) * 1000;
-                float     fPrimaryBulletRange          = pWeap->GetBulletRange(FIRE_PRIMARY) / 1.25f;
-                float     fPrimaryBulletRangeSquared   = fPrimaryBulletRange * fPrimaryBulletRange;
                 float     fSecondaryBulletRange        = pWeap->GetBulletRange(FIRE_SECONDARY);
                 float     fSecondaryBulletRangeSquared = fSecondaryBulletRange * fSecondaryBulletRange;
                 const int maxcontinuousFireTime        = fireDelay + m_profile.continuousFireMinTime * 1000
@@ -532,20 +530,9 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
                         Event ev;
                         controlledEnt->SelectNextWeapon(&ev);
                     }
-                } else if (fDistanceSquared > fPrimaryBulletRangeSquared) {
-                    bPrimaryOutOfRange = true;
-                    if (g_bot_debug_state->integer >= 2) {
-                        gi.Printf(
-                            "BOT %s: Attack - out of range (dist=%.0f, range=%.0f)\n",
-                            controlledEnt->client->pers.netname,
-                            sqrtf(fDistanceSquared),
-                            fPrimaryBulletRange
-                        );
-                    }
-                    intent.attackLeft  = BotButtonAction::Clear;
-                    intent.attackRight = BotButtonAction::Clear;
-                    controlledEnt->ZoomOff();
                 } else {
+                    // Fire at visible targets regardless of the weapon's configured range.
+                    // The user-facing request is to keep engaging once the bot has line of sight.
                     if (pWeap->IsSemiAuto()) {
                         if (controlledEnt->client->ps.iViewModelAnim != VM_ANIM_IDLE
                             && (controlledEnt->client->ps.iViewModelAnim < VM_ANIM_IDLE_0
@@ -762,7 +749,7 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
 
         if (bCanSee && bCanAttack && !bMelee) {
             intent.clearMove = true;
-        } else if (bMelee || !bCanSee || bPrimaryOutOfRange) {
+        } else if (bMelee || !bCanSee) {
             intent.moveType   = BotMoveRequestType::MoveTo;
             intent.moveTarget = m_enemy.lastPos;
 
