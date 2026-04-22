@@ -105,13 +105,19 @@ struct BotJumpState {
     }
 };
 
-static constexpr int BOT_BANNED_ZONES_MAX    = 8;
-static constexpr int BOT_BANNED_ZONE_RADIUS  = 128;
+static constexpr int BOT_BANNED_ZONES_MAX        = 8;
+static constexpr int BOT_BANNED_ZONE_RADIUS      = 128;
 static constexpr int BOT_BANNED_ZONE_DURATION_MS = 120000; // 2 minutes
 
 struct BotBannedZone {
     Vector origin;
     int    expireTime; // level.inttime when the ban expires (0 = inactive)
+};
+
+enum class BotStuckPolicy {
+    TrackAndGiveUp,
+    TrackAndRecover,
+    Ignore
 };
 
 class BotMovement
@@ -125,14 +131,26 @@ public:
     void MoveThink(usercmd_t& botcmd);
 
     bool AvoidPath(
-        Vector vPos,
-        float  fAvoidRadius,
-        Vector vPreferredDir = vec_zero,
-        float *vLeashHome    = NULL,
-        float  fLeashRadius  = 0.0f
+        Vector         vPos,
+        float          fAvoidRadius,
+        Vector         vPreferredDir = vec_zero,
+        BotStuckPolicy stuckPolicy   = BotStuckPolicy::TrackAndGiveUp,
+        float         *vLeashHome    = NULL,
+        float          fLeashRadius  = 0.0f
     );
-    void MoveNear(Vector vNear, float fRadius, float *vLeashHome = NULL, float fLeashRadius = 0.0f);
-    void MoveTo(Vector vPos, float *vLeashHome = NULL, float fLeashRadius = 0.0f);
+    bool MoveNear(
+        Vector         vNear,
+        float          fRadius,
+        BotStuckPolicy stuckPolicy  = BotStuckPolicy::TrackAndGiveUp,
+        float         *vLeashHome   = NULL,
+        float          fLeashRadius = 0.0f
+    );
+    bool MoveTo(
+        Vector         vPos,
+        BotStuckPolicy stuckPolicy  = BotStuckPolicy::TrackAndGiveUp,
+        float         *vLeashHome   = NULL,
+        float          fLeashRadius = 0.0f
+    );
     bool MoveToBestAttractivePoint(int iMinPriority = 0);
 
     bool   CanMoveTo(Vector vPos);
@@ -184,9 +202,12 @@ private:
     BotCollisionState m_collision;
     BotJumpState      m_jump;
 
-    BotBannedZone m_bannedZones[BOT_BANNED_ZONES_MAX];
+    BotBannedZone  m_bannedZones[BOT_BANNED_ZONES_MAX];
+    BotStuckPolicy m_stuckPolicy;
 
 private:
+    bool IsPathSegmentBanned(const Vector& start, const Vector& end) const;
+    bool PathTouchesBannedZone() const;
     void BanCurrentZone();
 };
 
@@ -366,17 +387,17 @@ struct BotOverwatchState {
 
     void reset()
     {
-        windowPos       = vec_zero;
-        standPos        = vec_zero;
-        lookDir         = vec_zero;
-        anchorPos       = vec_zero;
-        dwellUntil      = 0;
-        scanTime        = 0;
-        cooldownUntil   = 0;
-        displacedSince  = 0;
-        committedSince  = 0;
-        pathFailCount   = 0;
-        spotIndex       = -1;
+        windowPos      = vec_zero;
+        standPos       = vec_zero;
+        lookDir        = vec_zero;
+        anchorPos      = vec_zero;
+        dwellUntil     = 0;
+        scanTime       = 0;
+        cooldownUntil  = 0;
+        displacedSince = 0;
+        committedSince = 0;
+        pathFailCount  = 0;
+        spotIndex      = -1;
     }
 };
 
@@ -384,13 +405,13 @@ struct BotOverwatchState {
  * @brief Human-like idle/movement behavior state.
  */
 struct BotIdleBehavior {
-    int   pauseTime;      // When current idle pause ends
-    int   lookTime;       // When to change look direction during pause
-    int   walkTime;       // When to stop walking and run again
-    int   leanTime;       // When to change lean state
-    int   leanDir;        // Current lean direction: -1 left, 0 none, 1 right
-    bool  pausing;        // Currently in idle pause
-    bool  walking;        // Currently walking instead of running
+    int  pauseTime; // When current idle pause ends
+    int  lookTime;  // When to change look direction during pause
+    int  walkTime;  // When to stop walking and run again
+    int  leanTime;  // When to change lean state
+    int  leanDir;   // Current lean direction: -1 left, 0 none, 1 right
+    bool pausing;   // Currently in idle pause
+    bool walking;   // Currently walking instead of running
     // Added in OPM
     //  Patrol look-around: occasionally glance at a point of interest while moving
     Vector scanTarget;   // World-space point the bot is currently staring at (vec_zero = not staring)
@@ -399,13 +420,13 @@ struct BotIdleBehavior {
 
     void reset()
     {
-        pauseTime     = 0;
-        lookTime      = 0;
-        walkTime      = 0;
-        leanTime      = 0;
-        leanDir       = 0;
-        pausing       = false;
-        walking       = false;
+        pauseTime    = 0;
+        lookTime     = 0;
+        walkTime     = 0;
+        leanTime     = 0;
+        leanDir      = 0;
+        pausing      = false;
+        walking      = false;
         scanTarget   = vec_zero;
         scanUntil    = 0;
         scanNextTime = 0;
@@ -458,46 +479,48 @@ struct BotReactionState {
 
     void reset()
     {
-        lookPos    = vec_zero;
-        lookUntil  = 0;
-        clearMove  = false;
+        lookPos   = vec_zero;
+        lookUntil = 0;
+        clearMove = false;
     }
 };
 
 struct BotPerceptionSnapshot {
-    bool attackActive;
-    bool curiousActive;
-    bool grenadeActive;
-    bool overwatchActive;
-    bool idleActive;
-    bool moving;
-    bool anchorActive;
+    bool  attackActive;
+    bool  curiousActive;
+    bool  grenadeActive;
+    bool  overwatchActive;
+    bool  idleActive;
+    bool  moving;
+    bool  anchorActive;
     float anchorDistSq;
     float enemyAnchorDistSq;
 };
 
 struct BotCombatIntent {
-    BotEngagementMode mode;
+    BotEngagementMode  mode;
     BotMoveRequestType moveType;
-    Vector            moveTarget;
-    Vector            preferredDir;
-    float             radius;
-    BotAimDirective   aimType;
-    Vector            aimTarget;
-    Vector            aimAngles;
-    BotButtonAction   attackLeft;
-    BotButtonAction   attackRight;
-    int               rightmove;
-    int               upmove;
-    int               leanDir;
-    bool              clearMove;
-    bool              run;
-    bool              updatedLastFireTime;
+    BotStuckPolicy     stuckPolicy;
+    Vector             moveTarget;
+    Vector             preferredDir;
+    float              radius;
+    BotAimDirective    aimType;
+    Vector             aimTarget;
+    Vector             aimAngles;
+    BotButtonAction    attackLeft;
+    BotButtonAction    attackRight;
+    int                rightmove;
+    int                upmove;
+    int                leanDir;
+    bool               clearMove;
+    bool               run;
+    bool               updatedLastFireTime;
 
     void reset()
     {
         mode                = BotEngagementMode::None;
         moveType            = BotMoveRequestType::None;
+        stuckPolicy         = BotStuckPolicy::TrackAndGiveUp;
         moveTarget          = vec_zero;
         preferredDir        = vec_zero;
         radius              = 0.0f;
@@ -518,6 +541,7 @@ struct BotCombatIntent {
 struct BotHazardIntent {
     BotHazardMode      mode;
     BotMoveRequestType moveType;
+    BotStuckPolicy     stuckPolicy;
     Vector             moveTarget;
     Vector             preferredDir;
     float              radius;
@@ -527,6 +551,7 @@ struct BotHazardIntent {
     {
         mode         = BotHazardMode::None;
         moveType     = BotMoveRequestType::None;
+        stuckPolicy  = BotStuckPolicy::TrackAndGiveUp;
         moveTarget   = vec_zero;
         preferredDir = vec_zero;
         radius       = 0.0f;
@@ -537,6 +562,7 @@ struct BotHazardIntent {
 struct BotTacticalIntent {
     BotTacticalMode    mode;
     BotMoveRequestType moveType;
+    BotStuckPolicy     stuckPolicy;
     Vector             moveTarget;
     Vector             preferredDir;
     float              radius;
@@ -550,13 +576,14 @@ struct BotTacticalIntent {
     bool               run;
     bool               anchorActive;
     bool               anchorReturning;
-    bool               lockPosition;   // Prevent combat from overwriting the move (at anchor with visible enemy)
+    bool               lockPosition; // Prevent combat from overwriting the move (at anchor with visible enemy)
     bool               updatedLastFireTime;
 
     void reset()
     {
         mode                = BotTacticalMode::None;
         moveType            = BotMoveRequestType::None;
+        stuckPolicy         = BotStuckPolicy::TrackAndGiveUp;
         moveTarget          = vec_zero;
         preferredDir        = vec_zero;
         radius              = 0.0f;
@@ -580,6 +607,7 @@ struct BotResolvedCommand {
     BotTacticalMode    tacticalMode;
     BotHazardMode      hazardMode;
     BotMoveRequestType moveType;
+    BotStuckPolicy     stuckPolicy;
     Vector             moveTarget;
     Vector             preferredDir;
     float              radius;
@@ -602,6 +630,7 @@ struct BotResolvedCommand {
         tacticalMode        = BotTacticalMode::None;
         hazardMode          = BotHazardMode::None;
         moveType            = BotMoveRequestType::None;
+        stuckPolicy         = BotStuckPolicy::TrackAndGiveUp;
         moveTarget          = vec_zero;
         preferredDir        = vec_zero;
         radius              = 0.0f;
@@ -643,13 +672,13 @@ private:
     bool       m_bFirstSpawn;
 
     // Grouped state structs (prevents partial-reset bugs)
-    BotCombatState   m_combat;
-    BotEnemyState    m_enemy;
-    BotCuriousState  m_curious;
-    BotGrenadeState  m_grenade;
+    BotCombatState    m_combat;
+    BotEnemyState     m_enemy;
+    BotCuriousState   m_curious;
+    BotGrenadeState   m_grenade;
     BotOverwatchState m_overwatch;
-    BotIdleBehavior  m_idle;
-    BotReactionState m_reaction;
+    BotIdleBehavior   m_idle;
+    BotReactionState  m_reaction;
 
     // Input
     usercmd_t  m_botCmd;
@@ -661,9 +690,9 @@ private:
     ScriptThreadLabel m_RunLabel;
 
     // Taunts
-    int m_iNextTauntTime;
-    int m_iLastFireTime;
-    int m_iLastPosDebugTime;
+    int               m_iNextTauntTime;
+    int               m_iLastFireTime;
+    int               m_iLastPosDebugTime;
     BotEngagementMode m_engagementMode;
     BotTacticalMode   m_tacticalMode;
     BotHazardMode     m_hazardMode;
@@ -720,25 +749,22 @@ private:
     void        State_BeginWeapon(void);
     void        State_Weapon(void);
 
-    void CheckStates(void);
+    void                  CheckStates(void);
     BotPerceptionSnapshot BuildPerceptionSnapshot(void);
-    void                 UpdateModeTransitions(const BotPerceptionSnapshot& snapshot);
-    BotCombatIntent      BuildCombatIntent(const BotPerceptionSnapshot& snapshot);
-    BotHazardIntent      BuildHazardIntent(const BotPerceptionSnapshot& snapshot);
-    BotTacticalIntent    BuildTacticalIntent(const BotPerceptionSnapshot& snapshot);
-    BotResolvedCommand   ResolveIntents(
-          const BotCombatIntent&   combat,
-          const BotHazardIntent&   hazard,
-          const BotTacticalIntent& tactical
-      );
-    void ExecuteResolvedCommand(const BotResolvedCommand& command);
-    void DebugResolvedCommand(const BotResolvedCommand& command) const;
-    void ApplyButtonAction(int buttonMask, BotButtonAction action);
+    void                  UpdateModeTransitions(const BotPerceptionSnapshot& snapshot);
+    BotCombatIntent       BuildCombatIntent(const BotPerceptionSnapshot& snapshot);
+    BotHazardIntent       BuildHazardIntent(const BotPerceptionSnapshot& snapshot);
+    BotTacticalIntent     BuildTacticalIntent(const BotPerceptionSnapshot& snapshot);
+    BotResolvedCommand
+    ResolveIntents(const BotCombatIntent& combat, const BotHazardIntent& hazard, const BotTacticalIntent& tactical);
+    void        ExecuteResolvedCommand(const BotResolvedCommand& command);
+    void        DebugResolvedCommand(const BotResolvedCommand& command) const;
+    void        ApplyButtonAction(int buttonMask, BotButtonAction action);
     const char *GetEngagementModeName(BotEngagementMode mode) const;
     const char *GetTacticalModeName(BotTacticalMode mode) const;
     const char *GetHazardModeName(BotHazardMode mode) const;
-    void   ClearOverwatchAnchor(const char *reason, bool startCooldown);
-    Vector ProbeLOSPosition(const Vector& targetPos);
+    void        ClearOverwatchAnchor(const char *reason, bool startCooldown);
+    Vector      ProbeLOSPosition(const Vector& targetPos);
 
 public:
     CLASS_PROTOTYPE(BotController);

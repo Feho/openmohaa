@@ -83,11 +83,11 @@ BotController::BotController()
     m_iLastFireTime     = 0;
     m_iLastPosDebugTime = 0;
 
-    m_StateFlags      = 0;
-    m_bFirstSpawn     = true;
-    m_engagementMode  = BotEngagementMode::None;
-    m_tacticalMode    = BotTacticalMode::None;
-    m_hazardMode      = BotHazardMode::None;
+    m_StateFlags     = 0;
+    m_bFirstSpawn    = true;
+    m_engagementMode = BotEngagementMode::None;
+    m_tacticalMode   = BotTacticalMode::None;
+    m_hazardMode     = BotHazardMode::None;
 }
 
 BotController::~BotController()
@@ -293,28 +293,28 @@ BotPerceptionSnapshot BotController::BuildPerceptionSnapshot(void)
         m_reaction.reset();
     }
 
-    snapshot.attackActive    = CheckCondition_Attack();
-    snapshot.curiousActive   = !snapshot.attackActive && CheckCondition_Curious();
-    snapshot.grenadeActive   = CheckCondition_Grenade();
-    snapshot.overwatchActive = CheckCondition_Overwatch();
-    snapshot.idleActive      = CheckCondition_Idle();
-    snapshot.moving          = movement.IsMoving();
-    snapshot.anchorActive    = (m_overwatch.dwellUntil > level.inttime);
-    snapshot.anchorDistSq    = FLT_MAX;
+    snapshot.attackActive      = CheckCondition_Attack();
+    snapshot.curiousActive     = !snapshot.attackActive && CheckCondition_Curious();
+    snapshot.grenadeActive     = CheckCondition_Grenade();
+    snapshot.overwatchActive   = CheckCondition_Overwatch();
+    snapshot.idleActive        = CheckCondition_Idle();
+    snapshot.moving            = movement.IsMoving();
+    snapshot.anchorActive      = (m_overwatch.dwellUntil > level.inttime);
+    snapshot.anchorDistSq      = FLT_MAX;
     snapshot.enemyAnchorDistSq = FLT_MAX;
 
     if (snapshot.anchorActive) {
-        Vector flatOffset = controlledEnt->origin - m_overwatch.standPos;
-        flatOffset.z      = 0;
+        Vector flatOffset     = controlledEnt->origin - m_overwatch.standPos;
+        flatOffset.z          = 0;
         snapshot.anchorDistSq = flatOffset.lengthSquared();
 
         if (m_enemy.enemy && IsValidEnemy(m_enemy.enemy)) {
-            Vector enemyOffset = m_enemy.enemy->origin - m_overwatch.standPos;
-            enemyOffset.z      = 0;
+            Vector enemyOffset         = m_enemy.enemy->origin - m_overwatch.standPos;
+            enemyOffset.z              = 0;
             snapshot.enemyAnchorDistSq = enemyOffset.lengthSquared();
         } else if (m_enemy.lastPos != vec_zero) {
-            Vector enemyOffset = m_enemy.lastPos - m_overwatch.standPos;
-            enemyOffset.z      = 0;
+            Vector enemyOffset         = m_enemy.lastPos - m_overwatch.standPos;
+            enemyOffset.z              = 0;
             snapshot.enemyAnchorDistSq = enemyOffset.lengthSquared();
         }
     }
@@ -334,16 +334,16 @@ void BotController::ClearOverwatchAnchor(const char *reason, bool startCooldown)
 
     botManager.GetTacticalMemory().ReleaseOccupant(controlledEnt ? controlledEnt->entnum : -1);
 
-    m_overwatch.windowPos       = vec_zero;
-    m_overwatch.standPos        = vec_zero;
-    m_overwatch.lookDir         = vec_zero;
-    m_overwatch.anchorPos       = vec_zero;
-    m_overwatch.dwellUntil      = 0;
-    m_overwatch.scanTime        = 0;
-    m_overwatch.displacedSince  = 0;
-    m_overwatch.committedSince  = 0;
-    m_overwatch.pathFailCount   = 0;
-    m_overwatch.spotIndex       = -1;
+    m_overwatch.windowPos      = vec_zero;
+    m_overwatch.standPos       = vec_zero;
+    m_overwatch.lookDir        = vec_zero;
+    m_overwatch.anchorPos      = vec_zero;
+    m_overwatch.dwellUntil     = 0;
+    m_overwatch.scanTime       = 0;
+    m_overwatch.displacedSince = 0;
+    m_overwatch.committedSince = 0;
+    m_overwatch.pathFailCount  = 0;
+    m_overwatch.spotIndex      = -1;
 }
 
 void BotController::UpdateModeTransitions(const BotPerceptionSnapshot& snapshot)
@@ -466,8 +466,15 @@ Vector BotController::ProbeLOSPosition(const Vector& targetPos)
             candidate.z      = controlledEnt->origin.z;
 
             if (G_SightTrace(
-                    candidate + eyeOffset, vec_zero, vec_zero, targetEye,
-                    controlledEnt, (Entity *)NULL, MASK_CANSEE, false, "ProbeLOSPosition"
+                    candidate + eyeOffset,
+                    vec_zero,
+                    vec_zero,
+                    targetEye,
+                    controlledEnt,
+                    (Entity *)NULL,
+                    MASK_CANSEE,
+                    false,
+                    "ProbeLOSPosition"
                 )) {
                 sightPassed[numSightPassed++] = candidate;
             }
@@ -488,9 +495,9 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
     intent.reset();
 
     if (snapshot.attackActive) {
-        bool    bMelee              = false;
-        bool    bCanSee             = false;
-        bool    bCanAttack          = false;
+        bool    bMelee     = false;
+        bool    bCanSee    = false;
+        bool    bCanAttack = false;
         float   fEnemyDistanceSquared;
         float   fDistanceSquared = 0.0f;
         Weapon *pWeap            = controlledEnt->GetActiveWeapon(WEAPON_MAIN);
@@ -501,10 +508,10 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
 
         if (!m_enemy.enemy || !IsValidEnemy(m_enemy.enemy)) {
             if (level.inttime < m_combat.attackStopAimTime && m_enemy.lastPos != vec_zero) {
-                intent.aimType     = BotAimDirective::AimAtPoint;
-                intent.aimTarget   = m_enemy.lastPos;
-                intent.attackLeft  = BotButtonAction::Clear;
-                intent.attackRight = BotButtonAction::Clear;
+                intent.aimType      = BotAimDirective::AimAtPoint;
+                intent.aimTarget    = m_enemy.lastPos;
+                intent.attackLeft   = BotButtonAction::Clear;
+                intent.attackRight  = BotButtonAction::Clear;
                 m_combat.attackTime = level.inttime + 200 + (int)G_Random(300);
                 return intent;
             }
@@ -517,10 +524,9 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
         fDistanceSquared = (m_enemy.enemy->origin - controlledEnt->origin).lengthSquared();
         m_enemy.oldPos   = m_enemy.lastPos;
 
-        float visionDist = Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828) * m_profile.visionDistanceMult;
-        bCanSee = controlledEnt->CanSee(
-            m_enemy.enemy, 120, visionDist, false
-        );
+        float visionDist =
+            Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828) * m_profile.visionDistanceMult;
+        bCanSee = controlledEnt->CanSee(m_enemy.enemy, 120, visionDist, false);
 
         if (bCanSee) {
             if (!pWeap) {
@@ -551,7 +557,7 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
                 float     fSecondaryBulletRange        = pWeap->GetBulletRange(FIRE_SECONDARY);
                 float     fSecondaryBulletRangeSquared = fSecondaryBulletRange * fSecondaryBulletRange;
                 const int maxcontinuousFireTime        = fireDelay + m_profile.continuousFireMinTime * 1000
-                                                 + G_Random(m_profile.continuousFireRandomTime * 1000);
+                                                + G_Random(m_profile.continuousFireRandomTime * 1000);
                 const int maxBurstTime =
                     fireDelay + m_profile.burstMinTime * 1000 + G_Random(m_profile.burstRandomDelay * 1000);
 
@@ -598,8 +604,8 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
                             bFiring           = true;
                             intent.attackLeft = BotButtonAction::Toggle;
                             if (pWeap->GetZoom()) {
-                                intent.attackRight = controlledEnt->IsZoomed() ? BotButtonAction::Clear
-                                                                                : BotButtonAction::Hold;
+                                intent.attackRight =
+                                    controlledEnt->IsZoomed() ? BotButtonAction::Clear : BotButtonAction::Hold;
                             }
                         }
                     } else {
@@ -638,10 +644,9 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
                 }
 
                 if (bMelee) {
-                    intent.attackLeft = BotButtonAction::Clear;
-                    intent.attackRight =
-                        (fDistanceSquared <= fSecondaryBulletRangeSquared) ? BotButtonAction::Toggle
-                                                                           : BotButtonAction::Clear;
+                    intent.attackLeft  = BotButtonAction::Clear;
+                    intent.attackRight = (fDistanceSquared <= fSecondaryBulletRangeSquared) ? BotButtonAction::Toggle
+                                                                                            : BotButtonAction::Clear;
                 }
 
                 if (intent.attackLeft == BotButtonAction::Toggle || intent.attackLeft == BotButtonAction::Hold
@@ -742,7 +747,7 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
         if (bCanSee && m_combat.standingStill) {
             if (level.inttime >= m_idle.leanTime) {
                 m_idle.leanTime = level.inttime + 1500 + (int)G_Random(2000);
-                int roll = rand() % 5;
+                int roll        = rand() % 5;
                 if (roll < 2) {
                     m_idle.leanDir = -1;
                 } else if (roll < 4) {
@@ -818,7 +823,8 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
             Vector moveTarget = m_enemy.lastPos;
 
             if (!bCanSee && !bMelee) {
-                if (m_combat.losRecoverTime == 0 || (m_combat.losRecoverPos == vec_zero && level.inttime >= m_combat.losRecoverTime + 500)) {
+                if (m_combat.losRecoverTime == 0
+                    || (m_combat.losRecoverPos == vec_zero && level.inttime >= m_combat.losRecoverTime + 500)) {
                     m_combat.losRecoverPos  = ProbeLOSPosition(m_enemy.lastPos);
                     m_combat.losRecoverTime = level.inttime;
 
@@ -832,10 +838,7 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
                                 m_combat.losRecoverPos.z
                             );
                         } else {
-                            gi.Printf(
-                                "BOT %s: Combat LOS probe - no pos found\n",
-                                controlledEnt->client->pers.netname
-                            );
+                            gi.Printf("BOT %s: Combat LOS probe - no pos found\n", controlledEnt->client->pers.netname);
                         }
                     }
                 }
@@ -844,8 +847,9 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
                 }
             }
 
-            intent.moveType   = BotMoveRequestType::MoveTo;
-            intent.moveTarget = moveTarget;
+            intent.moveType    = BotMoveRequestType::MoveTo;
+            intent.stuckPolicy = BotStuckPolicy::TrackAndRecover;
+            intent.moveTarget  = moveTarget;
 
             if (!bCanSee && movement.MoveDone()) {
                 ClearEnemy();
@@ -924,16 +928,12 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
             // Scan phase: arrived at target, now holding and looking around before clearing.
             if (level.inttime >= m_curious.scanUntil) {
                 beliefMap.ClearZone(m_curious.targetPos != vec_zero ? m_curious.targetPos : controlledEnt->origin);
-                m_curious.time     = 0;
+                m_curious.time      = 0;
                 m_curious.scanUntil = 0;
             } else {
                 // Hold position; look at a random nearby point each scan tick.
                 if (m_reaction.lookUntil < level.inttime) {
-                    Vector scanDir(
-                        G_CRandom() * 512.0f,
-                        G_CRandom() * 512.0f,
-                        G_CRandom() * 64.0f
-                    );
+                    Vector scanDir(G_CRandom() * 512.0f, G_CRandom() * 512.0f, G_CRandom() * 64.0f);
                     m_reaction.lookPos   = controlledEnt->origin + scanDir;
                     m_reaction.lookUntil = level.inttime + 600 + (int)G_Random(600);
                 }
@@ -944,8 +944,9 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
         }
 
         if (movement.MoveDone()) {
-            const Vector& arrivalRef = (m_curious.losProbePos != vec_zero) ? m_curious.losProbePos : m_curious.targetPos;
-            float         distToTarget = (arrivalRef - controlledEnt->origin).length();
+            const Vector& arrivalRef =
+                (m_curious.losProbePos != vec_zero) ? m_curious.losProbePos : m_curious.targetPos;
+            float distToTarget = (arrivalRef - controlledEnt->origin).length();
             if (distToTarget < 256) {
                 // Start scan pause instead of immediately clearing.
                 m_curious.scanUntil = level.inttime + 1500 + (int)G_Random(500);
@@ -978,6 +979,7 @@ BotHazardIntent BotController::BuildHazardIntent(const BotPerceptionSnapshot& sn
 
     intent.mode         = BotHazardMode::Grenade;
     intent.moveType     = BotMoveRequestType::AvoidPath;
+    intent.stuckPolicy  = BotStuckPolicy::Ignore;
     intent.moveTarget   = m_grenade.grenade->origin;
     intent.preferredDir = controlledEnt->origin - m_grenade.grenade->origin;
     VectorNormalizeFast(intent.preferredDir);
@@ -998,7 +1000,8 @@ BotTacticalIntent BotController::BuildTacticalIntent(const BotPerceptionSnapshot
             return intent;
         }
 
-        intent.mode = BotTacticalMode::Overwatch;
+        intent.mode         = BotTacticalMode::Overwatch;
+        intent.stuckPolicy  = BotStuckPolicy::Ignore;
         intent.anchorActive = true;
 
         const float holdRadiusSq    = Square(16.0f);
@@ -1042,26 +1045,22 @@ BotTacticalIntent BotController::BuildTacticalIntent(const BotPerceptionSnapshot
                 intent.moveType   = BotMoveRequestType::MoveTo;
                 intent.moveTarget = m_overwatch.standPos;
             } else {
-                intent.clearMove            = true;
-                m_overwatch.displacedSince  = 0;
-                m_overwatch.pathFailCount   = 0;
+                intent.clearMove           = true;
+                m_overwatch.displacedSince = 0;
+                m_overwatch.pathFailCount  = 0;
 
                 if (m_overwatch.committedSince == 0) {
                     m_overwatch.committedSince = level.inttime;
                     botManager.GetTacticalMemory().TryRecordSpot(
-                        m_overwatch.standPos,
-                        m_overwatch.lookDir,
-                        (int)controlledEnt->GetTeam(),
-                        controlledEnt
+                        m_overwatch.standPos, m_overwatch.lookDir, (int)controlledEnt->GetTeam(), controlledEnt
                     );
                 }
 
                 // At the anchor with a visible enemy: lock position so combat strafing
                 // doesn't push the bot off the window.
                 if (snapshot.attackActive && m_enemy.enemy) {
-                    float visionDist =
-                        Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828f)
-                        * m_profile.visionDistanceMult;
+                    float visionDist = Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828f)
+                                     * m_profile.visionDistanceMult;
                     if (controlledEnt->CanSee(m_enemy.enemy, 120, visionDist, false)) {
                         intent.lockPosition = true;
                     }
@@ -1138,7 +1137,7 @@ BotTacticalIntent BotController::BuildTacticalIntent(const BotPerceptionSnapshot
                 } else {
                     Vector lookAngles = controlledEnt->angles;
                     lookAngles.y += G_CRandom(90);
-                    lookAngles.x = G_CRandom(15);
+                    lookAngles.x     = G_CRandom(15);
                     intent.aimType   = BotAimDirective::SetAngles;
                     intent.aimAngles = lookAngles;
                 }
@@ -1187,7 +1186,14 @@ BotTacticalIntent BotController::BuildTacticalIntent(const BotPerceptionSnapshot
                 AngleVectors(tryAngles, forward, NULL, NULL);
 
                 trace_t tr = G_Trace(
-                    eyePos, vec_zero, vec_zero, eyePos + forward * 4096.0f, controlledEnt, MASK_SOLID, false, "BotPatrolScan"
+                    eyePos,
+                    vec_zero,
+                    vec_zero,
+                    eyePos + forward * 4096.0f,
+                    controlledEnt,
+                    MASK_SOLID,
+                    false,
+                    "BotPatrolScan"
                 );
 
                 if (tr.fraction > 0 && (tr.endpos - eyePos).lengthSquared() >= Square(256)) {
@@ -1249,8 +1255,9 @@ BotTacticalIntent BotController::BuildTacticalIntent(const BotPerceptionSnapshot
     return intent;
 }
 
-BotResolvedCommand
-BotController::ResolveIntents(const BotCombatIntent& combat, const BotHazardIntent& hazard, const BotTacticalIntent& tactical)
+BotResolvedCommand BotController::ResolveIntents(
+    const BotCombatIntent& combat, const BotHazardIntent& hazard, const BotTacticalIntent& tactical
+)
 {
     BotResolvedCommand resolved;
     resolved.reset();
@@ -1260,16 +1267,17 @@ BotController::ResolveIntents(const BotCombatIntent& combat, const BotHazardInte
     resolved.hazardMode     = hazard.mode;
     resolved.attackLeft     = BotButtonAction::Clear;
     resolved.attackRight    = BotButtonAction::Clear;
-    resolved.run     = !(m_idle.pausing || m_combat.standingStill || m_idle.walking);
-    resolved.leanDir = m_idle.leanDir;
+    resolved.run            = !(m_idle.pausing || m_combat.standingStill || m_idle.walking);
+    resolved.leanDir        = m_idle.leanDir;
 
     if (hazard.mode != BotHazardMode::None) {
-        resolved.hazardMode    = hazard.mode;
-        resolved.moveType      = hazard.moveType;
-        resolved.moveTarget    = hazard.moveTarget;
-        resolved.preferredDir  = hazard.preferredDir;
-        resolved.radius        = hazard.radius;
-        resolved.clearMove     = hazard.clearMove;
+        resolved.hazardMode   = hazard.mode;
+        resolved.moveType     = hazard.moveType;
+        resolved.stuckPolicy  = hazard.stuckPolicy;
+        resolved.moveTarget   = hazard.moveTarget;
+        resolved.preferredDir = hazard.preferredDir;
+        resolved.radius       = hazard.radius;
+        resolved.clearMove    = hazard.clearMove;
     }
 
     if (tactical.mode != BotTacticalMode::None) {
@@ -1282,6 +1290,7 @@ BotController::ResolveIntents(const BotCombatIntent& combat, const BotHazardInte
 
         if (resolved.moveType == BotMoveRequestType::None && tactical.moveType != BotMoveRequestType::None) {
             resolved.moveType     = tactical.moveType;
+            resolved.stuckPolicy  = tactical.stuckPolicy;
             resolved.moveTarget   = tactical.moveTarget;
             resolved.preferredDir = tactical.preferredDir;
             resolved.radius       = tactical.radius;
@@ -1297,7 +1306,7 @@ BotController::ResolveIntents(const BotCombatIntent& combat, const BotHazardInte
     }
 
     if (combat.mode != BotEngagementMode::None) {
-        resolved.engagementMode       = combat.mode;
+        resolved.engagementMode      = combat.mode;
         resolved.attackLeft          = combat.attackLeft;
         resolved.attackRight         = combat.attackRight;
         resolved.rightmove           = tactical.lockPosition ? 0 : combat.rightmove;
@@ -1308,6 +1317,7 @@ BotController::ResolveIntents(const BotCombatIntent& combat, const BotHazardInte
 
         if (combat.moveType != BotMoveRequestType::None && !tactical.lockPosition) {
             resolved.moveType     = combat.moveType;
+            resolved.stuckPolicy  = combat.stuckPolicy;
             resolved.moveTarget   = combat.moveTarget;
             resolved.preferredDir = combat.preferredDir;
             resolved.radius       = combat.radius;
@@ -1322,7 +1332,8 @@ BotController::ResolveIntents(const BotCombatIntent& combat, const BotHazardInte
         }
     }
 
-    if (resolved.aimType == BotAimDirective::None && m_reaction.lookUntil > level.inttime && m_reaction.lookPos != vec_zero) {
+    if (resolved.aimType == BotAimDirective::None && m_reaction.lookUntil > level.inttime
+        && m_reaction.lookPos != vec_zero) {
         resolved.aimType   = BotAimDirective::AimAtPoint;
         resolved.aimTarget = m_reaction.lookPos;
         if (m_reaction.clearMove) {
@@ -1339,11 +1350,12 @@ void BotController::DebugResolvedCommand(const BotResolvedCommand& command) cons
     if (m_overwatch.dwellUntil > level.inttime) {
         Vector flatOffset = controlledEnt->origin - m_overwatch.standPos;
         flatOffset.z      = 0;
-        anchorDist = sqrtf(flatOffset.lengthSquared());
+        anchorDist        = sqrtf(flatOffset.lengthSquared());
     }
 
     gi.Printf(
-        "BOT %s: resolved engagement=%s tactical=%s hazard=%s move=%d aim=%d rm=%d um=%d clear=%d anchor=%d dist=%.0f returning=%d\n",
+        "BOT %s: resolved engagement=%s tactical=%s hazard=%s move=%d aim=%d rm=%d um=%d clear=%d anchor=%d dist=%.0f "
+        "returning=%d\n",
         controlledEnt->client->pers.netname,
         GetEngagementModeName(command.engagementMode),
         GetTacticalModeName(command.tacticalMode),
@@ -1374,13 +1386,13 @@ void BotController::ExecuteResolvedCommand(const BotResolvedCommand& command)
         movement.ClearMove();
         break;
     case BotMoveRequestType::MoveTo:
-        movement.MoveTo(command.moveTarget);
+        movement.MoveTo(command.moveTarget, command.stuckPolicy);
         break;
     case BotMoveRequestType::MoveNear:
-        movement.MoveNear(command.moveTarget, command.radius);
+        movement.MoveNear(command.moveTarget, command.radius, command.stuckPolicy);
         break;
     case BotMoveRequestType::AvoidPath:
-        movement.AvoidPath(command.moveTarget, command.radius, command.preferredDir);
+        movement.AvoidPath(command.moveTarget, command.radius, command.preferredDir, command.stuckPolicy);
         break;
     case BotMoveRequestType::None:
     default:
@@ -2013,19 +2025,12 @@ void BotController::Spawned(void)
     if (m_bFirstSpawn) {
         m_profile = botProfileManager.PickProfile(g_bot_profile_override->string);
         rotation.SetAimParameters(
-            m_profile.turnSpeed,
-            m_profile.aimNoise,
-            m_profile.aimOvershoot,
-            m_profile.aimSettleSpeed
+            m_profile.turnSpeed, m_profile.aimNoise, m_profile.aimOvershoot, m_profile.aimSettleSpeed
         );
         m_bFirstSpawn = false;
 
         if (g_bot_debug_state->integer) {
-            gi.Printf(
-                "BOT %s: assigned profile '%s'\n",
-                controlledEnt->client->pers.netname,
-                m_profile.name.c_str()
-            );
+            gi.Printf("BOT %s: assigned profile '%s'\n", controlledEnt->client->pers.netname, m_profile.name.c_str());
         }
     }
 
@@ -2083,8 +2088,7 @@ void BotController::Killed(const Event& ev)
     ApplyProfilePrimaryWeapon(true);
 
     const char *userinfo = controlledEnt->client->pers.userinfo;
-    if (!Info_ValueForKey(userinfo, "dm_playermodel")[0]
-        || !Info_ValueForKey(userinfo, "dm_playergermanmodel")[0]) {
+    if (!Info_ValueForKey(userinfo, "dm_playermodel")[0] || !Info_ValueForKey(userinfo, "dm_playergermanmodel")[0]) {
         //
         // This is useful to change nationality in Spearhead and Breakthrough
         // this allows the AI to use more weapons
@@ -2236,12 +2240,24 @@ void BotController::setControlledEntity(Player *player)
                 PlayerStart *spawn = teams[t]->m_spawnpoints.ObjectAt(i);
                 Vector       pos   = spawn->origin;
 
-                if (pos.x < mapMins.x) mapMins.x = pos.x;
-                if (pos.y < mapMins.y) mapMins.y = pos.y;
-                if (pos.z < mapMins.z) mapMins.z = pos.z;
-                if (pos.x > mapMaxs.x) mapMaxs.x = pos.x;
-                if (pos.y > mapMaxs.y) mapMaxs.y = pos.y;
-                if (pos.z > mapMaxs.z) mapMaxs.z = pos.z;
+                if (pos.x < mapMins.x) {
+                    mapMins.x = pos.x;
+                }
+                if (pos.y < mapMins.y) {
+                    mapMins.y = pos.y;
+                }
+                if (pos.z < mapMins.z) {
+                    mapMins.z = pos.z;
+                }
+                if (pos.x > mapMaxs.x) {
+                    mapMaxs.x = pos.x;
+                }
+                if (pos.y > mapMaxs.y) {
+                    mapMaxs.y = pos.y;
+                }
+                if (pos.z > mapMaxs.z) {
+                    mapMaxs.z = pos.z;
+                }
                 totalSpawns++;
             }
         }

@@ -33,12 +33,13 @@ BotMovement::BotMovement()
     m_pPath         = NULL;
     m_iLastMoveTime = 0;
     m_fAttractTime  = 0;
-    m_bPathing       = false;
+    m_bPathing      = false;
 
     m_stuck.reset();
     m_collision.reset();
     m_jump.reset();
-    m_bGaveUp = false;
+    m_bGaveUp     = false;
+    m_stuckPolicy = BotStuckPolicy::TrackAndGiveUp;
 
     for (int i = 0; i < BOT_BANNED_ZONES_MAX; i++) {
         m_bannedZones[i].expireTime = 0;
@@ -113,10 +114,10 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
         G_DebugLine(controlledEntity->centroid, m_vCurrentGoal + Vector(0, 0, 36), 1, 1, 0, 1);
     }
 
-    // Stuck detection: record position every second and compare against the
-    // oldest sample. If the bot hasn't moved 128u in BOT_STUCK_HISTORY seconds,
-    // ban the zone and flee.
-    if (level.inttime >= m_stuck.checkTime + 1000 && !controlledEntity->GetLadder()) {
+    // Combat pursuit still needs blocked-path recovery, but only patrol-style
+    // movement should blacklist goals and report a give-up back to the intent layer.
+    if (m_stuckPolicy != BotStuckPolicy::Ignore && level.inttime >= m_stuck.checkTime + 1000
+        && !controlledEntity->GetLadder()) {
         m_stuck.checkTime = level.inttime;
 
         const Vector& cur = controlledEntity->origin;
@@ -135,7 +136,9 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
             if (ai_debugpath->integer) {
                 gi.Printf(
                     "BOT[%d] stuck check: dist over %ds = %.0f\n",
-                    controlledEntity->entnum, BOT_STUCK_HISTORY, sqrtf(dist)
+                    controlledEntity->entnum,
+                    BOT_STUCK_HISTORY,
+                    sqrtf(dist)
                 );
             }
 
@@ -144,12 +147,14 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
                     gi.Printf(
                         "BOT[%d] STUCK at (%.0f %.0f %.0f) — banning zone\n",
                         controlledEntity->entnum,
-                        cur.x, cur.y, cur.z
+                        cur.x,
+                        cur.y,
+                        cur.z
                     );
                 }
                 BanCurrentZone();
                 AvoidPath(controlledEntity->origin, 512.0f);
-                m_bGaveUp = true;
+                m_bGaveUp = (m_stuckPolicy == BotStuckPolicy::TrackAndGiveUp);
                 m_stuck.reset();
             }
         }
@@ -467,7 +472,12 @@ Avoid the specified position within the radius and start from a direction
 ====================
 */
 bool BotMovement::AvoidPath(
-    Vector vAvoid, float fAvoidRadius, Vector vPreferredDir, float *vLeashHome, float fLeashRadius
+    Vector         vAvoid,
+    float          fAvoidRadius,
+    Vector         vPreferredDir,
+    BotStuckPolicy stuckPolicy,
+    float         *vLeashHome,
+    float          fLeashRadius
 )
 {
     Vector vDir;
@@ -491,6 +501,7 @@ bool BotMovement::AvoidPath(
         m_pPath = IPather::CreatePather();
     }
 
+    m_stuckPolicy = stuckPolicy;
     m_pPath->FindPathAway(controlledEntity->origin, vAvoid, vDir, fAvoidRadius, parameters);
 
     NewMove();
@@ -513,17 +524,19 @@ MoveNear
 Move near the specified position within the radius
 ====================
 */
-void BotMovement::MoveNear(Vector vNear, float fRadius, float *vLeashHome, float fLeashRadius)
+bool BotMovement::MoveNear(
+    Vector vNear, float fRadius, BotStuckPolicy stuckPolicy, float *vLeashHome, float fLeashRadius
+)
 {
-    if (IsPositionBanned(vNear)) {
+    if (stuckPolicy == BotStuckPolicy::TrackAndGiveUp && IsPositionBanned(vNear)) {
         if (ai_debugpath->integer) {
             gi.Printf(
-                "BOT[%d] MoveNear BANNED (%.0f %.0f %.0f)\n",
-                controlledEntity->entnum, vNear.x, vNear.y, vNear.z
+                "BOT[%d] MoveNear BANNED (%.0f %.0f %.0f)\n", controlledEntity->entnum, vNear.x, vNear.y, vNear.z
             );
         }
+        m_bGaveUp = true;
         ClearMove();
-        return;
+        return false;
     }
 
     PathSearchParameter parameters;
@@ -538,16 +551,29 @@ void BotMovement::MoveNear(Vector vNear, float fRadius, float *vLeashHome, float
         m_pPath = IPather::CreatePather();
     }
 
+    m_stuckPolicy = stuckPolicy;
     m_pPath->FindPathNear(controlledEntity->origin, vNear, fRadius, parameters);
     NewMove();
 
     if (!m_pPath->GetNodeCount()) {
         m_bPathing = false;
-        return;
+        return false;
+    }
+
+    if (stuckPolicy == BotStuckPolicy::TrackAndGiveUp && PathTouchesBannedZone()) {
+        if (ai_debugpath->integer) {
+            gi.Printf(
+                "BOT[%d] MoveNear PATH BANNED (%.0f %.0f %.0f)\n", controlledEntity->entnum, vNear.x, vNear.y, vNear.z
+            );
+        }
+        m_bGaveUp = true;
+        ClearMove();
+        return false;
     }
 
     m_iLastMoveTime = level.inttime;
     m_vTargetPos    = m_pPath->GetDestination();
+    return true;
 }
 
 /*
@@ -557,17 +583,15 @@ MoveTo
 Move to the specified position
 ====================
 */
-void BotMovement::MoveTo(Vector vPos, float *vLeashHome, float fLeashRadius)
+bool BotMovement::MoveTo(Vector vPos, BotStuckPolicy stuckPolicy, float *vLeashHome, float fLeashRadius)
 {
-    if (IsPositionBanned(vPos)) {
+    if (stuckPolicy == BotStuckPolicy::TrackAndGiveUp && IsPositionBanned(vPos)) {
         if (ai_debugpath->integer) {
-            gi.Printf(
-                "BOT[%d] MoveTo BANNED (%.0f %.0f %.0f)\n",
-                controlledEntity->entnum, vPos.x, vPos.y, vPos.z
-            );
+            gi.Printf("BOT[%d] MoveTo BANNED (%.0f %.0f %.0f)\n", controlledEntity->entnum, vPos.x, vPos.y, vPos.z);
         }
+        m_bGaveUp = true;
         ClearMove();
-        return;
+        return false;
     }
 
     m_vTargetPos = vPos;
@@ -584,17 +608,30 @@ void BotMovement::MoveTo(Vector vPos, float *vLeashHome, float fLeashRadius)
         m_pPath = IPather::CreatePather();
     }
 
+    m_stuckPolicy = stuckPolicy;
     m_pPath->FindPath(controlledEntity->origin, vPos, parameters);
 
     NewMove();
 
     if (!m_pPath->GetNodeCount()) {
         m_bPathing = false;
-        return;
+        return false;
+    }
+
+    if (stuckPolicy == BotStuckPolicy::TrackAndGiveUp && PathTouchesBannedZone()) {
+        if (ai_debugpath->integer) {
+            gi.Printf(
+                "BOT[%d] MoveTo PATH BANNED (%.0f %.0f %.0f)\n", controlledEntity->entnum, vPos.x, vPos.y, vPos.z
+            );
+        }
+        m_bGaveUp = true;
+        ClearMove();
+        return false;
     }
 
     m_iLastMoveTime = level.inttime;
     CheckEndPos(controlledEntity);
+    return true;
 }
 
 /*
@@ -708,7 +745,10 @@ void BotMovement::NewMove()
 {
     m_bPathing = true;
     m_bGaveUp  = false;
-    m_stuck.reset();
+
+    if (m_stuckPolicy != BotStuckPolicy::Ignore) {
+        m_stuck.reset();
+    }
 }
 
 void BotMovement::CalculateBestFrontAvoidance(
@@ -1018,6 +1058,52 @@ bool BotMovement::IsMoving() const
 bool BotMovement::WasGivenUp() const
 {
     return m_bGaveUp;
+}
+
+bool BotMovement::IsPathSegmentBanned(const Vector& start, const Vector& end) const
+{
+    Vector      segment      = end - start;
+    const float segmentLenSq = segment.lengthSquared();
+
+    for (int i = 0; i < BOT_BANNED_ZONES_MAX; i++) {
+        if (m_bannedZones[i].expireTime == 0 || m_bannedZones[i].expireTime <= level.inttime) {
+            continue;
+        }
+
+        Vector toZone = m_bannedZones[i].origin - start;
+
+        float frac = 0.0f;
+        if (segmentLenSq > 0.0f) {
+            frac = Q_clamp_float((toZone * segment) / segmentLenSq, 0.0f, 1.0f);
+        }
+
+        Vector closest = start + segment * frac;
+
+        if (Vector::DistanceSquared(closest, m_bannedZones[i].origin) <= Square(BOT_BANNED_ZONE_RADIUS)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool BotMovement::PathTouchesBannedZone() const
+{
+    if (!m_pPath || !m_pPath->GetNodeCount()) {
+        return false;
+    }
+
+    Vector prev = controlledEntity->origin;
+
+    for (int i = 0; i < m_pPath->GetNodeCount(); i++) {
+        const Vector next = m_pPath->GetNode(i).origin;
+        if (IsPathSegmentBanned(prev, next)) {
+            return true;
+        }
+        prev = next;
+    }
+
+    return IsPathSegmentBanned(prev, m_pPath->GetDestination());
 }
 
 bool BotMovement::IsPositionBanned(const Vector& pos) const
