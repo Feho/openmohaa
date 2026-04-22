@@ -12,10 +12,10 @@ The active bot system lives primarily in:
 - `playerbot_rotation.cpp`: aim and turn dynamics.
 - `playerbot_beliefs.h` / `playerbot_beliefs.cpp`: belief-map storage and patrol targeting.
 - `playerbot_strategy.h` / `playerbot_strategy.cpp`: strategy helpers layered on top of controller state.
+- `playerbot_profile.h` / `playerbot_profile.cpp`: `BotProfile` and `BotProfileManager` — per-bot behavioral parameters loaded from `main/bots/profiles/*.cfg`.
+- `playerbot_tactical_memory.h` / `playerbot_tactical_memory.cpp`: `BotTacticalMemory` — overwatch spot storage and scoring, shared across both teams per map.
 - `playerbot_master.cpp`: controller manager ownership and ticking.
 - `g_bot.cpp` / `g_bot.h`: bot creation, restoration, removal, and game-facing glue.
-
-Local experimental files such as `playerbot_visibility.*` are not part of the established runtime path unless they are wired in explicitly.
 
 ## Core Architecture
 
@@ -97,6 +97,15 @@ The belief map is persistent bot memory for likely enemy presence.
 - Decay and visibility clearing happen every frame.
 
 If you add new perception inputs, prefer feeding the belief map rather than adding separate one-off patrol heuristics.
+
+## Stuck Detection and Zone Banning
+
+`BotMovement` runs a sliding-window stuck check every second. When the bot's total displacement over the window falls below a threshold it is considered stuck. On getting stuck the movement layer calls back into `BotController`, which records a `BotBannedZone` (`m_bannedZones[]`) centered on the current position. Path planning skips waypoints whose closest approach falls inside any active banned zone. Bans expire after `BOT_BANNED_ZONE_DURATION_MS`; the oldest slot is recycled when the fixed-size array is full.
+
+Key invariants:
+- Stuck detection lives in `BotMovement`; zone recording lives in `BotController`.
+- Do not add new stuck workarounds outside this path — feed them through the same ban mechanism.
+- Chase recovery (re-engaging an enemy after losing LOS) is separate from stuck recovery and is managed in `BuildCombatIntent()`.
 
 ## Weapon Selection API
 
