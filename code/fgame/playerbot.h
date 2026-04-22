@@ -49,18 +49,22 @@ class BotController;
  * from obstacles before re-pathfinding. This struct groups all related state
  * so it can be reset atomically.
  */
-struct BotBlockedState {
-    int state;     // 0 = normal, 1 = detected block, 2 = backing away
-    int time;      // When current state began
-    int lastTime;  // When block was first detected
-    int numBlocks; // How many times we've been blocked (gives up after 5)
+static constexpr int BOT_STUCK_HISTORY = 5;
+
+struct BotStuckState {
+    Vector positions[BOT_STUCK_HISTORY]; // circular buffer, one sample per second
+    int    nextSlot;                     // index of the oldest sample (next to overwrite)
+    int    sampleCount;                  // samples recorded so far (0..BOT_STUCK_HISTORY)
+    int    checkTime;                    // level.inttime of the last sample
 
     void reset()
     {
-        state     = 0;
-        time      = 0;
-        lastTime  = 0;
-        numBlocks = 0;
+        for (int i = 0; i < BOT_STUCK_HISTORY; i++) {
+            positions[i] = vec_zero;
+        }
+        nextSlot    = 0;
+        sampleCount = 0;
+        checkTime   = 0;
     }
 };
 
@@ -101,6 +105,15 @@ struct BotJumpState {
     }
 };
 
+static constexpr int BOT_BANNED_ZONES_MAX    = 8;
+static constexpr int BOT_BANNED_ZONE_RADIUS  = 128;
+static constexpr int BOT_BANNED_ZONE_DURATION_MS = 120000; // 2 minutes
+
+struct BotBannedZone {
+    Vector origin;
+    int    expireTime; // level.inttime when the ban expires (0 = inactive)
+};
+
 class BotMovement
 {
 public:
@@ -111,7 +124,7 @@ public:
 
     void MoveThink(usercmd_t& botcmd);
 
-    void AvoidPath(
+    bool AvoidPath(
         Vector vPos,
         float  fAvoidRadius,
         Vector vPreferredDir = vec_zero,
@@ -125,6 +138,9 @@ public:
     bool   CanMoveTo(Vector vPos);
     bool   MoveDone() const;
     bool   IsMoving() const;
+    bool   WasGivenUp() const;
+    bool   IsPositionBanned(const Vector& pos) const;
+    void   ClearBannedZones();
     void   ClearMove();
     Vector GetCurrentGoal() const;
     Vector GetCurrentPathDirection() const;
@@ -159,15 +175,19 @@ private:
     Vector m_vTargetPos;
     Vector m_vCurrentGoal;
     Vector m_vCurrentDir;
-    Vector m_vLastCheckPos[2];
-    int    m_iCheckPathTime;
     float  m_fAttractTime;
     bool   m_bPathing;
+    bool   m_bGaveUp;
 
     // Grouped state structs (prevents partial-reset bugs)
-    BotBlockedState   m_blocked;
+    BotStuckState     m_stuck;
     BotCollisionState m_collision;
     BotJumpState      m_jump;
+
+    BotBannedZone m_bannedZones[BOT_BANNED_ZONES_MAX];
+
+private:
+    void BanCurrentZone();
 };
 
 class BotRotation

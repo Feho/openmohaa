@@ -992,6 +992,12 @@ BotTacticalIntent BotController::BuildTacticalIntent(const BotPerceptionSnapshot
     intent.reset();
 
     if (snapshot.anchorActive && snapshot.overwatchActive) {
+        if (movement.IsPositionBanned(m_overwatch.standPos)) {
+            ClearOverwatchAnchor("stand pos banned", true);
+            intent.reset();
+            return intent;
+        }
+
         intent.mode = BotTacticalMode::Overwatch;
         intent.anchorActive = true;
 
@@ -1192,6 +1198,23 @@ BotTacticalIntent BotController::BuildTacticalIntent(const BotPerceptionSnapshot
                 }
             }
         }
+    }
+
+    if (movement.WasGivenUp()) {
+        // The movement layer gave up after repeated blocks on the previous
+        // target. Discard it so the next intent picks somewhere different.
+        if (ai_debugpath->integer) {
+            gi.Printf(
+                "BOT[%d] WasGivenUp — clearing beliefPos=%s deathPos=%s\n",
+                controlledEnt->entnum,
+                beliefPos != vec_zero ? "yes" : "no",
+                m_enemy.deathPos != vec_zero ? "yes" : "no"
+            );
+        }
+        if (beliefPos != vec_zero) {
+            beliefMap.ClearZone(beliefPos);
+        }
+        m_enemy.deathPos = vec_zero;
     }
 
     if (!movement.IsMoving()) {
@@ -1975,6 +1998,8 @@ void BotController::Spawned(void)
     m_curious.reset();
     m_botCmd.buttons = 0;
     m_grenade.reset();
+    movement.ClearMove();
+    movement.ClearBannedZones();
     m_overwatch.reset();
     m_idle.reset();
     m_reaction.reset();

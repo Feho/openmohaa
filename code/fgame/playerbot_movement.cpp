@@ -30,15 +30,19 @@ BotMovement::BotMovement()
 {
     controlledEntity = NULL;
 
-    m_pPath          = NULL;
-    m_iLastMoveTime  = 0;
-    m_iCheckPathTime = 0;
-    m_fAttractTime   = 0;
+    m_pPath         = NULL;
+    m_iLastMoveTime = 0;
+    m_fAttractTime  = 0;
     m_bPathing       = false;
 
-    m_blocked.reset();
+    m_stuck.reset();
     m_collision.reset();
     m_jump.reset();
+    m_bGaveUp = false;
+
+    for (int i = 0; i < BOT_BANNED_ZONES_MAX; i++) {
+        m_bannedZones[i].expireTime = 0;
+    }
 }
 
 BotMovement::~BotMovement()
@@ -91,18 +95,6 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
         m_iLastMoveTime = level.inttime;
     }
 
-    if (m_blocked.state == 2 && level.inttime >= m_blocked.time + 750) {
-        m_blocked.state = 0;
-
-        PathSearchParameter parameters;
-        parameters.entity     = controlledEntity;
-        parameters.fallHeight = maxFallHeight;
-        m_pPath->FindPath(controlledEntity->origin, m_vTargetPos, parameters);
-
-        m_iLastMoveTime  = level.inttime;
-        m_iCheckPathTime = level.inttime;
-    }
-
     vDelta = m_pPath->GetCurrentDelta();
     vDelta = FixDeltaFromCollision(vDelta);
 
@@ -113,12 +105,6 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
         VectorAdd2D(m_vCurrentGoal, vDelta, m_vCurrentGoal);
 
         if (MoveDone()) {
-            // Fixed in OPM
-            //  Use ClearMove() to properly reset all movement state.
-            //  Previously only the path was cleared, leaving m_bPathing
-            //  true. This caused states to think the bot was still moving
-            //  and never issue new movement commands, trapping the bot in
-            //  random micro-movements from the fallback below.
             ClearMove();
         }
     }
@@ -127,81 +113,46 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
         G_DebugLine(controlledEntity->centroid, m_vCurrentGoal + Vector(0, 0, 36), 1, 1, 0, 1);
     }
 
-    // Check if we're blocked
-    if (level.inttime >= m_iCheckPathTime + 1000 && m_blocked.state != 2) {
-        bool blocked = false;
+    // Stuck detection: record position every second and compare against the
+    // oldest sample. If the bot hasn't moved 128u in BOT_STUCK_HISTORY seconds,
+    // ban the zone and flee.
+    if (level.inttime >= m_stuck.checkTime + 1000 && !controlledEntity->GetLadder()) {
+        m_stuck.checkTime = level.inttime;
 
-        m_iCheckPathTime = level.inttime;
+        const Vector& cur = controlledEntity->origin;
 
-        if (m_blocked.numBlocks >= 5) {
-            // Give up
-            ClearMove();
+        m_stuck.positions[m_stuck.nextSlot] = cur;
+        m_stuck.nextSlot                    = (m_stuck.nextSlot + 1) % BOT_STUCK_HISTORY;
+        if (m_stuck.sampleCount < BOT_STUCK_HISTORY) {
+            m_stuck.sampleCount++;
         }
 
-        if (!m_pPath->IsQuerying() && !controlledEntity->GetLadder()) {
-            if (controlledEntity->GetMoveResult() >= MOVERESULT_BLOCKED
-                || controlledEntity->velocity.lengthSquared() <= Square(8)) {
-                blocked = true;
-            } else if ((controlledEntity->origin - m_vLastCheckPos[0]).lengthSquared() <= Square(64)
-                       && (controlledEntity->origin - m_vLastCheckPos[1]).lengthSquared() <= Square(64)) {
-                blocked = true;
-            }
-        }
+        if (m_stuck.sampleCount == BOT_STUCK_HISTORY) {
+            // oldest sample is at nextSlot (already overwritten above, so compare to cur)
+            const Vector& oldest = m_stuck.positions[m_stuck.nextSlot];
+            const float   dist   = (cur - oldest).lengthSquared();
 
-        if (!blocked) {
-            m_blocked.state     = 0;
-            m_blocked.numBlocks = 0;
-
-            if (!m_pPath->GetNodeCount()) {
-                m_vTargetPos   = controlledEntity->origin + Vector(G_CRandom(512), G_CRandom(512), G_CRandom(512));
-                m_vCurrentGoal = m_vTargetPos;
-            }
-        } else if (m_blocked.state == 0) {
-            m_blocked.lastTime = level.inttime;
-            m_blocked.state    = 1;
-        }
-
-        if (m_blocked.state && level.inttime >= m_blocked.lastTime + 1000) {
-            Vector delta;
-            Vector dir;
-
-            m_blocked.state = 2;
-            m_blocked.time  = level.inttime;
-            m_blocked.numBlocks++;
-
-            // Try to backward a little
-            if (m_pPath->GetNodeCount()) {
-                delta = m_pPath->GetCurrentDelta();
-            } else {
-                delta = m_vTargetPos - controlledEntity->origin;
+            if (ai_debugpath->integer) {
+                gi.Printf(
+                    "BOT[%d] stuck check: dist over %ds = %.0f\n",
+                    controlledEntity->entnum, BOT_STUCK_HISTORY, sqrtf(dist)
+                );
             }
 
-            m_pPath->Clear();
-
-            if (m_blocked.numBlocks < 2) {
-                dir   = -delta;
-                dir.z = 0;
-                dir.normalize();
-
-                if (dir.x < -0.5 || dir.x > 0.5) {
-                    dir.x *= 4;
-                    dir.y /= 4;
-                } else if (dir.y < -0.5 || dir.y > 0.5) {
-                    dir.x /= 4;
-                    dir.y *= 4;
-                } else {
-                    dir.x = G_CRandom(2);
-                    dir.y = G_CRandom(2);
+            if (dist < Square(128)) {
+                if (ai_debugpath->integer) {
+                    gi.Printf(
+                        "BOT[%d] STUCK at (%.0f %.0f %.0f) — banning zone\n",
+                        controlledEntity->entnum,
+                        cur.x, cur.y, cur.z
+                    );
                 }
-
-                m_vCurrentGoal = controlledEntity->origin + delta + dir * 128;
-            } else {
-                m_vCurrentGoal = controlledEntity->origin + Vector(G_CRandom(512), G_CRandom(512), G_CRandom(512));
+                BanCurrentZone();
+                AvoidPath(controlledEntity->origin, 512.0f);
+                m_bGaveUp = true;
+                m_stuck.reset();
             }
         }
-
-        m_vLastCheckPos[1] = m_vLastCheckPos[0];
-        m_vLastCheckPos[0] = controlledEntity->origin;
     }
 
     if (ai_debugpath->integer) {
@@ -218,14 +169,12 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
         }
     }
 
-    if (m_pPath->GetNodeCount() || m_blocked.state != 0) {
+    if (m_pPath->GetNodeCount()) {
         if ((m_vTargetPos - controlledEntity->origin).lengthSquared() <= Square(16)) {
             ClearMove();
         }
     } else {
-        //if ((m_vTargetPos - controlledEntity->origin).lengthXYSquared() <= Square(16)) {
         ClearMove();
-        //}
     }
 
     // Rotate the dir
@@ -517,7 +466,7 @@ AvoidPath
 Avoid the specified position within the radius and start from a direction
 ====================
 */
-void BotMovement::AvoidPath(
+bool BotMovement::AvoidPath(
     Vector vAvoid, float fAvoidRadius, Vector vPreferredDir, float *vLeashHome, float fLeashRadius
 )
 {
@@ -547,14 +496,14 @@ void BotMovement::AvoidPath(
     NewMove();
 
     if (!m_pPath->GetNodeCount()) {
-        // Random movements
-        m_vTargetPos = controlledEntity->origin + Vector(G_Random(256) - 128, G_Random(256) - 128, G_Random(256) - 128);
-        m_vCurrentGoal = m_vTargetPos;
-        return;
+        // No escape node — leave pathing inactive so the caller can fall back.
+        m_bPathing = false;
+        return false;
     }
 
     m_iLastMoveTime = level.inttime;
     m_vTargetPos    = m_pPath->GetDestination();
+    return true;
 }
 
 /*
@@ -566,6 +515,17 @@ Move near the specified position within the radius
 */
 void BotMovement::MoveNear(Vector vNear, float fRadius, float *vLeashHome, float fLeashRadius)
 {
+    if (IsPositionBanned(vNear)) {
+        if (ai_debugpath->integer) {
+            gi.Printf(
+                "BOT[%d] MoveNear BANNED (%.0f %.0f %.0f)\n",
+                controlledEntity->entnum, vNear.x, vNear.y, vNear.z
+            );
+        }
+        ClearMove();
+        return;
+    }
+
     PathSearchParameter parameters;
     parameters.entity     = controlledEntity;
     parameters.fallHeight = maxFallHeight;
@@ -599,6 +559,17 @@ Move to the specified position
 */
 void BotMovement::MoveTo(Vector vPos, float *vLeashHome, float fLeashRadius)
 {
+    if (IsPositionBanned(vPos)) {
+        if (ai_debugpath->integer) {
+            gi.Printf(
+                "BOT[%d] MoveTo BANNED (%.0f %.0f %.0f)\n",
+                controlledEntity->entnum, vPos.x, vPos.y, vPos.z
+            );
+        }
+        ClearMove();
+        return;
+    }
+
     m_vTargetPos = vPos;
 
     PathSearchParameter parameters;
@@ -735,9 +706,9 @@ Called when there is a new move
 */
 void BotMovement::NewMove()
 {
-    m_bPathing         = true;
-    m_vLastCheckPos[0] = controlledEntity->origin;
-    m_vLastCheckPos[1] = controlledEntity->origin;
+    m_bPathing = true;
+    m_bGaveUp  = false;
+    m_stuck.reset();
 }
 
 void BotMovement::CalculateBestFrontAvoidance(
@@ -1020,10 +991,6 @@ bool BotMovement::MoveDone() const
         return true;
     }
 
-    if (m_blocked.state != 0) {
-        return false;
-    }
-
     if (!m_pPath->GetNodeCount()) {
         return true;
     }
@@ -1048,6 +1015,54 @@ bool BotMovement::IsMoving() const
     return m_bPathing;
 }
 
+bool BotMovement::WasGivenUp() const
+{
+    return m_bGaveUp;
+}
+
+bool BotMovement::IsPositionBanned(const Vector& pos) const
+{
+    for (int i = 0; i < BOT_BANNED_ZONES_MAX; i++) {
+        if (m_bannedZones[i].expireTime == 0) {
+            continue;
+        }
+        if (m_bannedZones[i].expireTime <= level.inttime) {
+            continue;
+        }
+        if (Vector::DistanceSquared(m_bannedZones[i].origin, pos) <= Square(BOT_BANNED_ZONE_RADIUS)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void BotMovement::ClearBannedZones()
+{
+    for (int i = 0; i < BOT_BANNED_ZONES_MAX; i++) {
+        m_bannedZones[i].expireTime = 0;
+    }
+}
+
+void BotMovement::BanCurrentZone()
+{
+    int oldestIdx  = 0;
+    int oldestTime = m_bannedZones[0].expireTime;
+
+    for (int i = 1; i < BOT_BANNED_ZONES_MAX; i++) {
+        if (m_bannedZones[i].expireTime == 0) {
+            oldestIdx = i;
+            break;
+        }
+        if (m_bannedZones[i].expireTime < oldestTime) {
+            oldestTime = m_bannedZones[i].expireTime;
+            oldestIdx  = i;
+        }
+    }
+
+    m_bannedZones[oldestIdx].origin     = controlledEntity->origin;
+    m_bannedZones[oldestIdx].expireTime = level.inttime + BOT_BANNED_ZONE_DURATION_MS;
+}
+
 /*
 ====================
 ClearMove
@@ -1058,7 +1073,7 @@ Stop the bot from moving
 void BotMovement::ClearMove()
 {
     m_bPathing = false;
-    m_blocked.reset();
+    m_stuck.reset();
 
     if (m_pPath) {
         m_pPath->Clear();
