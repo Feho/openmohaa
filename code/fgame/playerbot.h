@@ -30,8 +30,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "playerbot_profile.h"
 #include "playerbot_tactical_memory.h"
 
-#define MAX_BOT_FUNCTIONS 5
-
 typedef struct nodeAttract_s {
     float             m_fRespawnTime;
     AttractiveNodePtr m_pNode;
@@ -651,17 +649,7 @@ struct BotResolvedCommand {
 
 class BotController : public Listener
 {
-public:
-    struct botfunc_t {
-        bool (BotController::*CheckCondition)(void);
-        void (BotController::*BeginState)(void);
-        void (BotController::*EndState)(void);
-        void (BotController::*ThinkState)(void);
-    };
-
 private:
-    static botfunc_t botfuncs[];
-
     BotMovement  movement;
     BotRotation  rotation;
     BotBeliefMap beliefMap;
@@ -684,9 +672,6 @@ private:
     usercmd_t  m_botCmd;
     usereyes_t m_botEyes;
 
-    // States
-    int               m_StateCount;
-    unsigned int      m_StateFlags;
     ScriptThreadLabel m_RunLabel;
 
     // Taunts
@@ -714,42 +699,28 @@ private:
     bool CheckWindows(Vector *outWindowPos = nullptr, Vector *outLookDir = nullptr);
     void CheckValidWeapon(void);
 
-    void State_DefaultBegin(void);
-    void State_DefaultEnd(void);
-    void State_Reset(void);
+    bool CheckCondition_Idle(void);
+    void State_Idle(void);
 
-    static void InitState_Idle(botfunc_t *func);
-    bool        CheckCondition_Idle(void);
-    void        State_Idle(void);
+    bool CheckCondition_Curious(void);
+    void State_BeginCurious(void);
+    void State_Curious(void);
 
-    static void InitState_Curious(botfunc_t *func);
-    bool        CheckCondition_Curious(void);
-    void        State_BeginCurious(void);
-    void        State_Curious(void);
+    bool CheckCondition_Attack(void);
+    void State_BeginAttack(void);
+    void State_EndAttack(void);
+    void State_Attack(void);
+    bool IsValidEnemy(Sentient *sent) const;
 
-    static void InitState_Attack(botfunc_t *func);
-    bool        CheckCondition_Attack(void);
-    void        State_BeginAttack(void);
-    void        State_EndAttack(void);
-    void        State_Attack(void);
-    bool        IsValidEnemy(Sentient *sent) const;
+    bool CheckCondition_Grenade(void);
+    void State_BeginGrenade(void);
+    void State_Grenade(void);
 
-    static void InitState_Grenade(botfunc_t *func);
-    bool        CheckCondition_Grenade(void);
-    void        State_BeginGrenade(void);
-    void        State_Grenade(void);
+    bool CheckCondition_Overwatch(void);
+    void State_BeginOverwatch(void);
+    void State_Overwatch(void);
 
-    static void InitState_Overwatch(botfunc_t *func);
-    bool        CheckCondition_Overwatch(void);
-    void        State_BeginOverwatch(void);
-    void        State_Overwatch(void);
 
-    static void InitState_Weapon(botfunc_t *func);
-    bool        CheckCondition_Weapon(void);
-    void        State_BeginWeapon(void);
-    void        State_Weapon(void);
-
-    void                  CheckStates(void);
     BotPerceptionSnapshot BuildPerceptionSnapshot(void);
     void                  UpdateModeTransitions(const BotPerceptionSnapshot& snapshot);
     BotCombatIntent       BuildCombatIntent(const BotPerceptionSnapshot& snapshot);

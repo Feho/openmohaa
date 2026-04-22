@@ -45,8 +45,6 @@ CLASS_DECLARATION(Listener, BotController, NULL) {
     {NULL, NULL}
 };
 
-BotController::botfunc_t BotController::botfuncs[MAX_BOT_FUNCTIONS];
-
 BotController::BotController()
 {
     if (LoadingSavegame) {
@@ -83,7 +81,6 @@ BotController::BotController()
     m_iLastFireTime     = 0;
     m_iLastPosDebugTime = 0;
 
-    m_StateFlags     = 0;
     m_bFirstSpawn    = true;
     m_engagementMode = BotEngagementMode::None;
     m_tacticalMode   = BotTacticalMode::None;
@@ -208,20 +205,7 @@ void BotController::DrawDebugBeliefs()
     }
 }
 
-void BotController::Init(void)
-{
-    for (int i = 0; i < MAX_BOT_FUNCTIONS; i++) {
-        botfuncs[i].BeginState = &BotController::State_DefaultBegin;
-        botfuncs[i].EndState   = &BotController::State_DefaultEnd;
-    }
-
-    InitState_Attack(&botfuncs[0]);
-    InitState_Curious(&botfuncs[1]);
-    InitState_Grenade(&botfuncs[2]);
-    InitState_Overwatch(&botfuncs[3]);
-    InitState_Idle(&botfuncs[4]);
-    //InitState_Weapon(&botfuncs[5]); // future, needs MAX_BOT_FUNCTIONS = 6
-}
+void BotController::Init(void) {}
 
 void BotController::GetUsercmd(usercmd_t *ucmd)
 {

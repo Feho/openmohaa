@@ -32,125 +32,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "windows.h"
 #include "g_bot.h"
 
-// Added in OPM
-//  State names for debug output
-static const char *botStateNames[] = {"Attack", "Curious", "Grenade", "Overwatch", "Idle"};
-
-static const char *GetStateName(int index)
-{
-    if (index >= 0 && index < (int)(sizeof(botStateNames) / sizeof(botStateNames[0]))) {
-        return botStateNames[index];
-    }
-    return "Unknown";
-}
-
-/*
-====================
-Bot states
---------------------
-____________________
---------------------
-____________________
---------------------
-____________________
---------------------
-____________________
-====================
-*/
-
-void BotController::CheckStates(void)
-{
-    m_StateCount = 0;
-
-    unsigned int oldFlags = m_StateFlags;
-
-    for (int i = 0; i < MAX_BOT_FUNCTIONS; i++) {
-        botfunc_t *func = &botfuncs[i];
-
-        if (func->CheckCondition) {
-            if ((this->*func->CheckCondition)()) {
-                if (!(m_StateFlags & (1 << i))) {
-                    m_StateFlags |= 1 << i;
-
-                    // Added in OPM - Debug state transitions
-                    if (g_bot_debug_state->integer) {
-                        gi.Printf("BOT %s: ENTER state %s\n", controlledEnt->client->pers.netname, GetStateName(i));
-                    }
-
-                    if (func->BeginState) {
-                        (this->*func->BeginState)();
-                    }
-                }
-
-                if (func->ThinkState) {
-                    m_StateCount++;
-                    (this->*func->ThinkState)();
-                }
-            } else {
-                if ((m_StateFlags & (1 << i))) {
-                    m_StateFlags &= ~(1 << i);
-
-                    // Added in OPM - Debug state transitions
-                    if (g_bot_debug_state->integer) {
-                        gi.Printf("BOT %s: EXIT state %s\n", controlledEnt->client->pers.netname, GetStateName(i));
-                    }
-
-                    if (func->EndState) {
-                        (this->*func->EndState)();
-                    }
-                }
-            }
-        } else {
-            if (func->ThinkState) {
-                m_StateCount++;
-                (this->*func->ThinkState)();
-            }
-        }
-    }
-
-    // Added in OPM - Debug active states (level 2)
-    if (g_bot_debug_state->integer >= 2 && m_StateFlags != oldFlags) {
-        char stateList[256] = {0};
-        for (int i = 0; i < MAX_BOT_FUNCTIONS; i++) {
-            if (m_StateFlags & (1 << i)) {
-                if (stateList[0]) {
-                    strcat(stateList, ", ");
-                }
-                strcat(stateList, GetStateName(i));
-            }
-        }
-        gi.Printf("BOT %s: Active states: [%s]\n", controlledEnt->client->pers.netname, stateList);
-    }
-
-    assert(m_StateCount);
-    if (!m_StateCount) {
-        gi.DPrintf("*** WARNING *** %s was stuck with no states !!!", controlledEnt->client->pers.netname);
-        State_Reset();
-    }
-}
-
-/*
-====================
-Default state
-
-
-====================
-*/
-void BotController::State_DefaultBegin(void)
-{
-    movement.ClearMove();
-}
-
-void BotController::State_DefaultEnd(void) {}
-
-void BotController::State_Reset(void)
-{
-    m_curious.reset();
-    m_combat.reset();
-    m_enemy.reset();
-    m_overwatch.reset();
-}
-
 /*
 ====================
 Idle state
@@ -158,12 +39,6 @@ Idle state
 Make the bot move to random directions
 ====================
 */
-void BotController::InitState_Idle(botfunc_t *func)
-{
-    func->CheckCondition = &BotController::CheckCondition_Idle;
-    func->ThinkState     = &BotController::State_Idle;
-}
-
 bool BotController::CheckCondition_Idle(void)
 {
     if (m_curious.time) {
@@ -349,13 +224,6 @@ Curious state
 Forward to the last event position
 ====================
 */
-void BotController::InitState_Curious(botfunc_t *func)
-{
-    func->CheckCondition = &BotController::CheckCondition_Curious;
-    func->BeginState     = &BotController::State_BeginCurious;
-    func->ThinkState     = &BotController::State_Curious;
-}
-
 // Added in OPM
 //  Clear idle state and movement when entering curious mode.
 //  Immediately turn toward the sound source.
@@ -544,14 +412,6 @@ Attack state
 Attack the enemy
 ====================
 */
-void BotController::InitState_Attack(botfunc_t *func)
-{
-    func->CheckCondition = &BotController::CheckCondition_Attack;
-    func->BeginState     = &BotController::State_BeginAttack;
-    func->EndState       = &BotController::State_EndAttack;
-    func->ThinkState     = &BotController::State_Attack;
-}
-
 // Added in OPM
 //  Clear idle state and movement when entering attack mode
 void BotController::State_BeginAttack(void)
@@ -1155,13 +1015,6 @@ Grenade state
 Avoid any grenades
 ====================
 */
-void BotController::InitState_Grenade(botfunc_t *func)
-{
-    func->CheckCondition = &BotController::CheckCondition_Grenade;
-    func->BeginState     = &BotController::State_BeginGrenade;
-    func->ThinkState     = &BotController::State_Grenade;
-}
-
 // Added in OPM
 //  Clear idle state and movement when fleeing from grenade
 void BotController::State_BeginGrenade(void)
@@ -1252,13 +1105,6 @@ Overwatch state
 Bot detects a nearby window, moves to stand at it, and scans for enemies.
 ====================
 */
-void BotController::InitState_Overwatch(botfunc_t *func)
-{
-    func->CheckCondition = &BotController::CheckCondition_Overwatch;
-    func->BeginState     = &BotController::State_BeginOverwatch;
-    func->ThinkState     = &BotController::State_Overwatch;
-}
-
 bool BotController::CheckCondition_Overwatch(void)
 {
     // Per-window cooldown prevents re-entry immediately after leaving
@@ -1506,37 +1352,6 @@ void BotController::State_Overwatch(void)
     // Clear fire buttons — no shooting in overwatch unless Attack state triggers
     m_botCmd.buttons &= ~(BUTTON_ATTACKLEFT | BUTTON_ATTACKRIGHT);
     CheckReload();
-}
-
-/*
-====================
-Weapon state
-
-Change weapon when necessary
-====================
-*/
-void BotController::InitState_Weapon(botfunc_t *func)
-{
-    func->CheckCondition = &BotController::CheckCondition_Weapon;
-    func->BeginState     = &BotController::State_BeginWeapon;
-}
-
-bool BotController::CheckCondition_Weapon(void)
-{
-    return controlledEnt->GetActiveWeapon(WEAPON_MAIN)
-        != controlledEnt->BestWeapon(NULL, false, WEAPON_CLASS_THROWABLE);
-}
-
-void BotController::State_BeginWeapon(void)
-{
-    Weapon *weap = controlledEnt->BestWeapon(NULL, false, WEAPON_CLASS_THROWABLE);
-
-    if (weap == NULL) {
-        SendCommand("safeholster 1");
-        return;
-    }
-
-    SendCommand(va("use \"%s\"", weap->model.c_str()));
 }
 
 /*
