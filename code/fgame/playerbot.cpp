@@ -36,6 +36,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "weaputils.h"
 #include "g_bot.h"
 #include "gamecvars.h"
+#include "windows.h"
 #include <float.h>
 
 // We assume that we have limited access to the server-side
@@ -80,6 +81,7 @@ BotController::BotController()
     m_iNextTauntTime    = 0;
     m_iLastFireTime     = 0;
     m_iLastPosDebugTime = 0;
+    m_randomSeed        = 1;
 
     m_bFirstSpawn    = true;
     m_engagementMode = BotEngagementMode::None;
@@ -106,6 +108,41 @@ BotMovement& BotController::GetMovement()
 BotBeliefMap& BotController::GetBeliefMap()
 {
     return beliefMap;
+}
+
+float BotController::BotRandom(void)
+{
+    return Q_random(&m_randomSeed);
+}
+
+float BotController::BotRandom(float n)
+{
+    return BotRandom() * n;
+}
+
+float BotController::BotCRandom(void)
+{
+    return Q_crandom(&m_randomSeed);
+}
+
+int BotController::BotRandomInt(int upperExclusive)
+{
+    if (upperExclusive <= 0) {
+        return 0;
+    }
+
+    int value = (int)BotRandom((float)upperExclusive);
+    return Q_min(value, upperExclusive - 1);
+}
+
+bool BotController::BotRandomOneIn(int n)
+{
+    return n > 0 && BotRandomInt(n) == 0;
+}
+
+bool BotController::BotRandomPercent(float percent)
+{
+    return percent > 0.0f && BotRandom(100.0f) < percent;
 }
 
 // Added in OPM
@@ -269,21 +306,34 @@ void BotController::ApplyButtonAction(int buttonMask, BotButtonAction action)
     }
 }
 
-BotPerceptionSnapshot BotController::BuildPerceptionSnapshot(void)
+void BotController::RefreshPerceptionState(void)
 {
-    BotPerceptionSnapshot snapshot = {};
-
     if (m_reaction.lookUntil && level.inttime >= m_reaction.lookUntil) {
         m_reaction.reset();
     }
 
-    snapshot.attackActive      = CheckCondition_Attack();
-    snapshot.curiousActive     = !snapshot.attackActive && CheckCondition_Curious();
-    snapshot.grenadeActive     = CheckCondition_Grenade();
-    snapshot.overwatchActive   = CheckCondition_Overwatch();
-    snapshot.idleActive        = CheckCondition_Idle();
+    RefreshAttackState();
+    RefreshCuriousState();
+    RefreshGrenadeState();
+    RefreshOverwatchState();
+}
+
+BotPerceptionSnapshot BotController::BuildPerceptionSnapshot(void) const
+{
+    BotPerceptionSnapshot snapshot = {};
+    const float            grenadeRadiusSq = Square(g_bot_grenade_avoid_radius->value);
+
+    snapshot.attackActive = (m_combat.attackTime > level.inttime);
+    snapshot.curiousActive =
+        !snapshot.attackActive && m_curious.time > level.inttime;
+    snapshot.grenadeActive =
+        (m_grenade.grenade && m_grenade.grenade->IsSubclassOfProjectile()
+         && (m_grenade.grenade->origin - controlledEnt->origin).lengthSquared() < grenadeRadiusSq)
+        || (m_grenade.avoidTime > level.inttime);
+    snapshot.overwatchActive = (m_overwatch.dwellUntil > level.inttime);
+    snapshot.idleActive      = !snapshot.curiousActive && !snapshot.attackActive && !snapshot.overwatchActive;
     snapshot.moving            = movement.IsMoving();
-    snapshot.anchorActive      = (m_overwatch.dwellUntil > level.inttime);
+    snapshot.anchorActive      = snapshot.overwatchActive;
     snapshot.anchorDistSq      = FLT_MAX;
     snapshot.enemyAnchorDistSq = FLT_MAX;
 
@@ -313,7 +363,7 @@ void BotController::ClearOverwatchAnchor(const char *reason, bool startCooldown)
     }
 
     if (startCooldown) {
-        m_overwatch.cooldownUntil = level.inttime + 10000 + (int)G_Random(20000);
+        m_overwatch.cooldownUntil = level.inttime + 10000 + (int)BotRandom(20000.0f);
     }
 
     botManager.GetTacticalMemory().ReleaseOccupant(controlledEnt ? controlledEnt->entnum : -1);
@@ -360,6 +410,14 @@ void BotController::UpdateModeTransitions(const BotPerceptionSnapshot& snapshot)
 
         if (nextEngagement == BotEngagementMode::Attack || nextEngagement == BotEngagementMode::Curious) {
             m_idle.reset();
+            movement.ClearMove();
+        }
+
+        if (nextEngagement == BotEngagementMode::Curious) {
+            // Treat each curious entry as a fresh investigation so repeated
+            // stimuli from the same spot still reissue movement.
+            m_curious.lastPos     = vec_zero;
+            m_curious.losProbePos = vec_zero;
         }
 
         if (m_engagementMode == BotEngagementMode::Attack && nextEngagement != BotEngagementMode::Attack) {
@@ -419,6 +477,364 @@ void BotController::UpdateModeTransitions(const BotPerceptionSnapshot& snapshot)
     }
 }
 
+static Vector bot_origin;
+
+static int sentients_compare(const void *elem1, const void *elem2)
+{
+    Entity *e1, *e2;
+    float   delta[3];
+    float   d1, d2;
+
+    e1 = *(Entity **)elem1;
+    e2 = *(Entity **)elem2;
+
+    VectorSubtract(bot_origin, e1->origin, delta);
+    d1 = VectorLengthSquared(delta);
+
+    VectorSubtract(bot_origin, e2->origin, delta);
+    d2 = VectorLengthSquared(delta);
+
+    if (d2 <= d1) {
+        return d1 > d2;
+    } else {
+        return -1;
+    }
+}
+
+bool BotController::IsValidEnemy(Sentient *sent) const
+{
+    if (sent == controlledEnt) {
+        return false;
+    }
+
+    if (sent->hidden() || (sent->flags & FL_NOTARGET)) {
+        return false;
+    }
+
+    if (sent->IsDead()) {
+        return false;
+    }
+
+    if (sent->getSolidType() == SOLID_NOT) {
+        return false;
+    }
+
+    if (sent->IsSubclassOfPlayer()) {
+        Player *player = static_cast<Player *>(sent);
+
+        if (g_gametype->integer >= GT_TEAM && player->GetTeam() == controlledEnt->GetTeam()) {
+            return false;
+        }
+    } else if (sent->m_Team == controlledEnt->m_Team) {
+        return false;
+    }
+
+    return true;
+}
+
+void BotController::RefreshAttackState(void)
+{
+    Container<Sentient *> sents       = SentientList;
+    float                 maxDistance = 0.0f;
+    Sentient             *bestEnemy   = NULL;
+    float                 bestDistSq  = FLT_MAX;
+
+    bot_origin = controlledEnt->origin;
+    sents.Sort(sentients_compare);
+
+    maxDistance = Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828f);
+    maxDistance *= m_profile.visionDistanceMult;
+
+    for (int i = 1; i <= sents.NumObjects(); i++) {
+        Sentient *sent = sents.ObjectAt(i);
+
+        if (!IsValidEnemy(sent)) {
+            continue;
+        }
+
+        float distSq = (sent->origin - controlledEnt->origin).lengthSquared();
+
+        if (controlledEnt->CanSee(sent, 360, maxDistance, false) && distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestEnemy  = sent;
+        }
+    }
+
+    if (bestEnemy) {
+        if (m_enemy.enemy != bestEnemy) {
+            m_enemy.eyesTag = -1;
+            m_combat.lastUnseenTime = level.inttime;
+        }
+
+        m_enemy.enemy       = bestEnemy;
+        m_enemy.lastPos     = bestEnemy->origin;
+        m_combat.attackTime = level.inttime + 500 + (int)BotRandom(1000.0f);
+        beliefMap.UpdateFromSighting(bestEnemy->origin);
+        return;
+    }
+
+    if (m_combat.attackTime && level.inttime > m_combat.attackTime) {
+        movement.ClearMove();
+        m_combat.attackTime = 0;
+    }
+}
+
+void BotController::RefreshCuriousState(void)
+{
+    if (m_combat.attackTime > level.inttime) {
+        if (g_bot_debug_state->integer >= 2 && m_curious.time) {
+            gi.Printf(
+                "BOT %s: Curious blocked - in combat (attackTime=%dms)\n",
+                controlledEnt->client->pers.netname,
+                m_combat.attackTime - level.inttime
+            );
+        }
+        m_curious.time        = 0;
+        m_curious.lastPos     = vec_zero;
+        m_curious.losProbePos = vec_zero;
+        return;
+    }
+
+    const bool committedHold =
+        m_overwatch.committedSince != 0 && m_overwatch.displacedSince == 0
+        && level.inttime >= m_overwatch.committedSince + g_bot_tactical_commit_ms->integer;
+
+    if (committedHold && m_curious.time > level.inttime) {
+        const bool strongType = (m_curious.stimulusType == AI_EVENT_WEAPON_FIRE
+                                 || m_curious.stimulusType == AI_EVENT_EXPLOSION);
+        const bool closeRange = (m_curious.stimulusDistanceSq < Square(g_bot_tactical_break_dist->value));
+
+        if (!strongType && !closeRange) {
+            if (m_reaction.lookUntil < level.inttime) {
+                m_reaction.lookPos   = m_curious.targetPos;
+                m_reaction.lookUntil = level.inttime + 1500;
+            }
+            m_curious.time        = 0;
+            m_curious.lastPos     = vec_zero;
+            m_curious.losProbePos = vec_zero;
+            return;
+        }
+
+        ClearOverwatchAnchor("strong curious stimulus", true);
+    }
+
+    if (m_curious.time && level.inttime > m_curious.time) {
+        if (g_bot_debug_state->integer >= 2) {
+            gi.Printf(
+                "BOT %s: Curious expired (curiousTime=%d, inttime=%d)\n",
+                controlledEnt->client->pers.netname,
+                m_curious.time,
+                level.inttime
+            );
+        }
+        movement.ClearMove();
+        m_curious.time        = 0;
+        m_curious.lastPos     = vec_zero;
+        m_curious.losProbePos = vec_zero;
+    }
+}
+
+void BotController::RefreshGrenadeState(void)
+{
+    if (m_grenade.grenade && m_grenade.grenade->IsSubclassOfProjectile()) {
+        float distSq = (m_grenade.grenade->origin - controlledEnt->origin).lengthSquared();
+        float radius = g_bot_grenade_avoid_radius->value;
+
+        if (distSq < radius * radius) {
+            return;
+        }
+    }
+
+    m_grenade.grenade = NULL;
+
+    float      radiusSq = Square(g_bot_grenade_avoid_radius->value);
+    gentity_t *edict;
+    int        i;
+
+    for (i = game.maxclients, edict = &g_entities[i]; i < globals.num_entities; i++, edict++) {
+        if (!edict->inuse || !edict->entity) {
+            continue;
+        }
+
+        Entity *ent = edict->entity;
+        if (!ent->IsSubclassOfProjectile()) {
+            continue;
+        }
+
+        Projectile *proj = static_cast<Projectile *>(ent);
+        if (proj->GetOwner() == controlledEnt) {
+            continue;
+        }
+
+        Sentient *projOwner = proj->GetOwner();
+        if (projOwner && projOwner->IsSubclassOfPlayer() && g_gametype->integer >= GT_TEAM) {
+            Player *p = static_cast<Player *>(projOwner);
+            if (p->GetTeam() == controlledEnt->GetTeam()) {
+                continue;
+            }
+        }
+
+        float distSq = (ent->origin - controlledEnt->origin).lengthSquared();
+        if (distSq < radiusSq) {
+            m_grenade.grenade   = ent;
+            m_grenade.avoidTime = level.inttime + 3000;
+            return;
+        }
+    }
+}
+
+void BotController::RefreshOverwatchState(void)
+{
+    if (m_overwatch.cooldownUntil > level.inttime) {
+        return;
+    }
+
+    if (m_overwatch.dwellUntil > level.inttime) {
+        return;
+    }
+
+    if (m_overwatch.dwellUntil) {
+        m_overwatch.cooldownUntil = level.inttime + 10000 + (int)BotRandom(20000.0f);
+        m_overwatch.dwellUntil    = 0;
+        return;
+    }
+
+    if (m_combat.attackTime > level.inttime || m_curious.time > level.inttime || m_grenade.avoidTime > level.inttime) {
+        return;
+    }
+
+    {
+        int team = (int)controlledEnt->GetTeam();
+
+        PathSearchParameter params;
+        params.entity     = controlledEnt;
+        params.fallHeight = 128.0f;
+
+        int idx = botManager.GetTacticalMemory().QueryBestSpot(team, controlledEnt->origin, 2048.0f, controlledEnt, params);
+        if (idx >= 0) {
+            const TacticalSpot& spot = botManager.GetTacticalMemory().GetSpot(idx);
+            m_overwatch.standPos       = spot.standPos;
+            m_overwatch.lookDir        = spot.lookDir;
+            m_overwatch.anchorPos      = spot.standPos + spot.lookDir * 256.0f;
+            m_overwatch.windowPos      = m_overwatch.anchorPos;
+            m_overwatch.dwellUntil     = level.inttime + 5000 + (int)BotRandom(5000.0f);
+            m_overwatch.scanTime       = 0;
+            m_overwatch.displacedSince = 0;
+            m_overwatch.committedSince = 0;
+            m_overwatch.pathFailCount  = 0;
+            m_overwatch.spotIndex      = idx;
+            botManager.GetTacticalMemory().SetOccupant(idx, controlledEnt->entnum);
+            return;
+        }
+    }
+
+    static const float kWindowDetectDistance = 384.0f;
+    static const float kWindowYawOffsets[]   = {0.0f, 20.0f, -20.0f, 40.0f, -40.0f};
+
+    Vector  eyePos = controlledEnt->origin + Vector(0, 0, controlledEnt->viewheight);
+    trace_t trace;
+    bool    foundWindow = false;
+
+    for (unsigned int i = 0; i < ARRAY_LEN(kWindowYawOffsets); ++i) {
+        Vector testAngles = controlledEnt->angles;
+        testAngles.y += kWindowYawOffsets[i];
+
+        Vector dir;
+        AngleVectorsLeft(testAngles, dir, NULL, NULL);
+
+        Vector end = eyePos + dir * kWindowDetectDistance;
+        trace      = G_Trace(
+            eyePos, vec_zero, vec_zero, end, controlledEnt, MASK_PLAYERSOLID, false, "BotOverwatchCondition"
+        );
+
+        if (trace.fraction < 1.0f && trace.ent && trace.ent->entity->isSubclassOf(WindowObject)) {
+            foundWindow = true;
+            break;
+        }
+    }
+
+    if (!foundWindow) {
+        return;
+    }
+
+    Vector windowCentroid = trace.ent->entity->centroid;
+    Vector windowNormal   = trace.plane.normal;
+    windowNormal.z        = 0;
+
+    if (windowNormal.lengthSquared() < Square(0.01f)) {
+        windowNormal = controlledEnt->origin - windowCentroid;
+        windowNormal.z = 0;
+    }
+
+    if (windowNormal.lengthSquared() < Square(0.01f)) {
+        return;
+    }
+
+    VectorNormalizeFast(windowNormal);
+
+    Vector moveDir = windowCentroid - controlledEnt->origin;
+    moveDir.z      = 0;
+
+    if (moveDir.lengthSquared() < Square(1.0f)) {
+        moveDir = -windowNormal;
+    } else {
+        VectorNormalizeFast(moveDir);
+    }
+
+    static const float kWindowStandOffsets[] = {28.0f, 36.0f, 44.0f};
+    Vector             standPos              = vec_zero;
+    bool               foundStandPos         = false;
+
+    for (unsigned int i = 0; i < ARRAY_LEN(kWindowStandOffsets); ++i) {
+        Vector candidate = trace.endpos + windowNormal * kWindowStandOffsets[i];
+        candidate.z      = controlledEnt->origin.z;
+
+        trace_t standTrace = G_Trace(
+            controlledEnt->origin + Vector(0, 0, controlledEnt->viewheight),
+            vec_zero,
+            vec_zero,
+            candidate + Vector(0, 0, controlledEnt->viewheight),
+            controlledEnt,
+            MASK_PLAYERSOLID,
+            false,
+            "BotOverwatchStand"
+        );
+
+        if (standTrace.fraction >= 1.0f) {
+            standPos      = candidate;
+            foundStandPos = true;
+            break;
+        }
+    }
+
+    if (!foundStandPos) {
+        return;
+    }
+
+    Vector lookDir = windowCentroid - standPos;
+    lookDir.z      = 0;
+
+    if (lookDir.lengthSquared() < Square(1.0f)) {
+        lookDir = moveDir;
+    }
+
+    VectorNormalizeFast(lookDir);
+
+    Vector anchorPos = standPos + lookDir * 256.0f;
+    anchorPos.z      = standPos.z + controlledEnt->viewheight;
+
+    m_overwatch.windowPos      = windowCentroid;
+    m_overwatch.standPos       = standPos;
+    m_overwatch.lookDir        = lookDir;
+    m_overwatch.anchorPos      = anchorPos;
+    m_overwatch.dwellUntil     = level.inttime + 3000 + (int)BotRandom(4000.0f);
+    m_overwatch.scanTime       = 0;
+    m_overwatch.displacedSince = 0;
+    m_overwatch.committedSince = 0;
+    m_overwatch.pathFailCount  = 0;
+    m_overwatch.spotIndex      = -1;
+}
+
 Vector BotController::ProbeLOSPosition(const Vector& targetPos)
 {
     if (targetPos == vec_zero) {
@@ -473,7 +889,34 @@ Vector BotController::ProbeLOSPosition(const Vector& targetPos)
     return vec_zero;
 }
 
-BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& snapshot)
+bool BotController::CheckWindows(Vector *outWindowPos, Vector *outLookDir)
+{
+    trace_t trace;
+    Vector  start, end;
+    Vector  dir;
+
+    controlledEnt->angles.AngleVectorsLeft(&dir);
+    start = controlledEnt->origin + Vector(0, 0, controlledEnt->viewheight);
+    end   = start + dir * 128.0f;
+
+    trace = G_Trace(start, vec_zero, vec_zero, end, controlledEnt, MASK_PLAYERSOLID, false, "BotController::CheckWindows");
+
+    if (trace.fraction != 1 && trace.ent && trace.ent->entity->isSubclassOf(WindowObject)) {
+        if (outWindowPos) {
+            *outWindowPos = trace.ent->entity->centroid;
+        }
+        if (outLookDir) {
+            Vector d = trace.ent->entity->centroid - start;
+            VectorNormalizeFast(d);
+            *outLookDir = d;
+        }
+        return true;
+    }
+
+    return false;
+}
+
+BotCombatIntent BotController::AdvanceCombatStateAndBuildIntent(const BotPerceptionSnapshot& snapshot)
 {
     BotCombatIntent intent;
     intent.reset();
@@ -496,7 +939,7 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
                 intent.aimTarget    = m_enemy.lastPos;
                 intent.attackLeft   = BotButtonAction::Clear;
                 intent.attackRight  = BotButtonAction::Clear;
-                m_combat.attackTime = level.inttime + 200 + (int)G_Random(300);
+                m_combat.attackTime = level.inttime + 200 + (int)BotRandom(300.0f);
                 return intent;
             }
 
@@ -521,7 +964,7 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
             if (m_combat.lastUnseenTime) {
                 const unsigned int minDelay    = m_profile.reactionMinDelay * 1000;
                 const unsigned int randomDelay = m_profile.reactionRandomDelay * 1000;
-                if (level.inttime <= m_combat.lastUnseenTime + minDelay + G_Random(randomDelay)) {
+                if (level.inttime <= m_combat.lastUnseenTime + minDelay + BotRandom((float)randomDelay)) {
                     if (g_bot_debug_state->integer >= 2) {
                         gi.Printf(
                             "BOT %s: Attack - waiting for reaction delay (elapsed=%dms, min=%dms)\n",
@@ -540,10 +983,10 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
                 const int fireDelay                    = pWeap->FireDelay(FIRE_PRIMARY) * 1000;
                 float     fSecondaryBulletRange        = pWeap->GetBulletRange(FIRE_SECONDARY);
                 float     fSecondaryBulletRangeSquared = fSecondaryBulletRange * fSecondaryBulletRange;
-                const int maxcontinuousFireTime        = fireDelay + m_profile.continuousFireMinTime * 1000
-                                                + G_Random(m_profile.continuousFireRandomTime * 1000);
+                const int maxcontinuousFireTime = fireDelay + m_profile.continuousFireMinTime * 1000
+                                                + BotRandom(m_profile.continuousFireRandomTime * 1000.0f);
                 const int maxBurstTime =
-                    fireDelay + m_profile.burstMinTime * 1000 + G_Random(m_profile.burstRandomDelay * 1000);
+                    fireDelay + m_profile.burstMinTime * 1000 + BotRandom(m_profile.burstRandomDelay * 1000.0f);
 
                 if (pWeap->GetMaxFireMovement() < 1 && pWeap->HasAmmoInClip(FIRE_PRIMARY)) {
                     float length = controlledEnt->velocity.length();
@@ -638,8 +1081,8 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
                     intent.updatedLastFireTime = true;
                 }
 
-                m_combat.attackTime        = level.inttime + 500 + (int)G_Random(1000);
-                m_combat.attackStopAimTime = level.inttime + 500 + (int)G_Random(1000);
+                m_combat.attackTime        = level.inttime + 500 + (int)BotRandom(1000.0f);
+                m_combat.attackStopAimTime = level.inttime + 500 + (int)BotRandom(1000.0f);
                 m_combat.lastSeenTime      = level.inttime;
                 m_enemy.lastPos            = m_enemy.enemy->origin;
             }
@@ -667,7 +1110,7 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
                 vTarget = m_enemy.enemy->origin;
             }
 
-            if (level.inttime >= m_combat.lastAimTime + 300 + (int)G_Random(300)) {
+            if (level.inttime >= m_combat.lastAimTime + 300 + (int)BotRandom(300.0f)) {
                 float halfW     = (m_enemy.enemy->maxs.x - m_enemy.enemy->mins.x) * 0.5f;
                 float halfD     = (m_enemy.enemy->maxs.y - m_enemy.enemy->mins.y) * 0.5f;
                 float fDist     = sqrtf(fDistanceSquared);
@@ -676,11 +1119,11 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
                 if (m_enemy.eyesTag != -1) {
                     m_combat.aimOffsetTarget[0] = G_CRandom(halfW) * distScale;
                     m_combat.aimOffsetTarget[1] = G_CRandom(halfD) * distScale;
-                    m_combat.aimOffsetTarget[2] = -G_Random(m_enemy.enemy->maxs.z * 0.5f) * distScale;
+                    m_combat.aimOffsetTarget[2] = -BotRandom(m_enemy.enemy->maxs.z * 0.5f) * distScale;
                 } else {
                     m_combat.aimOffsetTarget[0] = G_CRandom(halfW) * distScale;
                     m_combat.aimOffsetTarget[1] = G_CRandom(halfD) * distScale;
-                    m_combat.aimOffsetTarget[2] = 16 + G_Random(m_enemy.enemy->viewheight - 16) * distScale;
+                    m_combat.aimOffsetTarget[2] = 16 + BotRandom(m_enemy.enemy->viewheight - 16) * distScale;
                 }
 
                 m_combat.lastAimTime      = level.inttime;
@@ -718,7 +1161,7 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
             m_combat.standingStill = true;
             intent.clearMove       = true;
         } else if (bCanSee && bCanAttack && fEnemyDistanceSquared > midRangeThreshold) {
-            if (rand() % 100 < 30) {
+            if (BotRandomPercent(30.0f)) {
                 m_combat.standingStill = true;
                 intent.clearMove       = true;
             } else {
@@ -730,8 +1173,8 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
 
         if (bCanSee && m_combat.standingStill) {
             if (level.inttime >= m_idle.leanTime) {
-                m_idle.leanTime = level.inttime + 1500 + (int)G_Random(2000);
-                int roll        = rand() % 5;
+                m_idle.leanTime = level.inttime + 1500 + (int)BotRandom(2000.0f);
+                int roll        = BotRandomInt(5);
                 if (roll < 2) {
                     m_idle.leanDir = -1;
                 } else if (roll < 4) {
@@ -747,7 +1190,7 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
         if (m_combat.standingStill) {
             if (!m_combat.crouching && !m_combat.crouchDecided) {
                 m_combat.crouchDecided = true;
-                if (rand() % 100 < (int)m_profile.crouchChance) {
+                if (BotRandomPercent(m_profile.crouchChance)) {
                     m_combat.crouching = true;
                 }
             }
@@ -767,25 +1210,25 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
             } else {
                 if (level.inttime >= m_combat.strafeTime) {
                     const bool allowRangeStrafe =
-                        !m_combat.standingStill || (rand() % 100) < (int)m_profile.longRangeStrafeChance;
+                        !m_combat.standingStill || BotRandomPercent(m_profile.longRangeStrafeChance);
 
                     if (!allowRangeStrafe) {
-                        m_combat.strafeTime = level.inttime + 300 + (int)G_Random(700);
+                        m_combat.strafeTime = level.inttime + 300 + (int)BotRandom(700.0f);
                         m_combat.strafeDir  = 0;
                     } else {
-                        int roll = rand() % 10;
+                        int roll = BotRandomInt(10);
 
                         if (roll < 2) {
-                            m_combat.strafeTime = level.inttime + 150 + (int)G_Random(250);
-                            m_combat.strafeDir  = (rand() % 2) ? 127 : -127;
+                            m_combat.strafeTime = level.inttime + 150 + (int)BotRandom(250.0f);
+                            m_combat.strafeDir  = BotRandomInt(2) ? 127 : -127;
                         } else if (roll < 4) {
-                            m_combat.strafeTime = level.inttime + 600 + (int)G_Random(1200);
-                            m_combat.strafeDir  = (rand() % 2) ? 127 : -127;
+                            m_combat.strafeTime = level.inttime + 600 + (int)BotRandom(1200.0f);
+                            m_combat.strafeDir  = BotRandomInt(2) ? 127 : -127;
                         } else if (roll < 8) {
-                            m_combat.strafeTime = level.inttime + 300 + (int)G_Random(700);
+                            m_combat.strafeTime = level.inttime + 300 + (int)BotRandom(700.0f);
                             m_combat.strafeDir  = 0;
                         } else {
-                            m_combat.strafeTime = level.inttime + 100 + (int)G_Random(200);
+                            m_combat.strafeTime = level.inttime + 100 + (int)BotRandom(200.0f);
                             m_combat.strafeDir  = m_combat.strafeDir > 0 ? -127 : 127;
                         }
                     }
@@ -842,7 +1285,7 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
         }
 
         if (movement.IsMoving() || intent.moveType == BotMoveRequestType::MoveTo) {
-            m_combat.attackTime = level.inttime + 500 + (int)G_Random(1000);
+            m_combat.attackTime = level.inttime + 500 + (int)BotRandom(1000.0f);
         }
 
         return intent;
@@ -912,14 +1355,16 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
             // Scan phase: arrived at target, now holding and looking around before clearing.
             if (level.inttime >= m_curious.scanUntil) {
                 beliefMap.ClearZone(m_curious.targetPos != vec_zero ? m_curious.targetPos : controlledEnt->origin);
-                m_curious.time      = 0;
-                m_curious.scanUntil = 0;
+                m_curious.time        = 0;
+                m_curious.lastPos     = vec_zero;
+                m_curious.losProbePos = vec_zero;
+                m_curious.scanUntil   = 0;
             } else {
                 // Hold position; look at a random nearby point each scan tick.
                 if (m_reaction.lookUntil < level.inttime) {
                     Vector scanDir(G_CRandom() * 512.0f, G_CRandom() * 512.0f, G_CRandom() * 64.0f);
                     m_reaction.lookPos   = controlledEnt->origin + scanDir;
-                    m_reaction.lookUntil = level.inttime + 600 + (int)G_Random(600);
+                    m_reaction.lookUntil = level.inttime + 600 + (int)BotRandom(600.0f);
                 }
                 intent.aimType   = BotAimDirective::AimAtPoint;
                 intent.aimTarget = m_reaction.lookPos;
@@ -933,7 +1378,7 @@ BotCombatIntent BotController::BuildCombatIntent(const BotPerceptionSnapshot& sn
             float distToTarget = (arrivalRef - controlledEnt->origin).length();
             if (distToTarget < 256) {
                 // Start scan pause instead of immediately clearing.
-                m_curious.scanUntil = level.inttime + 1500 + (int)G_Random(500);
+                m_curious.scanUntil = level.inttime + 1500 + (int)BotRandom(500.0f);
                 if (g_bot_debug_state->integer >= 2) {
                     gi.Printf(
                         "BOT %s: Curious arrived - scanning for %.1fs\n",
@@ -972,7 +1417,7 @@ BotHazardIntent BotController::BuildHazardIntent(const BotPerceptionSnapshot& sn
     return intent;
 }
 
-BotTacticalIntent BotController::BuildTacticalIntent(const BotPerceptionSnapshot& snapshot)
+BotTacticalIntent BotController::AdvanceTacticalStateAndBuildIntent(const BotPerceptionSnapshot& snapshot)
 {
     BotTacticalIntent intent;
     intent.reset();
@@ -1053,7 +1498,7 @@ BotTacticalIntent BotController::BuildTacticalIntent(const BotPerceptionSnapshot
         }
 
         if (!snapshot.attackActive && level.inttime >= m_overwatch.scanTime) {
-            m_overwatch.scanTime = level.inttime + 800 + (int)G_Random(700);
+            m_overwatch.scanTime = level.inttime + 800 + (int)BotRandom(700.0f);
 
             Vector baseDir = m_overwatch.lookDir;
             if (m_overwatch.anchorPos != vec_zero) {
@@ -1103,16 +1548,16 @@ BotTacticalIntent BotController::BuildTacticalIntent(const BotPerceptionSnapshot
     if (m_idle.pausing) {
         if (level.inttime >= m_idle.pauseTime) {
             m_idle.pausing = false;
-            if (rand() % 4 == 0) {
+            if (BotRandomOneIn(4)) {
                 m_idle.walking  = true;
-                m_idle.walkTime = level.inttime + 2000 + (int)G_Random(3000);
+                m_idle.walkTime = level.inttime + 2000 + (int)BotRandom(3000.0f);
             }
         } else {
             intent.clearMove = true;
             intent.run       = false;
 
             if (level.inttime >= m_idle.lookTime) {
-                m_idle.lookTime = level.inttime + 800 + (int)G_Random(1200);
+                m_idle.lookTime = level.inttime + 800 + (int)BotRandom(1200.0f);
 
                 Vector beliefPos = beliefMap.GetHighestBeliefPos(controlledEnt->origin);
                 if (beliefPos != vec_zero) {
@@ -1129,9 +1574,9 @@ BotTacticalIntent BotController::BuildTacticalIntent(const BotPerceptionSnapshot
 
             return intent;
         }
-    } else if (rand() % 400 == 0) {
+    } else if (BotRandomOneIn(400)) {
         m_idle.pausing   = true;
-        m_idle.pauseTime = level.inttime + 1500 + (int)G_Random(2500);
+        m_idle.pauseTime = level.inttime + 1500 + (int)BotRandom(2500.0f);
         m_idle.lookTime  = level.inttime + 500;
         intent.clearMove = true;
         intent.run       = false;
@@ -1155,7 +1600,7 @@ BotTacticalIntent BotController::BuildTacticalIntent(const BotPerceptionSnapshot
             if (m_idle.scanTarget != vec_zero) {
                 if (level.inttime >= m_idle.scanUntil) {
                     m_idle.scanTarget   = vec_zero;
-                    m_idle.scanNextTime = level.inttime + 2000 + (int)G_Random(3000);
+                    m_idle.scanNextTime = level.inttime + 2000 + (int)BotRandom(3000.0f);
                 } else {
                     intent.aimType   = BotAimDirective::AimAtPoint;
                     intent.aimTarget = m_idle.scanTarget;
@@ -1182,7 +1627,7 @@ BotTacticalIntent BotController::BuildTacticalIntent(const BotPerceptionSnapshot
 
                 if (tr.fraction > 0 && (tr.endpos - eyePos).lengthSquared() >= Square(256)) {
                     m_idle.scanTarget = tr.endpos;
-                    m_idle.scanUntil  = level.inttime + 500 + (int)G_Random(1500);
+                    m_idle.scanUntil  = level.inttime + 500 + (int)BotRandom(1500.0f);
                 } else {
                     m_idle.scanNextTime = level.inttime + 500;
                 }
@@ -1226,13 +1671,13 @@ BotTacticalIntent BotController::BuildTacticalIntent(const BotPerceptionSnapshot
         } else {
             Vector randomDir(G_CRandom(16), G_CRandom(16), G_CRandom(16));
             Vector preferredDir;
-            preferredDir += Vector(controlledEnt->orientation[0]) * (rand() % 5 ? 1024 : -1024);
-            preferredDir += Vector(controlledEnt->orientation[2]) * (rand() % 5 ? 1024 : -1024);
+            preferredDir += Vector(controlledEnt->orientation[0]) * (BotRandomInt(5) ? 1024 : -1024);
+            preferredDir += Vector(controlledEnt->orientation[2]) * (BotRandomInt(5) ? 1024 : -1024);
 
             intent.moveType     = BotMoveRequestType::AvoidPath;
             intent.moveTarget   = controlledEnt->origin + randomDir;
             intent.preferredDir = preferredDir;
-            intent.radius       = 512 + G_Random(2048);
+            intent.radius       = 512 + BotRandom(2048.0f);
         }
     }
 
@@ -1469,11 +1914,12 @@ void BotController::UpdateBotStates(void)
     beliefMap.Decay(level.frametime);
     beliefMap.ClearZonesVisibleFrom(controlledEnt);
 
+    RefreshPerceptionState();
     BotPerceptionSnapshot snapshot = BuildPerceptionSnapshot();
     UpdateModeTransitions(snapshot);
-    BotCombatIntent    combat   = BuildCombatIntent(snapshot);
+    BotCombatIntent    combat   = AdvanceCombatStateAndBuildIntent(snapshot);
     BotHazardIntent    hazard   = BuildHazardIntent(snapshot);
-    BotTacticalIntent  tactical = BuildTacticalIntent(snapshot);
+    BotTacticalIntent  tactical = AdvanceTacticalStateAndBuildIntent(snapshot);
     BotResolvedCommand command  = ResolveIntents(combat, hazard, tactical);
     ExecuteResolvedCommand(command);
 
@@ -1989,6 +2435,7 @@ void BotController::UseWeaponWithAmmo()
 
 void BotController::Spawned(void)
 {
+    m_randomSeed = ((controlledEnt ? controlledEnt->entnum : 0) + 1) * 1103515245u ^ level.inttime;
     ClearEnemy();
     ClearOverwatchAnchor("spawned", false);
     m_curious.reset();
@@ -2061,7 +2508,7 @@ void BotController::Killed(const Event& ev)
     //  Record death location in belief map — persists across respawn
     beliefMap.UpdateFromDeath(controlledEnt->origin);
 
-    if (attacker && rand() % 5 == 0) {
+    if (attacker && BotRandomOneIn(5)) {
         // 1/5 chance to go back to the attacker position
         m_enemy.deathPos = attacker->origin;
     } else {
@@ -2160,7 +2607,7 @@ void BotController::GotKill(const Event& ev)
     //
     // Changed in OPM
     //  Don't fully exit combat state after a kill - just clear the current
-    //  enemy so CheckCondition_Attack can find a new target. Keep m_combat.attackTime
+    //  enemy so RefreshAttackState can find a new target. Keep m_combat.attackTime
     //  active so the bot stays in combat mode and continues scanning for enemies.
     //
     m_enemy.enemy       = NULL;
@@ -2170,11 +2617,11 @@ void BotController::GotKill(const Event& ev)
 
     // Extend attack time briefly to allow scanning for new targets
     if (m_combat.attackTime) {
-        m_combat.attackTime = level.inttime + 500 + (int)G_Random(1000);
+        m_combat.attackTime = level.inttime + 500 + (int)BotRandom(1000.0f);
     }
 
     if (g_bot_instamsg_chance->integer && level.inttime >= m_iNextTauntTime
-        && (rand() % g_bot_instamsg_chance->integer) == 0) {
+        && BotRandomOneIn(g_bot_instamsg_chance->integer)) {
         //
         // Randomly play a taunt
         //
@@ -2183,9 +2630,9 @@ void BotController::GotKill(const Event& ev)
         event.AddInteger(0);
 
         if (g_protocol >= protocol_e::PROTOCOL_MOHTA_MIN) {
-            event.AddString("*5" + str(1 + (rand() % 8)));
+            event.AddString("*5" + str(1 + BotRandomInt(8)));
         } else {
-            event.AddString("*4" + str(1 + (rand() % 9)));
+            event.AddString("*4" + str(1 + BotRandomInt(9)));
         }
 
         controlledEnt->ProcessEvent(event);
@@ -2208,6 +2655,7 @@ void BotController::setControlledEntity(Player *player)
     controlledEnt = player;
     movement.SetControlledEntity(player);
     rotation.SetControlledEntity(player);
+    m_randomSeed = ((player ? player->entnum : 0) + 1) * 1103515245u;
 
     // Added in OPM
     //  Initialize belief map from spawn point bounds. We use spawn points

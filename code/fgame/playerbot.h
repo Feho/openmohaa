@@ -50,19 +50,14 @@ class BotController;
 static constexpr int BOT_STUCK_HISTORY = 5;
 
 struct BotStuckState {
-    Vector positions[BOT_STUCK_HISTORY]; // circular buffer, one sample per second
-    int    nextSlot;                     // index of the oldest sample (next to overwrite)
-    int    sampleCount;                  // samples recorded so far (0..BOT_STUCK_HISTORY)
-    int    checkTime;                    // level.inttime of the last sample
+    Vector positions[BOT_STUCK_HISTORY] = {}; // circular buffer, one sample per second
+    int    nextSlot                     = 0;  // index of the oldest sample (next to overwrite)
+    int    sampleCount                  = 0;  // samples recorded so far (0..BOT_STUCK_HISTORY)
+    int    checkTime                    = 0;  // level.inttime of the last sample
 
     void reset()
     {
-        for (int i = 0; i < BOT_STUCK_HISTORY; i++) {
-            positions[i] = vec_zero;
-        }
-        nextSlot    = 0;
-        sampleCount = 0;
-        checkTime   = 0;
+        *this = BotStuckState();
     }
 };
 
@@ -73,15 +68,13 @@ struct BotStuckState {
  * position to the left or right. This struct groups the avoidance state.
  */
 struct BotCollisionState {
-    bool   active;       // Currently avoiding collision
-    int    checkTime;    // Last time we checked for collisions
-    Vector avoidancePos; // Position to move to for avoidance
+    bool   active       = false;    // Currently avoiding collision
+    int    checkTime    = 0;        // Last time we checked for collisions
+    Vector avoidancePos = vec_zero; // Position to move to for avoidance
 
     void reset()
     {
-        active       = false;
-        checkTime    = 0;
-        avoidancePos = vec_zero;
+        *this = BotCollisionState();
     }
 };
 
@@ -91,15 +84,13 @@ struct BotCollisionState {
  * Tracks whether the bot needs to jump and validates the jump is making progress.
  */
 struct BotJumpState {
-    bool   active;    // Currently trying to jump
-    int    checkTime; // When jump was initiated
-    Vector startPos;  // Position when jump started (to detect progress)
+    bool   active    = false;    // Currently trying to jump
+    int    checkTime = 0;        // When jump was initiated
+    Vector startPos  = vec_zero; // Position when jump started (to detect progress)
 
     void reset()
     {
-        active    = false;
-        checkTime = 0;
-        startPos  = vec_zero;
+        *this = BotJumpState();
     }
 };
 
@@ -267,45 +258,28 @@ public:
  * @brief Combat/attack state including aiming and firing behavior.
  */
 struct BotCombatState {
-    int    attackTime;           // When attack state should expire
-    int    attackStopAimTime;    // When to stop aiming at last known position
-    int    lastBurstTime;        // When last burst fire pause started
-    int    lastSeenTime;         // When enemy was last seen
-    int    lastUnseenTime;       // When enemy became unseen
-    int    continuousFireTime;   // How long we've been firing continuously
-    int    lastWeaponSwitchTime; // When last weapon switch was attempted
-    Vector aimOffset;            // Current aim offset from target center
-    Vector aimOffsetTarget;      // Target aim offset (lerped toward)
-    int    lastAimTime;          // Last time aim offset was updated
-    int    aimLerpStartTime;     // When aim lerp started
-    int    strafeTime;           // When to change strafe direction
-    int    strafeDir;            // Current strafe direction
-    bool   standingStill;        // Standing still to aim
-    bool   crouching;            // Currently crouching in combat
-    bool   crouchDecided;        // Whether crouch decision was made
-    Vector losRecoverPos;        // Cached probe result for LOS recovery move
-    int    losRecoverTime;       // level.inttime when probe ran; 0 = no valid cache
+    int    attackTime           = 0;        // When attack state should expire
+    int    attackStopAimTime    = 0;        // When to stop aiming at last known position
+    int    lastBurstTime        = 0;        // When last burst fire pause started
+    int    lastSeenTime         = 0;        // When enemy was last seen
+    int    lastUnseenTime       = 0;        // When enemy became unseen
+    int    continuousFireTime   = 0;        // How long we've been firing continuously
+    int    lastWeaponSwitchTime = 0;        // When last weapon switch was attempted
+    Vector aimOffset            = vec_zero; // Current aim offset from target center
+    Vector aimOffsetTarget      = vec_zero; // Target aim offset (lerped toward)
+    int    lastAimTime          = 0;        // Last time aim offset was updated
+    int    aimLerpStartTime     = 0;        // When aim lerp started
+    int    strafeTime           = 0;        // When to change strafe direction
+    int    strafeDir            = 0;        // Current strafe direction
+    bool   standingStill        = false;    // Standing still to aim
+    bool   crouching            = false;    // Currently crouching in combat
+    bool   crouchDecided        = false;    // Whether crouch decision was made
+    Vector losRecoverPos        = vec_zero; // Cached probe result for LOS recovery move
+    int    losRecoverTime       = 0;        // level.inttime when probe ran; 0 = no valid cache
 
     void reset()
     {
-        attackTime           = 0;
-        attackStopAimTime    = 0;
-        lastBurstTime        = 0;
-        lastSeenTime         = 0;
-        lastUnseenTime       = 0;
-        continuousFireTime   = 0;
-        lastWeaponSwitchTime = 0;
-        aimOffset            = vec_zero;
-        aimOffsetTarget      = vec_zero;
-        lastAimTime          = 0;
-        aimLerpStartTime     = 0;
-        strafeTime           = 0;
-        strafeDir            = 0;
-        standingStill        = false;
-        crouching            = false;
-        crouchDecided        = false;
-        losRecoverPos        = vec_zero;
-        losRecoverTime       = 0;
+        *this = BotCombatState();
     }
 };
 
@@ -313,19 +287,15 @@ struct BotCombatState {
  * @brief Enemy tracking state.
  */
 struct BotEnemyState {
-    SafePtr<Sentient> enemy;
-    int               eyesTag;  // Bone tag for enemy's eyes
-    Vector            oldPos;   // Previous known enemy position
-    Vector            lastPos;  // Last known enemy position
-    Vector            deathPos; // Where enemy died (for avoidance)
+    SafePtr<Sentient> enemy    = NULL;
+    int               eyesTag  = -1;       // Bone tag for enemy's eyes
+    Vector            oldPos   = vec_zero; // Previous known enemy position
+    Vector            lastPos  = vec_zero; // Last known enemy position
+    Vector            deathPos = vec_zero; // Where enemy died (for avoidance)
 
     void reset()
     {
-        enemy    = NULL;
-        eyesTag  = -1;
-        oldPos   = vec_zero;
-        lastPos  = vec_zero;
-        deathPos = vec_zero;
+        *this = BotEnemyState();
     }
 };
 
@@ -333,23 +303,17 @@ struct BotEnemyState {
  * @brief Curious state for investigating sounds/events.
  */
 struct BotCuriousState {
-    int    time;               // When curious state should expire
-    int    stimulusType;       // AI_EVENT_* that triggered curiosity
-    float  stimulusDistanceSq; // Distance to the stimulus when it triggered
-    Vector lastPos;            // Last curious position investigated
-    Vector targetPos;          // Current position to investigate
-    Vector losProbePos;        // Probe result bot is actually moving toward (vec_zero = none)
-    int    scanUntil;          // Scan-pause timer: hold and look around until this time
+    int    time               = 0;        // When curious state should expire
+    int    stimulusType       = 0;        // AI_EVENT_* that triggered curiosity
+    float  stimulusDistanceSq = 0.0f;     // Distance to the stimulus when it triggered
+    Vector lastPos            = vec_zero; // Last curious position investigated
+    Vector targetPos          = vec_zero; // Current position to investigate
+    Vector losProbePos        = vec_zero; // Probe result bot is actually moving toward (vec_zero = none)
+    int    scanUntil          = 0;        // Scan-pause timer: hold and look around until this time
 
     void reset()
     {
-        time               = 0;
-        stimulusType       = 0;
-        stimulusDistanceSq = 0.0f;
-        lastPos            = vec_zero;
-        targetPos          = vec_zero;
-        losProbePos        = vec_zero;
-        scanUntil          = 0;
+        *this = BotCuriousState();
     }
 };
 
@@ -357,13 +321,12 @@ struct BotCuriousState {
  * @brief Grenade avoidance state.
  */
 struct BotGrenadeState {
-    SafePtr<Entity> grenade;   // The grenade being avoided
-    int             avoidTime; // When to stop avoiding
+    SafePtr<Entity> grenade   = NULL; // The grenade being avoided
+    int             avoidTime = 0;    // When to stop avoiding
 
     void reset()
     {
-        grenade   = NULL;
-        avoidTime = 0;
+        *this = BotGrenadeState();
     }
 };
 
@@ -371,31 +334,21 @@ struct BotGrenadeState {
  * @brief Window overwatch state — bot holds position at a window to scan.
  */
 struct BotOverwatchState {
-    Vector windowPos;     // World position of the window entity's centroid
-    Vector standPos;      // Where the bot should stand (close to window, with sightline)
-    Vector lookDir;       // Normalized direction from standPos through the window
-    Vector anchorPos;     // Logical aim anchor for scan behavior
-    int    dwellUntil;    // When to give up and resume patrol
-    int    scanTime;      // When to next update scan angle
-    int    cooldownUntil; // Earliest time this window can be used again (anti-reentry)
-    int    displacedSince;
-    int    committedSince;
-    int    pathFailCount;
-    int    spotIndex;
+    Vector windowPos      = vec_zero; // World position of the window entity's centroid
+    Vector standPos       = vec_zero; // Where the bot should stand (close to window, with sightline)
+    Vector lookDir        = vec_zero; // Normalized direction from standPos through the window
+    Vector anchorPos      = vec_zero; // Logical aim anchor for scan behavior
+    int    dwellUntil     = 0;        // When to give up and resume patrol
+    int    scanTime       = 0;        // When to next update scan angle
+    int    cooldownUntil  = 0;        // Earliest time this window can be used again (anti-reentry)
+    int    displacedSince = 0;
+    int    committedSince = 0;
+    int    pathFailCount  = 0;
+    int    spotIndex      = -1;
 
     void reset()
     {
-        windowPos      = vec_zero;
-        standPos       = vec_zero;
-        lookDir        = vec_zero;
-        anchorPos      = vec_zero;
-        dwellUntil     = 0;
-        scanTime       = 0;
-        cooldownUntil  = 0;
-        displacedSince = 0;
-        committedSince = 0;
-        pathFailCount  = 0;
-        spotIndex      = -1;
+        *this = BotOverwatchState();
     }
 };
 
@@ -403,31 +356,22 @@ struct BotOverwatchState {
  * @brief Human-like idle/movement behavior state.
  */
 struct BotIdleBehavior {
-    int  pauseTime; // When current idle pause ends
-    int  lookTime;  // When to change look direction during pause
-    int  walkTime;  // When to stop walking and run again
-    int  leanTime;  // When to change lean state
-    int  leanDir;   // Current lean direction: -1 left, 0 none, 1 right
-    bool pausing;   // Currently in idle pause
-    bool walking;   // Currently walking instead of running
+    int  pauseTime = 0;    // When current idle pause ends
+    int  lookTime  = 0;    // When to change look direction during pause
+    int  walkTime  = 0;    // When to stop walking and run again
+    int  leanTime  = 0;    // When to change lean state
+    int  leanDir   = 0;    // Current lean direction: -1 left, 0 none, 1 right
+    bool pausing   = false; // Currently in idle pause
+    bool walking   = false; // Currently walking instead of running
     // Added in OPM
     //  Patrol look-around: occasionally glance at a point of interest while moving
-    Vector scanTarget;   // World-space point the bot is currently staring at (vec_zero = not staring)
-    int    scanUntil;    // Timestamp when the current stare ends
-    int    scanNextTime; // Timestamp when the bot may pick the next point of interest
+    Vector scanTarget   = vec_zero; // World-space point the bot is currently staring at (vec_zero = not staring)
+    int    scanUntil    = 0;        // Timestamp when the current stare ends
+    int    scanNextTime = 0;        // Timestamp when the bot may pick the next point of interest
 
     void reset()
     {
-        pauseTime    = 0;
-        lookTime     = 0;
-        walkTime     = 0;
-        leanTime     = 0;
-        leanDir      = 0;
-        pausing      = false;
-        walking      = false;
-        scanTarget   = vec_zero;
-        scanUntil    = 0;
-        scanNextTime = 0;
+        *this = BotIdleBehavior();
     }
 };
 
@@ -471,15 +415,13 @@ enum class BotButtonAction {
 };
 
 struct BotReactionState {
-    Vector lookPos;
-    int    lookUntil;
-    bool   clearMove;
+    Vector lookPos   = vec_zero;
+    int    lookUntil = 0;
+    bool   clearMove = false;
 
     void reset()
     {
-        lookPos   = vec_zero;
-        lookUntil = 0;
-        clearMove = false;
+        *this = BotReactionState();
     }
 };
 
@@ -678,6 +620,7 @@ private:
     int               m_iNextTauntTime;
     int               m_iLastFireTime;
     int               m_iLastPosDebugTime;
+    int               m_randomSeed;
     BotEngagementMode m_engagementMode;
     BotTacticalMode   m_tacticalMode;
     BotHazardMode     m_hazardMode;
@@ -699,33 +642,18 @@ private:
     bool CheckWindows(Vector *outWindowPos = nullptr, Vector *outLookDir = nullptr);
     void CheckValidWeapon(void);
 
-    bool CheckCondition_Idle(void);
-    void State_Idle(void);
-
-    bool CheckCondition_Curious(void);
-    void State_BeginCurious(void);
-    void State_Curious(void);
-
-    bool CheckCondition_Attack(void);
-    void State_BeginAttack(void);
-    void State_EndAttack(void);
-    void State_Attack(void);
     bool IsValidEnemy(Sentient *sent) const;
 
-    bool CheckCondition_Grenade(void);
-    void State_BeginGrenade(void);
-    void State_Grenade(void);
-
-    bool CheckCondition_Overwatch(void);
-    void State_BeginOverwatch(void);
-    void State_Overwatch(void);
-
-
-    BotPerceptionSnapshot BuildPerceptionSnapshot(void);
+    void                  RefreshPerceptionState(void);
+    void                  RefreshAttackState(void);
+    void                  RefreshCuriousState(void);
+    void                  RefreshGrenadeState(void);
+    void                  RefreshOverwatchState(void);
+    BotPerceptionSnapshot BuildPerceptionSnapshot(void) const;
     void                  UpdateModeTransitions(const BotPerceptionSnapshot& snapshot);
-    BotCombatIntent       BuildCombatIntent(const BotPerceptionSnapshot& snapshot);
+    BotCombatIntent       AdvanceCombatStateAndBuildIntent(const BotPerceptionSnapshot& snapshot);
     BotHazardIntent       BuildHazardIntent(const BotPerceptionSnapshot& snapshot);
-    BotTacticalIntent     BuildTacticalIntent(const BotPerceptionSnapshot& snapshot);
+    BotTacticalIntent     AdvanceTacticalStateAndBuildIntent(const BotPerceptionSnapshot& snapshot);
     BotResolvedCommand
     ResolveIntents(const BotCombatIntent& combat, const BotHazardIntent& hazard, const BotTacticalIntent& tactical);
     void        ExecuteResolvedCommand(const BotResolvedCommand& command);
@@ -736,6 +664,12 @@ private:
     const char *GetHazardModeName(BotHazardMode mode) const;
     void        ClearOverwatchAnchor(const char *reason, bool startCooldown);
     Vector      ProbeLOSPosition(const Vector& targetPos);
+    float       BotRandom(void);
+    float       BotRandom(float n);
+    float       BotCRandom(void);
+    int         BotRandomInt(int upperExclusive);
+    bool        BotRandomOneIn(int n);
+    bool        BotRandomPercent(float percent);
 
 public:
     CLASS_PROTOTYPE(BotController);

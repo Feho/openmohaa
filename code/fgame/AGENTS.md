@@ -7,7 +7,6 @@ This directory contains the current multiplayer bot system. Use this file as the
 The active bot system lives primarily in:
 
 - `playerbot.h` / `playerbot.cpp`: `BotController`, intent types, mode transitions, event hooks, frame updates, weapon selection, spawn/death handling.
-- `playerbot_states.cpp`: legacy state handlers plus condition helpers still reused by the intent pipeline.
 - `playerbot_movement.cpp`: pathing, obstacle handling, jump logic, attractive nodes.
 - `playerbot_rotation.cpp`: aim and turn dynamics.
 - `playerbot_beliefs.h` / `playerbot_beliefs.cpp`: belief-map storage and patrol targeting.
@@ -37,6 +36,7 @@ Keep controller logic server-side and deterministic. Avoid UI-style or menu-styl
 
 Preserve the current separation of responsibilities:
 
+- Durable combat/tactical/perception state updates belong in `BotController` refresh/advance stages.
 - Per-frame decisions belong in `BotController` intent builders and resolver code.
 - Motion/path execution belongs in `BotMovement`.
 - Aim smoothing and turn behavior belong in `BotRotation`.
@@ -49,13 +49,12 @@ Grouped state structs in `playerbot.h` exist to avoid partial resets. Prefer ext
 
 The current runtime path is layered:
 
-- `BuildPerceptionSnapshot()` gathers condition results and short-lived reaction data.
+- `RefreshPerceptionState()` is the durable state update pass for attack/curious/grenade/overwatch tracking.
+- `BuildPerceptionSnapshot()` is read-only and gathers condition results plus short-lived reaction data from current state.
 - `UpdateModeTransitions()` updates explicit engagement/tactical/hazard modes for debug visibility and state cleanup.
-- `BuildCombatIntent()`, `BuildHazardIntent()`, and `BuildTacticalIntent()` each produce a per-frame intent value.
+- `AdvanceCombatStateAndBuildIntent()`, `BuildHazardIntent()`, and `AdvanceTacticalStateAndBuildIntent()` each produce a per-frame intent value while advancing their owned controller state.
 - `ResolveIntents()` is the single place that decides precedence between layers.
 - `ExecuteResolvedCommand()` is the only place that should write final move goals, aim directives, lean/run flags, and attack buttons.
-
-`playerbot_states.cpp` is no longer the main per-frame command path. Its condition helpers still gate the new modes, and the older state handlers remain as migration-era reference logic. Do not route new behavior back through `CheckStates()` unless the architecture is being intentionally reverted.
 
 Avoid direct movement or rotation writes from perception/event handlers. Event handlers should update durable state, belief state, enemies, timers, or short-lived reaction inputs, then let the next frame's resolver decide the final command.
 
@@ -105,7 +104,7 @@ If you add new perception inputs, prefer feeding the belief map rather than addi
 Key invariants:
 - Stuck detection lives in `BotMovement`; zone recording lives in `BotController`.
 - Do not add new stuck workarounds outside this path — feed them through the same ban mechanism.
-- Chase recovery (re-engaging an enemy after losing LOS) is separate from stuck recovery and is managed in `BuildCombatIntent()`.
+- Chase recovery (re-engaging an enemy after losing LOS) is separate from stuck recovery and is managed in `AdvanceCombatStateAndBuildIntent()`.
 
 ## Weapon Selection API
 
@@ -133,6 +132,7 @@ When changing bot behavior:
 - Check interactions with `Player` respawn and weapon-selection code.
 - Preserve debug cvar behavior where it already exists.
 - Prefer small, explicit state additions or intent fields over hidden side effects.
+- Keep snapshot construction read-only. If state must advance, do it in the explicit refresh/advance stages instead of query helpers.
 - Keep decisions as data where practical: compute intent first, mutate engine-facing objects at the edge.
 - Make impossible combinations harder to represent by extending the explicit mode/intent structs instead of adding unrelated controller booleans.
 - Keep comments factual and short. The bot code already carries a lot of historical commentary.
