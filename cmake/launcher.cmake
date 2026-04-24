@@ -15,7 +15,7 @@ function (create_launcher name type)
     if (BUILD_CLIENT)
         add_executable(openmohaa_launcher_${name} ${LAUNCHER_SOURCES})
         target_compile_definitions(openmohaa_launcher_${name} PRIVATE NO_RC_MANIFEST=1 TARGET_GAME=${type})
-        target_compile_features(openmohaa_launcher_${name} PRIVATE cxx_std_17)
+        target_compile_features(openmohaa_launcher_${name} PRIVATE cxx_std_20)
         set_target_properties(openmohaa_launcher_${name} PROPERTIES OUTPUT_NAME "launch_openmohaa_${name}${TARGET_BIN_SUFFIX}")
         set_target_properties(openmohaa_launcher_${name} PROPERTIES DEBUG_POSTFIX ${CMAKE_DEBUG_POSTFIX})
 
@@ -24,7 +24,7 @@ function (create_launcher name type)
 
     #add_executable(omohaaded_launcher_${name} ${LAUNCHER_SOURCES})
     #target_compile_definitions(omohaaded_launcher_${name} PRIVATE NO_RC_MANIFEST=1 TARGET_GAME=${type} DEDICATED=1)
-    #target_compile_features(omohaaded_launcher_${name} PRIVATE cxx_std_17)
+    #target_compile_features(omohaaded_launcher_${name} PRIVATE cxx_std_20)
     #set_target_properties(omohaaded_launcher_${name} PROPERTIES OUTPUT_NAME "launch_omohaaded_${name}${TARGET_BIN_SUFFIX}")
     #set_target_properties(omohaaded_launcher_${name} PROPERTIES DEBUG_POSTFIX ${CMAKE_DEBUG_POSTFIX})
     #

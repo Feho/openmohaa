@@ -129,11 +129,19 @@ The project builds game modules that interface with the engine:
 ### Formatting
 
 Use `clang-format` for all code formatting. The project includes a `.clang-format` configuration:
-- C++17 standard
+- C++20 standard
 - 4-space indentation (no tabs)
 - 120 character line limit
 - Pointer alignment right (`Type *ptr`)
 - Braces: custom style with functions/classes on new line
+
+### New Code Guidelines (C++20)
+
+When writing new code (not modifying inherited engine/ioquake3 code):
+- Prefer `enum class` over plain `enum`
+- Use `constexpr` for compile-time constants
+- Use `std::optional` instead of sentinel/magic values where practical
+- Avoid `new`/`delete`; prefer `std::unique_ptr` for owned resources
 
 ### Event Declaration Format
 

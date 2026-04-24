@@ -53,7 +53,7 @@ private:
 
 public:
     Stack();
-    ~Stack<Type>();
+    ~Stack();
     void     Clear(void);
     qboolean Empty(void);
     void     Push(Type data);
