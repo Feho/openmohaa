@@ -1238,6 +1238,43 @@ void SV_Shutdown( const char *finalmsg ) {
 // Added in OPM
 //
 
+// Maximum number of non-PVS sound configstrings to change per frame.
+// Each set or clear sends a reliable command to every active client, so
+// unbounded churn can push slow or high-latency clients past
+// MAX_RELIABLE_COMMANDS (512) and trigger "Server command overflow" disconnects.
+#define MAX_NONPVS_SOUND_CONFIGSTRING_UPDATES_PER_FRAME 8
+#define NONPVS_SOUND_RELIABLE_COMMAND_RESERVE 32
+
+static int s_nonpvsSoundConfigstringUpdates;
+
+void SV_BeginNonPVSSoundFrame(void)
+{
+	s_nonpvsSoundConfigstringUpdates = 0;
+}
+
+static qboolean SV_CanQueueNonPVSSoundConfigstring(void)
+{
+	int i;
+
+	if (s_nonpvsSoundConfigstringUpdates >= MAX_NONPVS_SOUND_CONFIGSTRING_UPDATES_PER_FRAME) {
+		return qfalse;
+	}
+
+	for (i = 0; i < sv_maxclients->integer; i++) {
+		client_t *client = &svs.clients[i];
+		if (SV_ReliableCommandsNearOverflow(client, NONPVS_SOUND_RELIABLE_COMMAND_RESERVE)) {
+			return qfalse;
+		}
+	}
+
+	return qtrue;
+}
+
+static void SV_CountNonPVSSoundConfigstring(void)
+{
+	s_nonpvsSoundConfigstringUpdates++;
+}
+
 /*
 ===============
 SV_PVSSoundIndex
@@ -1247,6 +1284,7 @@ int SV_PVSSoundIndex( const char *name, qboolean streamed )
 {
 	int		i;
 	int		max = MAX_SOUNDS;
+	int		found = 0;
 	char	*s;
 	char	precachedName[ 1024 ];
 
@@ -1279,25 +1317,24 @@ int SV_PVSSoundIndex( const char *name, qboolean streamed )
 		s = sv.configstrings[CS_SOUNDS + i];
 
 		if( !s || !s[ 0 ] ) {
-			SV_SetConfigstring(CS_SOUNDS + i, name);
+			found = i;
 			break;
 		}
 		if( !strcmp( s, name ) ) {
-			break;
+			svs.nonpvs_sound_cache[i].inUse = qtrue;
+			svs.nonpvs_sound_cache[i].deleteTime = svs.time + 200;
+			return i;
 		}
 	}
 
-	if( i == max ) {
+	if( !found ) {
 		// Changed in OPM
 		//  When all sound slots are full, only free a single expired non-PVS entry
 		//  instead of bulk-clearing all entries at once.
 		//  Bulk-clearing sent hundreds of reliable commands in one frame, causing overflow.
-		int found = 0;
-
 		for (i = 1; i < max; i++) {
 			if (svs.nonpvs_sound_cache[i].inUse && svs.time >= svs.nonpvs_sound_cache[i].deleteTime) {
 				found = i;
-				svs.nonpvs_sound_cache[i].inUse = qfalse;
 				break;
 			}
 		}
@@ -1307,7 +1344,6 @@ int SV_PVSSoundIndex( const char *name, qboolean streamed )
 			for (i = 1; i < max; i++) {
 				if (svs.nonpvs_sound_cache[i].inUse) {
 					found = i;
-					svs.nonpvs_sound_cache[i].inUse = qfalse;
 					break;
 				}
 			}
@@ -1316,15 +1352,18 @@ int SV_PVSSoundIndex( const char *name, qboolean streamed )
 		if (!found) {
 			return 0;
 		}
-
-		i = found;
 	}
 
-	SV_SetConfigstring(CS_SOUNDS + i, name);
-	svs.nonpvs_sound_cache[i].inUse = qtrue;
-	svs.nonpvs_sound_cache[i].deleteTime = svs.time + 200;
+	if (!SV_CanQueueNonPVSSoundConfigstring()) {
+		return 0;
+	}
 
-	return i;
+	SV_SetConfigstring(CS_SOUNDS + found, name);
+	SV_CountNonPVSSoundConfigstring();
+	svs.nonpvs_sound_cache[found].inUse = qtrue;
+	svs.nonpvs_sound_cache[found].deleteTime = svs.time + 200;
+
+	return found;
 }
 
 /*
@@ -1355,13 +1394,6 @@ void SV_CacheNonPVSSound(void)
 	}
 }
 
-// Changed in OPM
-//  Maximum number of non-PVS sound configstrings to clear per frame.
-//  Each clear sends a reliable command to every active client, so bulk-clearing
-//  can push slow or high-latency clients past MAX_RELIABLE_COMMANDS (512)
-//  and trigger "Server command overflow" disconnects.
-#define MAX_NONPVS_SOUND_CLEANUPS_PER_FRAME 8
-
 /*
 =======================
 SV_CleanupNonPVSSound
@@ -1371,19 +1403,6 @@ void SV_CleanupNonPVSSound(void)
 {
 	nonpvs_sound_cache_t* cache;
 	int i;
-	int cleaned = 0;
-
-	// Changed in OPM
-	//  Before clearing expired sound configstrings, check whether any client
-	//  is close to reliable command overflow. If so, skip cleanup entirely
-	//  this frame to avoid pushing them over the limit.
-	for (i = 0; i < sv_maxclients->integer; i++) {
-		client_t *cl = &svs.clients[i];
-		if (cl->state >= CS_PRIMED
-			&& cl->reliableSequence - cl->reliableAcknowledge > MAX_RELIABLE_COMMANDS - 32) {
-			return;
-		}
-	}
 
 	for (i = 1; i < MAX_SOUNDS; i++) {
 		cache = &svs.nonpvs_sound_cache[i];
@@ -1397,15 +1416,13 @@ void SV_CleanupNonPVSSound(void)
 		}
 
 		if (svs.time >= cache->deleteTime) {
-			SV_SetConfigstring(CS_SOUNDS + i, NULL);
-			cache->inUse = qfalse;
-
-			// Changed in OPM
-			//  Limit the number of configstrings cleared per frame to avoid
-			//  flooding the reliable command buffer.
-			if (++cleaned >= MAX_NONPVS_SOUND_CLEANUPS_PER_FRAME) {
-				break;
+			if (!SV_CanQueueNonPVSSoundConfigstring()) {
+				return;
 			}
+
+			SV_SetConfigstring(CS_SOUNDS + i, NULL);
+			SV_CountNonPVSSoundConfigstring();
+			cache->inUse = qfalse;
 		}
 	}
 }

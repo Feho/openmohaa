@@ -248,13 +248,16 @@ SV_UpdateServerCommandsToClient
 */
 void SV_UpdateServerCommandsToClient( client_t *client, msg_t *msg ) {
 	int		i;
+	int		lastSent;
 	size_t  cmdLen = 0;
 
 	// write any unacknowledged serverCommands
+	lastSent = client->reliableAcknowledge;
 	for ( i = client->reliableAcknowledge + 1 ; i <= client->reliableSequence ; i++ ) {
 		MSG_WriteSVC( msg, svc_serverCommand );
 		MSG_WriteLong( msg, i );
 		MSG_WriteScrambledString( msg, client->reliableCommands[ i & (MAX_RELIABLE_COMMANDS-1) ] );
+		lastSent = i;
 
         // Added in OPM
         //  Defer commands if it would saturate the whole message buffer
@@ -263,7 +266,7 @@ void SV_UpdateServerCommandsToClient( client_t *client, msg_t *msg ) {
 			break;
 		}
 	}
-	client->reliableSent = client->reliableSequence;
+	client->reliableSent = lastSent;
 }
 
 /*

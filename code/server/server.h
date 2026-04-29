@@ -492,7 +492,10 @@ void SV_SpawnServer( const char *server, qboolean loadgame, qboolean restart, qb
 
 // Added in OPM
 int SV_PVSSoundIndex(const char* name, qboolean streamed);
+void SV_BeginNonPVSSoundFrame(void);
 void SV_HandleNonPVSSound();
+int SV_ReliableCommandBacklog(const client_t *client);
+qboolean SV_ReliableCommandsNearOverflow(const client_t *client, int reserve);
 
 void SV_ApplyOriginalConfigTweaks();
 void SV_ApplyFirstConfigTweaks();

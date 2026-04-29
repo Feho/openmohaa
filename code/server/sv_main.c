@@ -129,12 +129,17 @@ SV_ReplacePendingServerCommands
 int SV_ReplacePendingServerCommands( client_t *client, const char *cmd ) {
 	int i, index, csnum1, csnum2;
 
+	if ( sscanf( cmd, "cs %i", &csnum1 ) != 1 ) {
+		return qfalse;
+	}
+
 	for ( i = client->reliableSent+1; i <= client->reliableSequence; i++ ) {
 		index = i & ( MAX_RELIABLE_COMMANDS - 1 );
 		//
-		if ( !Q_strncmp(cmd, client->reliableCommands[ index ], strlen("cs")) ) {
-			sscanf(cmd, "cs %i", &csnum1);
-			sscanf(client->reliableCommands[ index ], "cs %i", &csnum2);
+		if ( !Q_strncmp( "cs ", client->reliableCommands[ index ], strlen( "cs " ) ) ) {
+			if ( sscanf( client->reliableCommands[ index ], "cs %i", &csnum2 ) != 1 ) {
+				continue;
+			}
 			if ( csnum1 == csnum2 ) {
 				Q_strncpyz( client->reliableCommands[ index ], cmd, sizeof( client->reliableCommands[ index ] ) );
 				/*
@@ -149,6 +154,53 @@ int SV_ReplacePendingServerCommands( client_t *client, const char *cmd ) {
 	return qfalse;
 }
 
+qboolean SV_ShouldReplacePendingServerCommand( const char *cmd ) {
+	int csnum;
+
+	if ( strncmp( cmd, "cs ", 3 ) ) {
+		return qfalse;
+	}
+
+	if ( com_protocol->integer >= PROTOCOL_MOHTA_MIN ) {
+		return qtrue;
+	}
+
+	if ( sscanf( cmd, "cs %i", &csnum ) != 1 ) {
+		return qfalse;
+	}
+
+	// Replacing model configstrings can crash original MOHAA clients, but sound
+	// configstrings do not have that model-handle aliasing problem.
+	return csnum >= CS_SOUNDS && csnum < CS_SOUNDS + MAX_SOUNDS;
+}
+
+int SV_ReliableCommandBacklog( const client_t *client ) {
+	int backlog;
+
+	backlog = client->reliableSequence - client->reliableAcknowledge;
+	if ( backlog < 0 ) {
+		return MAX_RELIABLE_COMMANDS;
+	}
+
+	return backlog;
+}
+
+qboolean SV_ReliableCommandsNearOverflow( const client_t *client, int reserve ) {
+	if ( client->state < CS_PRIMED ) {
+		return qfalse;
+	}
+
+	if ( reserve < 0 ) {
+		reserve = 0;
+	}
+
+	if ( reserve > MAX_RELIABLE_COMMANDS ) {
+		reserve = MAX_RELIABLE_COMMANDS;
+	}
+
+	return SV_ReliableCommandBacklog( client ) >= MAX_RELIABLE_COMMANDS - reserve;
+}
+
 /*
 ======================
 SV_AddServerCommand
@@ -160,9 +212,8 @@ not have future snapshot_t executed before it is executed
 void SV_AddServerCommand( client_t *client, const char *cmd ) {
 	int		index, i;
 
-	if ( com_protocol->integer >= PROTOCOL_MOHTA_MIN ) {
+	if ( SV_ShouldReplacePendingServerCommand( cmd ) ) {
 		// Added in 2.0
-		//  Requires spearhead clients.
 		//  Unfortunately in MOHAA 1.11, replacing cs can cause clients to crash
 		//  when an existing model is moved into a lower configstring.
 		//  For example:
@@ -173,10 +224,12 @@ void SV_AddServerCommand( client_t *client, const char *cmd ) {
 
 		// FIXME: To make it work on MOHAA clients, reorder configstrings that are sent to clients.
 		// For example, always put "cs 117" before "cs 138".
+		// Sound configstrings are safe to replace for MOHAA clients because they
+		// do not have the model-handle aliasing issue described above.
 
 		// this is very ugly but it's also a waste to for instance send multiple config string updates
 		// for the same config string index in one snapshot
-		if ( !strncmp( cmd, "cs ", 3 ) && SV_ReplacePendingServerCommands( client, cmd ) ) {
+		if ( SV_ReplacePendingServerCommands( client, cmd ) ) {
 			return;
 		}
 	}
@@ -1121,6 +1174,7 @@ void SV_Frame( int msec ) {
 
 	// update ping based on the all received frames
 	SV_CalcPings();
+	SV_BeginNonPVSSoundFrame();
 
 	// run the game simulation in chunks
 	while ( sv.timeResidual >= frameMsec ) {
