@@ -807,6 +807,8 @@ public:
     void EventBotMoveNear(Event *ev);
     void EventBotLookAt(Event *ev);
     void EventBotClearLook(Event *ev);
+    void EventBotWatchAt(Event *ev);
+    void EventBotClearWatch(Event *ev);
     void EventBotPrimaryFire(Event *ev);
     void EventBotSecondaryFire(Event *ev);
     void EventBotUse(Event *ev);

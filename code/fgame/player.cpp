@@ -1211,6 +1211,24 @@ Event EV_Player_BotClearLook
     "For bots, clear the script look target.",
     EV_NORMAL
 );
+Event EV_Player_BotWatchAt
+(
+    "bot_watchat",
+    EV_DEFAULT,
+    "v",
+    "position",
+    "For bots, watch the specified position unless a visible enemy takes aim priority.",
+    EV_NORMAL
+);
+Event EV_Player_BotClearWatch
+(
+    "bot_clearwatch",
+    EV_DEFAULT,
+    NULL,
+    NULL,
+    "For bots, clear the script watch target.",
+    EV_NORMAL
+);
 Event EV_Player_BotPrimaryFire
 (
     "bot_primaryfire",
@@ -2037,6 +2055,8 @@ CLASS_DECLARATION(Sentient, Player, "player") {
     {&EV_Player_BotMoveNear,              &Player::EventBotMoveNear             },
     {&EV_Player_BotLookAt,                &Player::EventBotLookAt               },
     {&EV_Player_BotClearLook,             &Player::EventBotClearLook            },
+    {&EV_Player_BotWatchAt,               &Player::EventBotWatchAt              },
+    {&EV_Player_BotClearWatch,            &Player::EventBotClearWatch           },
     {&EV_Player_BotPrimaryFire,           &Player::EventBotPrimaryFire          },
     {&EV_Player_BotSecondaryFire,         &Player::EventBotSecondaryFire        },
     {&EV_Player_BotUse,                   &Player::EventBotUse                  },
@@ -10779,6 +10799,22 @@ void Player::EventBotClearLook(Event *ev)
     BotController *controller = GetPlayerBotController(this, "bot_clearlook");
     if (controller) {
         controller->ScriptClearLook();
+    }
+}
+
+void Player::EventBotWatchAt(Event *ev)
+{
+    BotController *controller = GetPlayerBotController(this, "bot_watchat");
+    if (controller) {
+        controller->ScriptWatchAt(ev->GetVector(1));
+    }
+}
+
+void Player::EventBotClearWatch(Event *ev)
+{
+    BotController *controller = GetPlayerBotController(this, "bot_clearwatch");
+    if (controller) {
+        controller->ScriptClearWatch();
     }
 }
 

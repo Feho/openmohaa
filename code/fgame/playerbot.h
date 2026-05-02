@@ -436,6 +436,8 @@ struct BotScriptControlState {
     float             moveRadius      = 0.0f;
     bool              hasLookTarget   = false;
     Vector            lookTarget      = vec_zero;
+    bool              hasWatchTarget  = false;
+    Vector            watchTarget     = vec_zero;
     BotScriptPosture  posture         = BotScriptPosture::None;
     bool              primaryFire     = false;
     bool              secondaryFire   = false;
@@ -488,6 +490,7 @@ struct BotCombatIntent {
     int                leanDir;
     bool               clearMove;
     bool               run;
+    bool               visibleEnemy;
     bool               updatedLastFireTime;
 
     void reset()
@@ -508,6 +511,7 @@ struct BotCombatIntent {
         leanDir             = 0;
         clearMove           = false;
         run                 = true;
+        visibleEnemy        = false;
         updatedLastFireTime = false;
     }
 };
@@ -597,6 +601,7 @@ struct BotResolvedCommand {
     bool               reload;
     bool               run;
     bool               clearMove;
+    bool               visibleEnemy;
     bool               updatedLastFireTime;
 
     void reset()
@@ -621,6 +626,7 @@ struct BotResolvedCommand {
         reload              = false;
         run                 = true;
         clearMove           = false;
+        visibleEnemy        = false;
         updatedLastFireTime = false;
     }
 };
@@ -737,6 +743,8 @@ public:
     void ScriptMoveNear(const Vector& target, float radius);
     void ScriptLookAt(const Vector& target);
     void ScriptClearLook(void);
+    void ScriptWatchAt(const Vector& target);
+    void ScriptClearWatch(void);
     void ScriptPrimaryFire(bool enabled);
     void ScriptSecondaryFire(bool enabled);
     void ScriptUse(bool enabled);

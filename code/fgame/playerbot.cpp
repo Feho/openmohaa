@@ -961,6 +961,7 @@ BotCombatIntent BotController::AdvanceCombatStateAndBuildIntent(const BotPercept
                 return intent;
             }
 
+            intent.visibleEnemy = true;
             bCanAttack = true;
             if (m_combat.lastUnseenTime) {
                 const unsigned int minDelay    = m_profile.reactionMinDelay * 1000;
@@ -1743,6 +1744,7 @@ BotResolvedCommand BotController::ResolveIntents(
         resolved.upmove              = combat.upmove;
         resolved.leanDir             = combat.leanDir;
         resolved.run                 = combat.run && resolved.run;
+        resolved.visibleEnemy        = combat.visibleEnemy;
         resolved.updatedLastFireTime = resolved.updatedLastFireTime || combat.updatedLastFireTime;
 
         if (combat.moveType != BotMoveRequestType::None && !tactical.lockPosition) {
@@ -1803,6 +1805,9 @@ void BotController::ApplyScriptControl(BotResolvedCommand& command)
     if (m_scriptControl.hasLookTarget) {
         command.aimType   = BotAimDirective::AimAtPoint;
         command.aimTarget = m_scriptControl.lookTarget;
+    } else if (m_scriptControl.hasWatchTarget && !command.visibleEnemy) {
+        command.aimType   = BotAimDirective::AimAtPoint;
+        command.aimTarget = m_scriptControl.watchTarget;
     }
 
     switch (m_scriptControl.posture) {
@@ -2271,6 +2276,18 @@ void BotController::ScriptClearLook(void)
 {
     m_scriptControl.hasLookTarget = false;
     m_scriptControl.lookTarget    = vec_zero;
+}
+
+void BotController::ScriptWatchAt(const Vector& target)
+{
+    m_scriptControl.hasWatchTarget = true;
+    m_scriptControl.watchTarget    = target;
+}
+
+void BotController::ScriptClearWatch(void)
+{
+    m_scriptControl.hasWatchTarget = false;
+    m_scriptControl.watchTarget    = vec_zero;
 }
 
 void BotController::ScriptPrimaryFire(bool enabled)
