@@ -1984,10 +1984,13 @@ void BotController::CheckUse(void)
     Vector  start;
     Vector  end;
     trace_t trace;
+    bool    useWhenBlocked;
 
     if (controlledEnt->GetLadder()) {
         return;
     }
+
+    useWhenBlocked = movement.ShouldUseWhenBlocked();
 
     controlledEnt->angles.AngleVectorsLeft(&dir);
 
@@ -1999,7 +2002,11 @@ void BotController::CheckUse(void)
     );
 
     if (!trace.ent || trace.ent->entity == world) {
-        m_botCmd.buttons &= ~BUTTON_USE;
+        if (useWhenBlocked) {
+            m_botCmd.buttons ^= BUTTON_USE;
+        } else {
+            m_botCmd.buttons &= ~BUTTON_USE;
+        }
         return;
     }
 
@@ -2011,7 +2018,11 @@ void BotController::CheckUse(void)
             return;
         }
     } else if (!trace.ent->entity->isSubclassOf(FuncLadder)) {
-        m_botCmd.buttons &= ~BUTTON_USE;
+        if (useWhenBlocked) {
+            m_botCmd.buttons ^= BUTTON_USE;
+        } else {
+            m_botCmd.buttons &= ~BUTTON_USE;
+        }
         return;
     }
 

@@ -152,6 +152,7 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
                         cur.z
                     );
                 }
+                m_collision.useUntil = level.inttime + 1000;
                 BanCurrentZone();
                 AvoidPath(controlledEntity->origin, 512.0f);
                 m_bGaveUp = (m_stuckPolicy == BotStuckPolicy::TrackAndGiveUp);
@@ -923,6 +924,8 @@ Vector BotMovement::FixDeltaFromCollision(const Vector& delta)
     }
 
     if (trace.fraction < 1.0) {
+        m_collision.useUntil = level.inttime + 500;
+
         Vector start, step;
         float  bestLeftFrac = 0, bestRightFrac = 0;
         Vector bestLeftPos, bestRightPos;
@@ -1058,6 +1061,11 @@ bool BotMovement::IsMoving() const
 bool BotMovement::WasGivenUp() const
 {
     return m_bGaveUp;
+}
+
+bool BotMovement::ShouldUseWhenBlocked() const
+{
+    return m_collision.useUntil > level.inttime;
 }
 
 bool BotMovement::IsPathSegmentBanned(const Vector& start, const Vector& end) const
