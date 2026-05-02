@@ -416,6 +416,38 @@ enum class BotButtonAction {
     Toggle
 };
 
+enum class BotScriptMoveType {
+    None,
+    MoveTo,
+    MoveNear
+};
+
+enum class BotScriptPosture {
+    None,
+    Stand,
+    Crouch,
+    Prone
+};
+
+struct BotScriptControlState {
+    bool              holdPosition    = false;
+    BotScriptMoveType moveType        = BotScriptMoveType::None;
+    Vector            moveTarget      = vec_zero;
+    float             moveRadius      = 0.0f;
+    bool              hasLookTarget   = false;
+    Vector            lookTarget      = vec_zero;
+    BotScriptPosture  posture         = BotScriptPosture::None;
+    bool              primaryFire     = false;
+    bool              secondaryFire   = false;
+    bool              useButton       = false;
+    bool              reloadRequested = false;
+
+    void reset()
+    {
+        *this = BotScriptControlState();
+    }
+};
+
 struct BotReactionState {
     Vector lookPos   = vec_zero;
     int    lookUntil = 0;
@@ -558,6 +590,7 @@ struct BotResolvedCommand {
     Vector             aimAngles;
     BotButtonAction    attackLeft;
     BotButtonAction    attackRight;
+    BotButtonAction    useButton;
     int                rightmove;
     int                upmove;
     int                leanDir;
@@ -581,6 +614,7 @@ struct BotResolvedCommand {
         aimAngles           = vec_zero;
         attackLeft          = BotButtonAction::Leave;
         attackRight         = BotButtonAction::Leave;
+        useButton           = BotButtonAction::Leave;
         rightmove           = 0;
         upmove              = 0;
         leanDir             = 0;
@@ -626,6 +660,7 @@ private:
     BotEngagementMode m_engagementMode;
     BotTacticalMode   m_tacticalMode;
     BotHazardMode     m_hazardMode;
+    BotScriptControlState m_scriptControl;
 
 private:
     DelegateHandle delegateHandle_gotKill;
@@ -658,6 +693,7 @@ private:
     BotTacticalIntent     AdvanceTacticalStateAndBuildIntent(const BotPerceptionSnapshot& snapshot);
     BotResolvedCommand
     ResolveIntents(const BotCombatIntent& combat, const BotHazardIntent& hazard, const BotTacticalIntent& tactical);
+    void        ApplyScriptControl(BotResolvedCommand& command);
     void        ExecuteResolvedCommand(const BotResolvedCommand& command);
     void        DebugResolvedCommand(const BotResolvedCommand& command) const;
     void        ApplyButtonAction(int buttonMask, BotButtonAction action);
@@ -693,6 +729,20 @@ public:
     void ClearEnemy(void);
 
     void SendCommand(const char *text);
+
+    void ScriptHoldPosition(bool enabled);
+    void ScriptStop(void);
+    void ScriptSetPosture(BotScriptPosture posture, bool enabled);
+    void ScriptMoveTo(const Vector& target);
+    void ScriptMoveNear(const Vector& target, float radius);
+    void ScriptLookAt(const Vector& target);
+    void ScriptClearLook(void);
+    void ScriptPrimaryFire(bool enabled);
+    void ScriptSecondaryFire(bool enabled);
+    void ScriptUse(bool enabled);
+    void ScriptReload(void);
+    void ScriptReleaseControl(void);
+    bool ScriptControlsUse(void) const;
 
     void Think();
 

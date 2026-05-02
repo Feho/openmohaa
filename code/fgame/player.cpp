@@ -54,6 +54,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "portableturret.h"
 #include "fixedturret.h"
 #include "clientvote.h"
+#include "playerbot.h"
 
 const Vector power_color(0.0, 1.0, 0.0);
 const Vector acolor(1.0, 1.0, 1.0);
@@ -1129,6 +1130,132 @@ Event EV_Player_StuffText
     "Stuffs text to the player's console",
     EV_NORMAL
 );
+Event EV_Player_BotHoldPosition
+(
+    "bot_holdposition",
+    EV_DEFAULT,
+    "b",
+    "enabled",
+    "For bots, hold or release the current position.",
+    EV_NORMAL
+);
+Event EV_Player_BotStop
+(
+    "bot_stop",
+    EV_DEFAULT,
+    NULL,
+    NULL,
+    "For bots, stop the current script movement.",
+    EV_NORMAL
+);
+Event EV_Player_BotStand
+(
+    "bot_stand",
+    EV_DEFAULT,
+    "b",
+    "enabled",
+    "For bots, force or release standing posture.",
+    EV_NORMAL
+);
+Event EV_Player_BotCrouch
+(
+    "bot_crouch",
+    EV_DEFAULT,
+    "b",
+    "enabled",
+    "For bots, force or release crouching posture.",
+    EV_NORMAL
+);
+Event EV_Player_BotProne
+(
+    "bot_prone",
+    EV_DEFAULT,
+    "b",
+    "enabled",
+    "For bots, force or release prone posture when supported.",
+    EV_NORMAL
+);
+Event EV_Player_BotMoveTo
+(
+    "bot_moveto",
+    EV_DEFAULT,
+    "v",
+    "position",
+    "For bots, move to the specified position.",
+    EV_NORMAL
+);
+Event EV_Player_BotMoveNear
+(
+    "bot_movenear",
+    EV_DEFAULT,
+    "vf",
+    "position radius",
+    "For bots, move near the specified position.",
+    EV_NORMAL
+);
+Event EV_Player_BotLookAt
+(
+    "bot_lookat",
+    EV_DEFAULT,
+    "v",
+    "position",
+    "For bots, look at the specified position.",
+    EV_NORMAL
+);
+Event EV_Player_BotClearLook
+(
+    "bot_clearlook",
+    EV_DEFAULT,
+    NULL,
+    NULL,
+    "For bots, clear the script look target.",
+    EV_NORMAL
+);
+Event EV_Player_BotPrimaryFire
+(
+    "bot_primaryfire",
+    EV_DEFAULT,
+    "b",
+    "enabled",
+    "For bots, hold or release primary fire.",
+    EV_NORMAL
+);
+Event EV_Player_BotSecondaryFire
+(
+    "bot_secondaryfire",
+    EV_DEFAULT,
+    "b",
+    "enabled",
+    "For bots, hold or release secondary fire.",
+    EV_NORMAL
+);
+Event EV_Player_BotUse
+(
+    "bot_use",
+    EV_DEFAULT,
+    "b",
+    "enabled",
+    "For bots, hold or release the use button.",
+    EV_NORMAL
+);
+Event EV_Player_BotReload
+(
+    "bot_reload",
+    EV_DEFAULT,
+    NULL,
+    NULL,
+    "For bots, request a reload.",
+    EV_NORMAL
+);
+Event EV_Player_BotReleaseControl
+(
+    "bot_releasecontrol",
+    EV_DEFAULT,
+    NULL,
+    NULL,
+    "For bots, clear all script control overrides.",
+    EV_NORMAL
+);
 Event EV_Player_DMMessage
 (
     "dmmessage",
@@ -1901,6 +2028,20 @@ CLASS_DECLARATION(Sentient, Player, "player") {
     {&EV_Player_ObjectiveCount,           &Player::SetObjectiveCount            },
     {&EV_Player_Stats,                    &Player::Stats                        },
     {&EV_Player_StuffText,                &Player::EventStuffText               },
+    {&EV_Player_BotHoldPosition,          &Player::EventBotHoldPosition         },
+    {&EV_Player_BotStop,                  &Player::EventBotStop                 },
+    {&EV_Player_BotStand,                 &Player::EventBotStand                },
+    {&EV_Player_BotCrouch,                &Player::EventBotCrouch               },
+    {&EV_Player_BotProne,                 &Player::EventBotProne                },
+    {&EV_Player_BotMoveTo,                &Player::EventBotMoveTo               },
+    {&EV_Player_BotMoveNear,              &Player::EventBotMoveNear             },
+    {&EV_Player_BotLookAt,                &Player::EventBotLookAt               },
+    {&EV_Player_BotClearLook,             &Player::EventBotClearLook            },
+    {&EV_Player_BotPrimaryFire,           &Player::EventBotPrimaryFire          },
+    {&EV_Player_BotSecondaryFire,         &Player::EventBotSecondaryFire        },
+    {&EV_Player_BotUse,                   &Player::EventBotUse                  },
+    {&EV_Player_BotReload,                &Player::EventBotReload               },
+    {&EV_Player_BotReleaseControl,        &Player::EventBotReleaseControl       },
     {&EV_Player_DMMessage,                &Player::EventDMMessage               },
     {&EV_Player_IPrint,                   &Player::EventIPrint                  },
     {&EV_SetViewangles,                   &Player::SetViewangles                },
@@ -10557,6 +10698,128 @@ void Player::EventStuffText(Event *ev)
     gi.SendServerCommand(edict - g_entities, "stufftext \"%s\"", ev->GetString(1).c_str());
 
     delegate_stufftext.Execute(ev->GetString(1));
+}
+
+static BotController *GetPlayerBotController(Player *player, const char *eventName)
+{
+    BotController *controller = botManager.getControllerManager().findController(player);
+    if (!controller) {
+        gi.DPrintf("%s called on a non-bot player\n", eventName);
+    }
+
+    return controller;
+}
+
+void Player::EventBotHoldPosition(Event *ev)
+{
+    BotController *controller = GetPlayerBotController(this, "bot_holdposition");
+    if (controller) {
+        controller->ScriptHoldPosition(ev->GetBoolean(1));
+    }
+}
+
+void Player::EventBotStop(Event *ev)
+{
+    BotController *controller = GetPlayerBotController(this, "bot_stop");
+    if (controller) {
+        controller->ScriptStop();
+    }
+}
+
+void Player::EventBotStand(Event *ev)
+{
+    BotController *controller = GetPlayerBotController(this, "bot_stand");
+    if (controller) {
+        controller->ScriptSetPosture(BotScriptPosture::Stand, ev->GetBoolean(1));
+    }
+}
+
+void Player::EventBotCrouch(Event *ev)
+{
+    BotController *controller = GetPlayerBotController(this, "bot_crouch");
+    if (controller) {
+        controller->ScriptSetPosture(BotScriptPosture::Crouch, ev->GetBoolean(1));
+    }
+}
+
+void Player::EventBotProne(Event *ev)
+{
+    BotController *controller = GetPlayerBotController(this, "bot_prone");
+    if (controller) {
+        controller->ScriptSetPosture(BotScriptPosture::Prone, ev->GetBoolean(1));
+    }
+}
+
+void Player::EventBotMoveTo(Event *ev)
+{
+    BotController *controller = GetPlayerBotController(this, "bot_moveto");
+    if (controller) {
+        controller->ScriptMoveTo(ev->GetVector(1));
+    }
+}
+
+void Player::EventBotMoveNear(Event *ev)
+{
+    BotController *controller = GetPlayerBotController(this, "bot_movenear");
+    if (controller) {
+        controller->ScriptMoveNear(ev->GetVector(1), ev->GetFloat(2));
+    }
+}
+
+void Player::EventBotLookAt(Event *ev)
+{
+    BotController *controller = GetPlayerBotController(this, "bot_lookat");
+    if (controller) {
+        controller->ScriptLookAt(ev->GetVector(1));
+    }
+}
+
+void Player::EventBotClearLook(Event *ev)
+{
+    BotController *controller = GetPlayerBotController(this, "bot_clearlook");
+    if (controller) {
+        controller->ScriptClearLook();
+    }
+}
+
+void Player::EventBotPrimaryFire(Event *ev)
+{
+    BotController *controller = GetPlayerBotController(this, "bot_primaryfire");
+    if (controller) {
+        controller->ScriptPrimaryFire(ev->GetBoolean(1));
+    }
+}
+
+void Player::EventBotSecondaryFire(Event *ev)
+{
+    BotController *controller = GetPlayerBotController(this, "bot_secondaryfire");
+    if (controller) {
+        controller->ScriptSecondaryFire(ev->GetBoolean(1));
+    }
+}
+
+void Player::EventBotUse(Event *ev)
+{
+    BotController *controller = GetPlayerBotController(this, "bot_use");
+    if (controller) {
+        controller->ScriptUse(ev->GetBoolean(1));
+    }
+}
+
+void Player::EventBotReload(Event *ev)
+{
+    BotController *controller = GetPlayerBotController(this, "bot_reload");
+    if (controller) {
+        controller->ScriptReload();
+    }
+}
+
+void Player::EventBotReleaseControl(Event *ev)
+{
+    BotController *controller = GetPlayerBotController(this, "bot_releasecontrol");
+    if (controller) {
+        controller->ScriptReleaseControl();
+    }
 }
 
 void Player::EventSetVoiceType(Event *ev)

@@ -77,6 +77,7 @@ BotController::BotController()
     m_overwatch.reset();
     m_idle.reset();
     m_reaction.reset();
+    m_scriptControl.reset();
 
     m_iNextTauntTime    = 0;
     m_iLastFireTime     = 0;
@@ -1773,6 +1774,65 @@ BotResolvedCommand BotController::ResolveIntents(
     return resolved;
 }
 
+void BotController::ApplyScriptControl(BotResolvedCommand& command)
+{
+    if (m_scriptControl.holdPosition) {
+        command.clearMove  = true;
+        command.moveType   = BotMoveRequestType::None;
+        command.rightmove  = 0;
+        command.run        = false;
+    } else {
+        switch (m_scriptControl.moveType) {
+        case BotScriptMoveType::MoveTo:
+            command.moveType   = BotMoveRequestType::MoveTo;
+            command.stuckPolicy = BotStuckPolicy::Ignore;
+            command.moveTarget = m_scriptControl.moveTarget;
+            break;
+        case BotScriptMoveType::MoveNear:
+            command.moveType   = BotMoveRequestType::MoveNear;
+            command.stuckPolicy = BotStuckPolicy::Ignore;
+            command.moveTarget = m_scriptControl.moveTarget;
+            command.radius     = m_scriptControl.moveRadius;
+            break;
+        case BotScriptMoveType::None:
+        default:
+            break;
+        }
+    }
+
+    if (m_scriptControl.hasLookTarget) {
+        command.aimType   = BotAimDirective::AimAtPoint;
+        command.aimTarget = m_scriptControl.lookTarget;
+    }
+
+    switch (m_scriptControl.posture) {
+    case BotScriptPosture::Stand:
+    case BotScriptPosture::Prone:
+        command.upmove = 0;
+        break;
+    case BotScriptPosture::Crouch:
+        command.upmove = -127;
+        break;
+    case BotScriptPosture::None:
+    default:
+        break;
+    }
+
+    if (m_scriptControl.primaryFire) {
+        command.attackLeft = BotButtonAction::Hold;
+    }
+    if (m_scriptControl.secondaryFire) {
+        command.attackRight = BotButtonAction::Hold;
+    }
+    if (m_scriptControl.useButton) {
+        command.useButton = BotButtonAction::Hold;
+    }
+    if (m_scriptControl.reloadRequested) {
+        command.reload                    = true;
+        m_scriptControl.reloadRequested = false;
+    }
+}
+
 void BotController::DebugResolvedCommand(const BotResolvedCommand& command) const
 {
     float anchorDist = -1.0f;
@@ -1845,6 +1905,7 @@ void BotController::ExecuteResolvedCommand(const BotResolvedCommand& command)
 
     ApplyButtonAction(BUTTON_ATTACKLEFT, command.attackLeft);
     ApplyButtonAction(BUTTON_ATTACKRIGHT, command.attackRight);
+    ApplyButtonAction(BUTTON_USE, command.useButton);
 
     if (command.updatedLastFireTime) {
         m_iLastFireTime = level.inttime;
@@ -1921,11 +1982,14 @@ void BotController::UpdateBotStates(void)
     BotHazardIntent    hazard   = BuildHazardIntent(snapshot);
     BotTacticalIntent  tactical = AdvanceTacticalStateAndBuildIntent(snapshot);
     BotResolvedCommand command  = ResolveIntents(combat, hazard, tactical);
+    ApplyScriptControl(command);
     ExecuteResolvedCommand(command);
 
     movement.MoveThink(m_botCmd);
     rotation.TurnThink(m_botCmd, m_botEyes);
-    CheckUse();
+    if (!ScriptControlsUse()) {
+        CheckUse();
+    }
 
     CheckValidWeapon();
 
@@ -2112,6 +2176,143 @@ void BotController::SendCommand(const char *text)
     } catch (ScriptException& exc) {
         gi.DPrintf("*** Bot Command Exception *** %s\n", exc.string.c_str());
     }
+}
+
+static void BotApplyModHeight(Player *player, const char *height)
+{
+    if (!player) {
+        return;
+    }
+
+    Event event("modheight");
+    event.AddString(height);
+    player->ProcessEvent(event);
+}
+
+void BotController::ScriptHoldPosition(bool enabled)
+{
+    m_scriptControl.holdPosition = enabled;
+    if (enabled) {
+        movement.ClearMove();
+        m_botCmd.forwardmove = 0;
+        m_botCmd.rightmove   = 0;
+        m_botCmd.upmove      = 0;
+        m_botCmd.buttons &= ~BUTTON_RUN;
+    }
+}
+
+void BotController::ScriptStop(void)
+{
+    m_scriptControl.moveType = BotScriptMoveType::None;
+    movement.ClearMove();
+    m_botCmd.forwardmove = 0;
+    m_botCmd.rightmove   = 0;
+    m_botCmd.upmove      = 0;
+}
+
+void BotController::ScriptSetPosture(BotScriptPosture posture, bool enabled)
+{
+    if (!enabled) {
+        if (m_scriptControl.posture == posture) {
+            m_scriptControl.posture = BotScriptPosture::None;
+            if (posture == BotScriptPosture::Crouch || posture == BotScriptPosture::Prone) {
+                BotApplyModHeight(controlledEnt, "stand");
+            }
+        }
+        return;
+    }
+
+    if (posture == BotScriptPosture::Prone && g_protocol >= protocol_e::PROTOCOL_MOHTA_MIN) {
+        gi.DPrintf("bot_prone is not supported for this protocol\n");
+        return;
+    }
+
+    m_scriptControl.posture = posture;
+
+    switch (posture) {
+    case BotScriptPosture::Stand:
+        BotApplyModHeight(controlledEnt, "stand");
+        break;
+    case BotScriptPosture::Crouch:
+        BotApplyModHeight(controlledEnt, "duck");
+        break;
+    case BotScriptPosture::Prone:
+        BotApplyModHeight(controlledEnt, "prone");
+        break;
+    case BotScriptPosture::None:
+    default:
+        break;
+    }
+}
+
+void BotController::ScriptMoveTo(const Vector& target)
+{
+    m_scriptControl.holdPosition = false;
+    m_scriptControl.moveType     = BotScriptMoveType::MoveTo;
+    m_scriptControl.moveTarget   = target;
+    m_scriptControl.moveRadius   = 0.0f;
+}
+
+void BotController::ScriptMoveNear(const Vector& target, float radius)
+{
+    m_scriptControl.holdPosition = false;
+    m_scriptControl.moveType     = BotScriptMoveType::MoveNear;
+    m_scriptControl.moveTarget   = target;
+    m_scriptControl.moveRadius   = radius < 0.0f ? 0.0f : radius;
+}
+
+void BotController::ScriptLookAt(const Vector& target)
+{
+    m_scriptControl.hasLookTarget = true;
+    m_scriptControl.lookTarget    = target;
+}
+
+void BotController::ScriptClearLook(void)
+{
+    m_scriptControl.hasLookTarget = false;
+    m_scriptControl.lookTarget    = vec_zero;
+}
+
+void BotController::ScriptPrimaryFire(bool enabled)
+{
+    m_scriptControl.primaryFire = enabled;
+}
+
+void BotController::ScriptSecondaryFire(bool enabled)
+{
+    m_scriptControl.secondaryFire = enabled;
+}
+
+void BotController::ScriptUse(bool enabled)
+{
+    m_scriptControl.useButton = enabled;
+    if (!enabled) {
+        m_botCmd.buttons &= ~BUTTON_USE;
+    }
+}
+
+void BotController::ScriptReload(void)
+{
+    m_scriptControl.reloadRequested = true;
+}
+
+void BotController::ScriptReleaseControl(void)
+{
+    if (m_scriptControl.posture == BotScriptPosture::Crouch || m_scriptControl.posture == BotScriptPosture::Prone) {
+        BotApplyModHeight(controlledEnt, "stand");
+    }
+
+    m_scriptControl.reset();
+    m_botCmd.buttons &= ~BUTTON_USE;
+    movement.ClearMove();
+    m_botCmd.forwardmove = 0;
+    m_botCmd.rightmove   = 0;
+    m_botCmd.upmove      = 0;
+}
+
+bool BotController::ScriptControlsUse(void) const
+{
+    return m_scriptControl.useButton;
 }
 
 /*
@@ -2457,6 +2658,7 @@ void BotController::Spawned(void)
     m_overwatch.reset();
     m_idle.reset();
     m_reaction.reset();
+    m_scriptControl.reset();
     m_engagementMode = BotEngagementMode::None;
     m_tacticalMode   = BotTacticalMode::None;
     m_hazardMode     = BotHazardMode::None;
@@ -2499,6 +2701,7 @@ void BotController::Killed(const Event& ev)
     Entity *attacker;
 
     ClearOverwatchAnchor("killed", false);
+    ScriptReleaseControl();
 
     // send the respawn buttons
     if (!(m_botCmd.buttons & BUTTON_ATTACKLEFT)) {
