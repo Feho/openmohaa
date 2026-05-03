@@ -1783,22 +1783,38 @@ void BotController::ApplyScriptControl(BotResolvedCommand& command)
         command.moveType   = BotMoveRequestType::None;
         command.rightmove  = 0;
         command.run        = false;
-    } else {
-        switch (m_scriptControl.moveType) {
-        case BotScriptMoveType::MoveTo:
-            command.moveType   = BotMoveRequestType::MoveTo;
-            command.stuckPolicy = BotStuckPolicy::Ignore;
-            command.moveTarget = m_scriptControl.moveTarget;
-            break;
-        case BotScriptMoveType::MoveNear:
-            command.moveType   = BotMoveRequestType::MoveNear;
-            command.stuckPolicy = BotStuckPolicy::Ignore;
-            command.moveTarget = m_scriptControl.moveTarget;
-            command.radius     = m_scriptControl.moveRadius;
-            break;
-        case BotScriptMoveType::None:
-        default:
-            break;
+    } else if (m_scriptControl.moveType != BotScriptMoveType::None) {
+        if (m_scriptControl.moveStarted && movement.MoveDone()) {
+            m_scriptControl.moveType    = BotScriptMoveType::None;
+            m_scriptControl.moveStarted = false;
+            command.clearMove           = true;
+            command.moveType            = BotMoveRequestType::None;
+            command.rightmove           = 0;
+        } else {
+            command.clearMove = false;
+            command.moveType  = BotMoveRequestType::None;
+            command.rightmove = 0;
+
+            if (!m_scriptControl.moveStarted) {
+                switch (m_scriptControl.moveType) {
+                case BotScriptMoveType::MoveTo:
+                    command.moveType   = BotMoveRequestType::MoveTo;
+                    command.stuckPolicy = BotStuckPolicy::Ignore;
+                    command.moveTarget = m_scriptControl.moveTarget;
+                    break;
+                case BotScriptMoveType::MoveNear:
+                    command.moveType   = BotMoveRequestType::MoveNear;
+                    command.stuckPolicy = BotStuckPolicy::Ignore;
+                    command.moveTarget = m_scriptControl.moveTarget;
+                    command.radius     = m_scriptControl.moveRadius;
+                    break;
+                case BotScriptMoveType::None:
+                default:
+                    break;
+                }
+
+                m_scriptControl.moveStarted = command.moveType != BotMoveRequestType::None;
+            }
         }
     }
 
@@ -2208,7 +2224,8 @@ void BotController::ScriptHoldPosition(bool enabled)
 
 void BotController::ScriptStop(void)
 {
-    m_scriptControl.moveType = BotScriptMoveType::None;
+    m_scriptControl.moveType    = BotScriptMoveType::None;
+    m_scriptControl.moveStarted = false;
     movement.ClearMove();
     m_botCmd.forwardmove = 0;
     m_botCmd.rightmove   = 0;
@@ -2256,6 +2273,8 @@ void BotController::ScriptMoveTo(const Vector& target)
     m_scriptControl.moveType     = BotScriptMoveType::MoveTo;
     m_scriptControl.moveTarget   = target;
     m_scriptControl.moveRadius   = 0.0f;
+    m_scriptControl.moveStarted  = false;
+    movement.ClearMove();
 }
 
 void BotController::ScriptMoveNear(const Vector& target, float radius)
@@ -2264,6 +2283,8 @@ void BotController::ScriptMoveNear(const Vector& target, float radius)
     m_scriptControl.moveType     = BotScriptMoveType::MoveNear;
     m_scriptControl.moveTarget   = target;
     m_scriptControl.moveRadius   = radius < 0.0f ? 0.0f : radius;
+    m_scriptControl.moveStarted  = false;
+    movement.ClearMove();
 }
 
 void BotController::ScriptLookAt(const Vector& target)

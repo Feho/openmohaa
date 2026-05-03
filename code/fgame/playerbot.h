@@ -434,6 +434,7 @@ struct BotScriptControlState {
     BotScriptMoveType moveType        = BotScriptMoveType::None;
     Vector            moveTarget      = vec_zero;
     float             moveRadius      = 0.0f;
+    bool              moveStarted     = false;
     bool              hasLookTarget   = false;
     Vector            lookTarget      = vec_zero;
     bool              hasWatchTarget  = false;
