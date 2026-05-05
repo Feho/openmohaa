@@ -4,11 +4,19 @@ Whether you're reporting issues or coding, follow the guidelines below to help k
 
 All contributions, including **issues**, **discussions**, **code comments**, **commit messages**, and **documentation**, must be written in *English*. This ensures clarity and consistency for all contributors.
 
-There are many ways to contribute, like:
-- Reporting an [issue](#issues).
-- Submitting [pull request](#pull-requests).
-- Suggesting enhancements.
-- Testing.
+There are many ways to contribute. Contributions are welcome in the following areas:
+- Fixing [bugs and crashes](#issues).
+- Documentation improvements
+- Performance improvements
+- Testing
+- Helping users (issues, discussions)
+- Suggesting enhancements (via issues only)
+
+New features are designed and implemented by maintainers, so the project's direction and maintenance burden stay consistent.
+
+If you want to propose a new feature, please open an issue first.
+
+Do not start implementing a new feature before getting approval. Pull requests that introduce unapproved features may be closed without review.
 
 ---
 

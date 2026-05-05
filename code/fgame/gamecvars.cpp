@@ -312,6 +312,10 @@ cvar_t *g_bot_debug_beliefs;
 cvar_t *g_rankedserver;
 cvar_t *g_spectatefollow_firstperson;
 
+cvar_t *g_playeranim_legs_continous;
+
+cvar_t *g_playerStacking;
+
 cvar_t *cl_running;
 
 // Whether or instant messages are allowed
@@ -328,6 +332,9 @@ cvar_t *g_teambalance;
 
 // Whether or not to use Legacy Navigation
 cvar_t *g_navigation_legacy;
+
+// Reopen door if blocked
+cvar_t *g_door_reopen_blocked;
 
 void CVAR_Init(void)
 {
@@ -702,10 +709,13 @@ void CVAR_Init(void)
     g_bot_attack_spreadmult                    = gi.Cvar_Get("g_bot_attack_spreadmult", "1.0", 0);
     g_bot_turn_speed                           = gi.Cvar_Get("g_bot_turn_speed", "15", 0);
     g_bot_instamsg_chance                      = gi.Cvar_Get("g_bot_instamsg_chance", "5", 0);
-    g_bot_instamsg_delay                       = gi.Cvar_Get("g_bot_instamsg_delay", "5.0", 0);
+    g_bot_instamsg_delay                        = gi.Cvar_Get("g_bot_instamsg_delay", "5.0", 0);
 
     g_rankedserver               = gi.Cvar_Get("g_rankedserver", "0", 0);
     g_spectatefollow_firstperson = gi.Cvar_Get("g_spectatefollow_firstperson", "0", 0);
+
+    g_playeranim_legs_continous = gi.Cvar_Get("g_playeranim_legs_continous", "1", 0);
+    g_playerStacking            = gi.Cvar_Get("g_playerStacking", "0", 0);
 
     if (maxclients->integer + sv_maxbots->integer > MAX_CLIENTS) {
         unsigned int lowered;
@@ -743,6 +753,8 @@ void CVAR_Init(void)
     g_teambalance = gi.Cvar_Get("g_teambalance", "0", 0);
 
     g_navigation_legacy = gi.Cvar_Get("g_navigation_legacy", "0", CVAR_LATCH);
+
+    g_door_reopen_blocked = gi.Cvar_Get("g_door_reopen_blocked", "1", 0);
 
     cl_running = gi.Cvar_Get("cl_running", "", 0);
 }

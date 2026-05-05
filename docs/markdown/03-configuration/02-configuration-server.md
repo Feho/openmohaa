@@ -54,6 +54,10 @@ This sets the elapsed time at which the game ends, the winner being the player w
 
 In round and objective matches, this is the maximum time at which a player can join a team without being put in spectator. Defaults to `30`.
 
+### `g_door_reopen_blocked`
+
+Automatically reopens the door from the opposite side when blocked. Defaults to `1`.
+
 ### `g_forceteamspectate`
 
 Forces players to only be able to spectate behind their own team. Defaults to `1`.
@@ -87,6 +91,16 @@ The time in second after which an inactive player gets moved into spectator. Def
 ### `g_password`
 
 Make the server joinable only with a password. By default, no password is set.
+
+### `g_playeranim_legs_continous`
+
+If enabled, the legs animation continues from its current time between animations instead of restarting. Defaults to `1`.
+
+This prevents some tricks such as `ghost walking` where a player rapidly switch weapons to avoid emitting footsteps sounds.
+
+### `g_playerStacking`
+
+If enabled, a player can stand on another player's head without being pushed off. Defaults to `0`.
 
 ### `g_teamdamage`
 

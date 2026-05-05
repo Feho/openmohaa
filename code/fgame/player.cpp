@@ -4119,7 +4119,8 @@ void Player::ClientMove(usercmd_t *ucmd)
         Pmove(&pm);
         GetMoveInfo(&pm);
 
-        if (g_gametype->integer != GT_SINGLE_PLAYER && groundentity && groundentity->entity
+        if (!g_playerStacking->integer // Changed in OPM: determine if standing on another player's head is allowed
+            && g_gametype->integer != GT_SINGLE_PLAYER && groundentity && groundentity->entity
             && groundentity->entity->IsSubclassOfSentient()) {
             //
             // Added in 2.0
@@ -5586,7 +5587,7 @@ void Player::EvaluateState(State *forceTorso, State *forceLegs)
                 } else if (legsAnim != "") {
                     float oldTime;
 
-                    if (currentState_Legs == laststate_Legs) {
+                    if (g_playeranim_legs_continous->integer && currentState_Legs == laststate_Legs) {
                         //
                         // Added in OPM
                         //  This allows different animations in the same state
@@ -6382,7 +6383,7 @@ void Player::DamageFeedback(void)
 
     damage_angles.z +=
         DotProduct(vDir, orientation[2]) * damage_blood * g_viewkick_roll->value * g_viewkick_dmmult->value;
-    damage_angles.z = Q_clamp_float(damage_angles.y, -25, 25);
+    damage_angles.z = Q_clamp_float(damage_angles.z, -25, 25);
 
     damage_count += damage_blood;
     count     = damage_blood;

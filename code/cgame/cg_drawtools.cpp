@@ -340,11 +340,19 @@ static void CG_DrawServerLag()
     float     w, h;
     qhandle_t handle;
 
+    if (cgs.gametype == GT_SINGLE_PLAYER) {
+        // Fixed in 2.0
+        //  Don't draw server lag in single-player mode
+        return;
+    }
+
     if (!cg_drawsvlag->integer) {
         return;
     }
 
-    if (!developer->integer && !cgs.gametype) {
+    if (!developer->integer) {
+        // Changed in 2.0
+        //  Svlag should only be drawn when developer mode is enabled
         return;
     }
 
@@ -1424,13 +1432,13 @@ void CG_DrawCrosshair()
     }
 
     if (shader) {
-        width  = cgi.R_GetShaderWidth(shader);
-        height = cgi.R_GetShaderHeight(shader);
+        width  = cgi.R_GetShaderWidth(shader) * cgs.uiHiResScale[0];
+        height = cgi.R_GetShaderHeight(shader) * cgs.uiHiResScale[1];
         x      = (cgs.glconfig.vidWidth - width) * 0.5f;
         y      = (cgs.glconfig.vidHeight - height) * 0.5f;
 
         cgi.R_SetColor(NULL);
-        cgi.R_DrawStretchPic(x, y, width * cgs.uiHiResScale[0], height * cgs.uiHiResScale[1], 0, 0, 1, 1, shader);
+        cgi.R_DrawStretchPic(x, y, width, height, 0, 0, 1, 1, shader);
     }
 }
 

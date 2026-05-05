@@ -354,6 +354,18 @@ extern cvar_t *g_bot_debug_beliefs;
 extern cvar_t *g_rankedserver;
 extern cvar_t *g_spectatefollow_firstperson;
 
+/**
+ * @brief When enabled, the legs animation continues from its current time between animations instead of restarting.
+ * 
+ */
+extern cvar_t *g_playeranim_legs_continous;
+
+/**
+ * @brief When enabled, players can stand on another player's head without being pushed off.
+ * 
+ */
+extern cvar_t *g_playerStacking;
+
 extern cvar_t *cl_running;
 
 extern cvar_t *g_instamsg_allowed;
@@ -364,6 +376,8 @@ extern cvar_t *g_textmsg_minDelay;
 extern cvar_t *g_teambalance;
 
 extern cvar_t *g_navigation_legacy;
+
+extern cvar_t *g_door_reopen_blocked;
 
 void CVAR_Init(void);
 
