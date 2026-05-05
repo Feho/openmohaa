@@ -35,7 +35,7 @@ public:
     void UpdateFromDeath(Vector pos);
     void SeedFromSpawnPoints(Player *player);
     void ClearZone(Vector pos);
-    void ClearZonesVisibleFrom(Player *player);
+    void ClearZonesVisibleFrom(Player *player, float fov);
 
     // Changed in OPM
     //  Zone selection now considers distance from bot position and uses

@@ -380,7 +380,7 @@ Periodic visibility sweep: clear belief for zones the bot can currently see
 are empty. Only checks a subset of zones per call to avoid per-frame cost.
 ====================
 */
-void BotBeliefMap::ClearZonesVisibleFrom(Player *player)
+void BotBeliefMap::ClearZonesVisibleFrom(Player *player, float fov)
 {
     if (!m_bInitialized || !player) {
         return;
@@ -397,7 +397,7 @@ void BotBeliefMap::ClearZonesVisibleFrom(Player *player)
             continue;
         }
 
-        if (player->CanSee(zone.investigatePos, 80, 2048, false)) {
+        if (player->CanSee(zone.investigatePos, fov, 2048, false)) {
             zone.belief         = 0.0f;
             zone.lastUpdateTime = level.inttime;
         }

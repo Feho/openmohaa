@@ -572,6 +572,113 @@ bool BotController::IsValidEnemy(Sentient *sent) const
     return true;
 }
 
+float BotController::GetVisionDistance(void) const
+{
+    return Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828f) * m_profile.visionDistanceMult;
+}
+
+float BotController::GetHorizontalViewOffset(const Vector& pos) const
+{
+    Vector delta   = pos - controlledEnt->centroid;
+    Vector forward = controlledEnt->orientation[0];
+
+    delta.z   = 0.0f;
+    forward.z = 0.0f;
+
+    const float deltaLenSq   = delta.lengthSquared();
+    const float forwardLenSq = forward.lengthSquared();
+
+    if (deltaLenSq <= Square(1.0f) || forwardLenSq <= Square(0.001f)) {
+        return 0.0f;
+    }
+
+    const float dot = DotProduct(delta, forward) / sqrtf(deltaLenSq * forwardLenSq);
+    return RAD2DEG(acosf(Q_clamp_float(dot, -1.0f, 1.0f)));
+}
+
+float BotController::GetPassiveSpotRate(
+    Sentient *sent,
+    float     distSq,
+    float    *traceFov,
+    bool     *immediate,
+    bool     *forceLook
+) const
+{
+    const float viewOffset = GetHorizontalViewOffset(sent->centroid);
+
+    if (traceFov) {
+        *traceFov = m_profile.spotPeripheralFov;
+    }
+    if (immediate) {
+        *immediate = false;
+    }
+    if (forceLook) {
+        *forceLook = false;
+    }
+
+    if (viewOffset <= m_profile.spotImmediateFov * 0.5f) {
+        if (immediate) {
+            *immediate = true;
+        }
+        return m_profile.spotAwarenessThreshold;
+    }
+
+    if (viewOffset <= m_profile.spotLikelyFov * 0.5f) {
+        return m_profile.spotLikelyRate;
+    }
+
+    if (viewOffset <= m_profile.spotPeripheralFov * 0.5f) {
+        return m_profile.spotPeripheralRate;
+    }
+
+    if (distSq <= Square(m_profile.spotCloseFlankerRange)) {
+        if (traceFov) {
+            *traceFov = 360.0f;
+        }
+        if (forceLook) {
+            *forceLook = true;
+        }
+        return m_profile.spotCloseFlankerRate;
+    }
+
+    return 0.0f;
+}
+
+void BotController::ResetPassiveSpotAwareness(void)
+{
+    m_combat.spotAwarenessEnemy = NULL;
+    m_combat.spotAwareness      = 0.0f;
+}
+
+void BotController::DecayPassiveSpotAwareness(void)
+{
+    if (!m_combat.spotAwarenessEnemy) {
+        m_combat.spotAwareness = 0.0f;
+        return;
+    }
+
+    m_combat.spotAwareness -= level.frametime * 0.75f;
+    if (m_combat.spotAwareness <= 0.0f) {
+        ResetPassiveSpotAwareness();
+    }
+}
+
+bool BotController::AdvancePassiveSpotAwareness(Sentient *sent, float rate)
+{
+    if (!sent || rate <= 0.0f) {
+        DecayPassiveSpotAwareness();
+        return false;
+    }
+
+    if (m_combat.spotAwarenessEnemy != sent) {
+        m_combat.spotAwarenessEnemy = sent;
+        m_combat.spotAwareness      = 0.0f;
+    }
+
+    m_combat.spotAwareness += rate * level.frametime;
+    return m_combat.spotAwareness >= m_profile.spotAwarenessThreshold;
+}
+
 void BotController::StartCombatReactionDelay(void)
 {
     const int minDelay    = Q_max(0, (int)(m_profile.reactionMinDelay * 1000.0f));
@@ -589,16 +696,28 @@ BotMoveClearReason BotController::RefreshAttackState(void)
 {
     Container<Sentient *> sents       = SentientList;
     float                 maxDistance = 0.0f;
-    Sentient             *bestEnemy   = NULL;
-    float                 bestDistSq  = FLT_MAX;
+    Sentient             *bestEnemy     = NULL;
+    Sentient             *spotCandidate = NULL;
+    bool                  bestEnemyForceLook     = false;
+    bool                  spotCandidateForceLook = false;
+    float                 spotCandidateRate      = 0.0f;
+    float                 spotCandidateDistSq    = FLT_MAX;
 
     bot_origin = controlledEnt->origin;
     sents.Sort(sentients_compare);
 
-    maxDistance = Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828f);
-    maxDistance *= m_profile.visionDistanceMult;
+    maxDistance = GetVisionDistance();
+
+    if (m_enemy.enemy && m_combat.attackTime > level.inttime && IsValidEnemy(m_enemy.enemy)
+        && controlledEnt->CanSee(m_enemy.enemy, m_profile.spotPeripheralFov, maxDistance, false)) {
+        bestEnemy = m_enemy.enemy;
+    }
 
     for (int i = 1; i <= sents.NumObjects(); i++) {
+        if (bestEnemy) {
+            break;
+        }
+
         Sentient *sent = sents.ObjectAt(i);
 
         if (!IsValidEnemy(sent)) {
@@ -607,14 +726,42 @@ BotMoveClearReason BotController::RefreshAttackState(void)
 
         float distSq = (sent->origin - controlledEnt->origin).lengthSquared();
 
-        if (controlledEnt->CanSee(sent, 360, maxDistance, false) && distSq < bestDistSq) {
-            bestDistSq = distSq;
-            bestEnemy  = sent;
+        float traceFov  = 0.0f;
+        bool  immediate = false;
+        bool  forceLook = false;
+        float spotRate  = GetPassiveSpotRate(sent, distSq, &traceFov, &immediate, &forceLook);
+
+        if (spotRate <= 0.0f || !controlledEnt->CanSee(sent, traceFov, maxDistance, false)) {
+            continue;
         }
+
+        if (immediate) {
+            bestEnemy          = sent;
+            bestEnemyForceLook = forceLook;
+            break;
+        }
+
+        if (!spotCandidate || spotRate > spotCandidateRate
+            || (spotRate == spotCandidateRate && distSq < spotCandidateDistSq)) {
+            spotCandidate          = sent;
+            spotCandidateForceLook = forceLook;
+            spotCandidateRate      = spotRate;
+            spotCandidateDistSq    = distSq;
+        }
+    }
+
+    if (!bestEnemy && spotCandidate) {
+        if (AdvancePassiveSpotAwareness(spotCandidate, spotCandidateRate)) {
+            bestEnemy          = spotCandidate;
+            bestEnemyForceLook = spotCandidateForceLook;
+        }
+    } else if (!bestEnemy) {
+        DecayPassiveSpotAwareness();
     }
 
     if (bestEnemy) {
         if (m_enemy.enemy != bestEnemy) {
+            ResetPassiveSpotAwareness();
             m_enemy.eyesTag = -1;
             StartCombatReactionDelay();
         }
@@ -622,6 +769,10 @@ BotMoveClearReason BotController::RefreshAttackState(void)
         m_enemy.enemy       = bestEnemy;
         m_enemy.lastPos     = bestEnemy->origin;
         m_combat.attackTime = level.inttime + 500 + (int)BotRandom(1000.0f);
+        if (bestEnemyForceLook) {
+            m_combat.lastSeenTime      = level.inttime;
+            m_combat.attackStopAimTime = level.inttime + 1250;
+        }
         beliefMap.UpdateFromSighting(bestEnemy->origin);
         return BotMoveClearReason::None;
     }
@@ -1008,9 +1159,8 @@ BotCombatIntent BotController::AdvanceCombatStateAndBuildIntent(const BotPercept
         fDistanceSquared = (m_enemy.enemy->origin - controlledEnt->origin).lengthSquared();
         m_enemy.oldPos   = m_enemy.lastPos;
 
-        float visionDist =
-            Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828) * m_profile.visionDistanceMult;
-        bCanSee = controlledEnt->CanSee(m_enemy.enemy, 120, visionDist, false);
+        float visionDist = GetVisionDistance();
+        bCanSee = controlledEnt->CanSee(m_enemy.enemy, m_profile.spotPeripheralFov, visionDist, false);
 
         if (bCanSee) {
             if (!pWeap) {
@@ -1366,7 +1516,7 @@ BotCombatIntent BotController::AdvanceCombatStateAndBuildIntent(const BotPercept
             intent.attackRight = BotButtonAction::Clear;
         }
 
-        if (targetPos != vec_zero && controlledEnt->CanSee(targetPos, 120, 2048, false)) {
+        if (targetPos != vec_zero && controlledEnt->CanSee(targetPos, m_profile.spotPeripheralFov, 2048, false)) {
             intent.aimType   = BotAimDirective::AimAtPoint;
             intent.aimTarget = targetPos;
         } else if (movement.IsMoving()) {
@@ -1549,9 +1699,8 @@ BotTacticalIntent BotController::AdvanceTacticalStateAndBuildIntent(const BotPer
                 // At the anchor with a visible enemy: lock position so combat strafing
                 // doesn't push the bot off the window.
                 if (snapshot.attackActive && m_enemy.enemy) {
-                    float visionDist = Q_min(world->m_fAIVisionDistance, world->farplane_distance * 0.828f)
-                                     * m_profile.visionDistanceMult;
-                    if (controlledEnt->CanSee(m_enemy.enemy, 120, visionDist, false)) {
+                    float visionDist = GetVisionDistance();
+                    if (controlledEnt->CanSee(m_enemy.enemy, m_profile.spotPeripheralFov, visionDist, false)) {
                         intent.lockPosition = true;
                     }
                 }
@@ -1651,7 +1800,7 @@ BotTacticalIntent BotController::AdvanceTacticalStateAndBuildIntent(const BotPer
     intent.run = !m_idle.walking;
 
     Vector beliefPos = beliefMap.GetHighestBeliefPos(controlledEnt->origin);
-    if (beliefPos != vec_zero && controlledEnt->CanSee(beliefPos, 120, 2048, false)) {
+    if (beliefPos != vec_zero && controlledEnt->CanSee(beliefPos, m_profile.spotPeripheralFov, 2048, false)) {
         intent.aimType   = BotAimDirective::AimAtPoint;
         intent.aimTarget = beliefPos;
     } else {
@@ -2060,7 +2209,7 @@ void BotController::UpdateBotStates(void)
     // Added in OPM
     //  Per-frame belief map maintenance
     beliefMap.Decay(level.frametime);
-    beliefMap.ClearZonesVisibleFrom(controlledEnt);
+    beliefMap.ClearZonesVisibleFrom(controlledEnt, m_profile.spotPeripheralFov);
 
     BotMoveClearReason perceptionClearReason = RefreshPerceptionState();
     BotPerceptionSnapshot snapshot = BuildPerceptionSnapshot();
@@ -2649,6 +2798,7 @@ void BotController::ClearEnemy(void)
     m_combat.reactionReadyTime = 0;
     m_combat.losRecoverPos     = vec_zero;
     m_combat.losRecoverTime    = 0;
+    ResetPassiveSpotAwareness();
     m_enemy.enemy              = NULL;
     m_enemy.eyesTag            = -1;
     m_enemy.oldPos             = vec_zero;
@@ -2901,6 +3051,7 @@ void BotController::Damaged(const Event& ev)
         }
 
         // Set up enemy tracking
+        ResetPassiveSpotAwareness();
         m_enemy.enemy   = sentAttacker;
         m_enemy.lastPos = sentAttacker->origin;
         m_enemy.eyesTag = gi.Tag_NumForName(sentAttacker->edict->tiki, "eyes bone");
@@ -2933,6 +3084,7 @@ void BotController::GotKill(const Event& ev)
     //
     m_enemy.enemy       = NULL;
     m_enemy.eyesTag     = -1;
+    ResetPassiveSpotAwareness();
     m_curious.time      = 0;
     m_curious.scanUntil = 0;
 

@@ -6,6 +6,8 @@
 
 BotProfileManager botProfileManager;
 
+static void ClampVisionProfile(BotProfile& profile);
+
 BotProfileManager::BotProfileManager()
 {
     // InitDefault() is deferred to LoadProfiles() so that cvars are already
@@ -35,6 +37,28 @@ void BotProfileManager::InitDefault()
     m_default.longRangeStrafeChance    = 100.0f;
     m_default.preferredWeapon          = "auto";
     m_default.visionDistanceMult       = 1.0f;
+    m_default.spotImmediateFov         = 40.0f;
+    m_default.spotLikelyFov            = 80.0f;
+    m_default.spotPeripheralFov        = 120.0f;
+    m_default.spotAwarenessThreshold   = 1.0f;
+    m_default.spotLikelyRate           = 1.8f;
+    m_default.spotPeripheralRate       = 0.55f;
+    m_default.spotCloseFlankerRange    = 384.0f;
+    m_default.spotCloseFlankerRate     = 0.35f;
+    ClampVisionProfile(m_default);
+}
+
+static void ClampVisionProfile(BotProfile& profile)
+{
+    profile.visionDistanceMult     = Q_max(0.01f, profile.visionDistanceMult);
+    profile.spotImmediateFov       = Q_clamp_float(profile.spotImmediateFov, 1.0f, 360.0f);
+    profile.spotLikelyFov          = Q_clamp_float(profile.spotLikelyFov, profile.spotImmediateFov, 360.0f);
+    profile.spotPeripheralFov      = Q_clamp_float(profile.spotPeripheralFov, profile.spotLikelyFov, 360.0f);
+    profile.spotAwarenessThreshold = Q_max(0.01f, profile.spotAwarenessThreshold);
+    profile.spotLikelyRate         = Q_max(0.0f, profile.spotLikelyRate);
+    profile.spotPeripheralRate     = Q_max(0.0f, profile.spotPeripheralRate);
+    profile.spotCloseFlankerRange  = Q_max(0.0f, profile.spotCloseFlankerRange);
+    profile.spotCloseFlankerRate   = Q_max(0.0f, profile.spotCloseFlankerRate);
 }
 
 void BotProfileManager::ParseProfileFile(const char *filename, const char *basedir)
@@ -118,10 +142,27 @@ void BotProfileManager::ParseProfileFile(const char *filename, const char *based
             profile.preferredWeapon = val;
         } else if (!Q_stricmp(key, "visionDistanceMult")) {
             profile.visionDistanceMult = fval;
+        } else if (!Q_stricmp(key, "spotImmediateFov")) {
+            profile.spotImmediateFov = fval;
+        } else if (!Q_stricmp(key, "spotLikelyFov")) {
+            profile.spotLikelyFov = fval;
+        } else if (!Q_stricmp(key, "spotPeripheralFov")) {
+            profile.spotPeripheralFov = fval;
+        } else if (!Q_stricmp(key, "spotAwarenessThreshold")) {
+            profile.spotAwarenessThreshold = fval;
+        } else if (!Q_stricmp(key, "spotLikelyRate")) {
+            profile.spotLikelyRate = fval;
+        } else if (!Q_stricmp(key, "spotPeripheralRate")) {
+            profile.spotPeripheralRate = fval;
+        } else if (!Q_stricmp(key, "spotCloseFlankerRange")) {
+            profile.spotCloseFlankerRange = fval;
+        } else if (!Q_stricmp(key, "spotCloseFlankerRate")) {
+            profile.spotCloseFlankerRate = fval;
         }
     }
 
     gi.FS_FreeFile(buf);
+    ClampVisionProfile(profile);
 
     if (profile.name.length() == 0) {
         gi.Printf("^3WARNING: bot profile in '%s' has no name field, skipping\n", filename);

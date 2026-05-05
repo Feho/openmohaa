@@ -49,7 +49,15 @@ struct BotProfile {
     str preferredWeapon;
 
     // Perception
-    float visionDistanceMult = 1.0f; // Multiplier on base vision range
+    float visionDistanceMult     = 1.0f; // Multiplier on base vision range
+    float spotImmediateFov       = 40.0f; // Full horizontal FOV that spots immediately
+    float spotLikelyFov          = 80.0f; // Full horizontal FOV that builds awareness quickly
+    float spotPeripheralFov      = 120.0f; // Full horizontal FOV that builds awareness slowly
+    float spotAwarenessThreshold = 1.0f;
+    float spotLikelyRate         = 1.8f; // Awareness per second inside likely FOV
+    float spotPeripheralRate     = 0.55f; // Awareness per second inside peripheral FOV
+    float spotCloseFlankerRange  = 384.0f;
+    float spotCloseFlankerRate   = 0.35f; // Awareness per second outside FOV at close range
 
     bool IsSniperRole() const { return !Q_stricmp(preferredWeapon.c_str(), "sniper"); }
 };

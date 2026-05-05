@@ -282,6 +282,8 @@ struct BotCombatState {
     bool   crouchDecided        = false;    // Whether crouch decision was made
     Vector losRecoverPos        = vec_zero; // Cached probe result for LOS recovery move
     int    losRecoverTime       = 0;        // level.inttime when probe ran; 0 = no valid cache
+    SafePtr<Sentient> spotAwarenessEnemy = NULL;
+    float             spotAwareness      = 0.0f;
 
     void reset()
     {
@@ -704,6 +706,12 @@ private:
     void CheckValidWeapon(void);
 
     bool IsValidEnemy(Sentient *sent) const;
+    float GetVisionDistance(void) const;
+    float GetHorizontalViewOffset(const Vector& pos) const;
+    float GetPassiveSpotRate(Sentient *sent, float distSq, float *traceFov, bool *immediate, bool *forceLook) const;
+    void  DecayPassiveSpotAwareness(void);
+    bool  AdvancePassiveSpotAwareness(Sentient *sent, float rate);
+    void  ResetPassiveSpotAwareness(void);
 
     BotMoveClearReason    RefreshPerceptionState(void);
     BotMoveClearReason    RefreshAttackState(void);
