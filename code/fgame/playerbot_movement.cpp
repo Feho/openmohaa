@@ -30,10 +30,11 @@ BotMovement::BotMovement()
 {
     controlledEntity = NULL;
 
-    m_pPath         = NULL;
-    m_iLastMoveTime = 0;
-    m_fAttractTime  = 0;
-    m_bPathing      = false;
+    m_pPath          = NULL;
+    m_iLastMoveTime  = 0;
+    m_fAttractTime   = 0;
+    m_bPathing       = false;
+    m_bMoveCompleted = false;
 
     m_stuck.reset();
     m_collision.reset();
@@ -106,7 +107,9 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
         VectorAdd2D(m_vCurrentGoal, vDelta, m_vCurrentGoal);
 
         if (MoveDone()) {
-            ClearMove();
+            ClearMove(true);
+            botcmd.forwardmove = 0;
+            return;
         }
     }
 
@@ -177,10 +180,14 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
 
     if (m_pPath->GetNodeCount()) {
         if ((m_vTargetPos - controlledEntity->origin).lengthSquared() <= Square(16)) {
-            ClearMove();
+            ClearMove(true);
+            botcmd.forwardmove = 0;
+            return;
         }
     } else {
         ClearMove();
+        botcmd.forwardmove = 0;
+        return;
     }
 
     // Rotate the dir
@@ -744,8 +751,9 @@ Called when there is a new move
 */
 void BotMovement::NewMove()
 {
-    m_bPathing = true;
-    m_bGaveUp  = false;
+    m_bPathing       = true;
+    m_bGaveUp        = false;
+    m_bMoveCompleted = false;
 
     if (m_stuckPolicy != BotStuckPolicy::Ignore) {
         m_stuck.reset();
@@ -1046,6 +1054,16 @@ bool BotMovement::MoveDone() const
     return false;
 }
 
+bool BotMovement::ReachedMoveGoal() const
+{
+    return m_bPathing && m_pPath && m_pPath->GetNodeCount() && MoveDone();
+}
+
+bool BotMovement::CompletedMove() const
+{
+    return m_bMoveCompleted;
+}
+
 /*
 ====================
 IsMoving
@@ -1164,9 +1182,10 @@ ClearMove
 Stop the bot from moving
 ====================
 */
-void BotMovement::ClearMove()
+void BotMovement::ClearMove(bool completed)
 {
-    m_bPathing = false;
+    m_bPathing       = false;
+    m_bMoveCompleted = completed;
     m_stuck.reset();
 
     if (m_pPath) {

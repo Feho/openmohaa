@@ -145,12 +145,14 @@ public:
 
     bool   CanMoveTo(Vector vPos);
     bool   MoveDone() const;
+    bool   ReachedMoveGoal() const;
+    bool   CompletedMove() const;
     bool   IsMoving() const;
     bool   WasGivenUp() const;
     bool   ShouldUseWhenBlocked() const;
     bool   IsPositionBanned(const Vector& pos) const;
     void   ClearBannedZones();
-    void   ClearMove();
+    void   ClearMove(bool completed = false);
     Vector GetCurrentGoal() const;
     Vector GetCurrentPathDirection() const;
 
@@ -187,6 +189,7 @@ private:
     float  m_fAttractTime;
     bool   m_bPathing;
     bool   m_bGaveUp;
+    bool   m_bMoveCompleted;
 
     // Grouped state structs (prevents partial-reset bugs)
     BotStuckState     m_stuck;
@@ -402,6 +405,19 @@ enum class BotMoveRequestType {
     AvoidPath
 };
 
+enum class BotMoveClearReason {
+    None,
+    ModeTransition,
+    AttackExpired,
+    CuriousExpired,
+    CombatStop,
+    OverwatchAnchor,
+    IdlePause,
+    Reaction,
+    ScriptHold,
+    ScriptMoveComplete
+};
+
 enum class BotAimDirective {
     None,
     AimAtPoint,
@@ -452,9 +468,9 @@ struct BotScriptControlState {
 };
 
 struct BotReactionState {
-    Vector lookPos   = vec_zero;
-    int    lookUntil = 0;
-    bool   clearMove = false;
+    Vector             lookPos          = vec_zero;
+    int                lookUntil        = 0;
+    BotMoveClearReason moveClearReason  = BotMoveClearReason::None;
 
     void reset()
     {
@@ -489,7 +505,7 @@ struct BotCombatIntent {
     int                rightmove;
     int                upmove;
     int                leanDir;
-    bool               clearMove;
+    BotMoveClearReason moveClearReason;
     bool               run;
     bool               visibleEnemy;
     bool               updatedLastFireTime;
@@ -510,7 +526,7 @@ struct BotCombatIntent {
         rightmove           = 0;
         upmove              = 0;
         leanDir             = 0;
-        clearMove           = false;
+        moveClearReason     = BotMoveClearReason::None;
         run                 = true;
         visibleEnemy        = false;
         updatedLastFireTime = false;
@@ -524,17 +540,17 @@ struct BotHazardIntent {
     Vector             moveTarget;
     Vector             preferredDir;
     float              radius;
-    bool               clearMove;
+    BotMoveClearReason moveClearReason;
 
     void reset()
     {
-        mode         = BotHazardMode::None;
-        moveType     = BotMoveRequestType::None;
-        stuckPolicy  = BotStuckPolicy::TrackAndGiveUp;
-        moveTarget   = vec_zero;
-        preferredDir = vec_zero;
-        radius       = 0.0f;
-        clearMove    = false;
+        mode            = BotHazardMode::None;
+        moveType        = BotMoveRequestType::None;
+        stuckPolicy     = BotStuckPolicy::TrackAndGiveUp;
+        moveTarget      = vec_zero;
+        preferredDir    = vec_zero;
+        radius          = 0.0f;
+        moveClearReason = BotMoveClearReason::None;
     }
 };
 
@@ -551,7 +567,7 @@ struct BotTacticalIntent {
     BotButtonAction    attackLeft;
     BotButtonAction    attackRight;
     bool               reload;
-    bool               clearMove;
+    BotMoveClearReason moveClearReason;
     bool               run;
     bool               anchorActive;
     bool               anchorReturning;
@@ -572,7 +588,7 @@ struct BotTacticalIntent {
         attackLeft          = BotButtonAction::Leave;
         attackRight         = BotButtonAction::Leave;
         reload              = false;
-        clearMove           = false;
+        moveClearReason     = BotMoveClearReason::None;
         run                 = true;
         anchorActive        = false;
         anchorReturning     = false;
@@ -601,7 +617,7 @@ struct BotResolvedCommand {
     int                leanDir;
     bool               reload;
     bool               run;
-    bool               clearMove;
+    BotMoveClearReason moveClearReason;
     bool               visibleEnemy;
     bool               updatedLastFireTime;
 
@@ -626,7 +642,7 @@ struct BotResolvedCommand {
         leanDir             = 0;
         reload              = false;
         run                 = true;
-        clearMove           = false;
+        moveClearReason     = BotMoveClearReason::None;
         visibleEnemy        = false;
         updatedLastFireTime = false;
     }
@@ -688,18 +704,24 @@ private:
 
     bool IsValidEnemy(Sentient *sent) const;
 
-    void                  RefreshPerceptionState(void);
-    void                  RefreshAttackState(void);
-    void                  RefreshCuriousState(void);
+    BotMoveClearReason    RefreshPerceptionState(void);
+    BotMoveClearReason    RefreshAttackState(void);
+    BotMoveClearReason    RefreshCuriousState(void);
     void                  RefreshGrenadeState(void);
     void                  RefreshOverwatchState(void);
     BotPerceptionSnapshot BuildPerceptionSnapshot(void) const;
-    void                  UpdateModeTransitions(const BotPerceptionSnapshot& snapshot);
+    BotMoveClearReason    UpdateModeTransitions(const BotPerceptionSnapshot& snapshot);
     BotCombatIntent       AdvanceCombatStateAndBuildIntent(const BotPerceptionSnapshot& snapshot);
     BotHazardIntent       BuildHazardIntent(const BotPerceptionSnapshot& snapshot);
     BotTacticalIntent     AdvanceTacticalStateAndBuildIntent(const BotPerceptionSnapshot& snapshot);
     BotResolvedCommand
-    ResolveIntents(const BotCombatIntent& combat, const BotHazardIntent& hazard, const BotTacticalIntent& tactical);
+    ResolveIntents(
+        const BotCombatIntent& combat,
+        const BotHazardIntent& hazard,
+        const BotTacticalIntent& tactical,
+        BotMoveClearReason perceptionClearReason,
+        BotMoveClearReason transitionClearReason
+    );
     void        ApplyScriptControl(BotResolvedCommand& command);
     void        ExecuteResolvedCommand(const BotResolvedCommand& command);
     void        DebugResolvedCommand(const BotResolvedCommand& command) const;
@@ -707,6 +729,7 @@ private:
     const char *GetEngagementModeName(BotEngagementMode mode) const;
     const char *GetTacticalModeName(BotTacticalMode mode) const;
     const char *GetHazardModeName(BotHazardMode mode) const;
+    const char *GetMoveClearReasonName(BotMoveClearReason reason) const;
     void        ClearOverwatchAnchor(const char *reason, bool startCooldown);
     Vector      ProbeLOSPosition(const Vector& targetPos);
     float       BotRandom(void);

@@ -46,6 +46,13 @@ CLASS_DECLARATION(Listener, BotController, NULL) {
     {NULL, NULL}
 };
 
+static void BotSetMoveClearReason(BotMoveClearReason& current, BotMoveClearReason requested)
+{
+    if (current == BotMoveClearReason::None) {
+        current = requested;
+    }
+}
+
 BotController::BotController()
 {
     if (LoadingSavegame) {
@@ -289,6 +296,33 @@ const char *BotController::GetHazardModeName(BotHazardMode mode) const
     }
 }
 
+const char *BotController::GetMoveClearReasonName(BotMoveClearReason reason) const
+{
+    switch (reason) {
+    case BotMoveClearReason::ModeTransition:
+        return "ModeTransition";
+    case BotMoveClearReason::AttackExpired:
+        return "AttackExpired";
+    case BotMoveClearReason::CuriousExpired:
+        return "CuriousExpired";
+    case BotMoveClearReason::CombatStop:
+        return "CombatStop";
+    case BotMoveClearReason::OverwatchAnchor:
+        return "OverwatchAnchor";
+    case BotMoveClearReason::IdlePause:
+        return "IdlePause";
+    case BotMoveClearReason::Reaction:
+        return "Reaction";
+    case BotMoveClearReason::ScriptHold:
+        return "ScriptHold";
+    case BotMoveClearReason::ScriptMoveComplete:
+        return "ScriptMoveComplete";
+    case BotMoveClearReason::None:
+    default:
+        return "None";
+    }
+}
+
 void BotController::ApplyButtonAction(int buttonMask, BotButtonAction action)
 {
     switch (action) {
@@ -307,16 +341,18 @@ void BotController::ApplyButtonAction(int buttonMask, BotButtonAction action)
     }
 }
 
-void BotController::RefreshPerceptionState(void)
+BotMoveClearReason BotController::RefreshPerceptionState(void)
 {
     if (m_reaction.lookUntil && level.inttime >= m_reaction.lookUntil) {
         m_reaction.reset();
     }
 
-    RefreshAttackState();
-    RefreshCuriousState();
+    BotMoveClearReason moveClearReason = RefreshAttackState();
+    BotSetMoveClearReason(moveClearReason, RefreshCuriousState());
     RefreshGrenadeState();
     RefreshOverwatchState();
+
+    return moveClearReason;
 }
 
 BotPerceptionSnapshot BotController::BuildPerceptionSnapshot(void) const
@@ -381,8 +417,9 @@ void BotController::ClearOverwatchAnchor(const char *reason, bool startCooldown)
     m_overwatch.spotIndex      = -1;
 }
 
-void BotController::UpdateModeTransitions(const BotPerceptionSnapshot& snapshot)
+BotMoveClearReason BotController::UpdateModeTransitions(const BotPerceptionSnapshot& snapshot)
 {
+    BotMoveClearReason moveClearReason = BotMoveClearReason::None;
     BotEngagementMode nextEngagement = BotEngagementMode::None;
     if (snapshot.attackActive) {
         nextEngagement = BotEngagementMode::Attack;
@@ -411,7 +448,7 @@ void BotController::UpdateModeTransitions(const BotPerceptionSnapshot& snapshot)
 
         if (nextEngagement == BotEngagementMode::Attack || nextEngagement == BotEngagementMode::Curious) {
             m_idle.reset();
-            movement.ClearMove();
+            moveClearReason = BotMoveClearReason::ModeTransition;
         }
 
         if (nextEngagement == BotEngagementMode::Curious) {
@@ -476,6 +513,8 @@ void BotController::UpdateModeTransitions(const BotPerceptionSnapshot& snapshot)
 
         m_hazardMode = nextHazard;
     }
+
+    return moveClearReason;
 }
 
 static Vector bot_origin;
@@ -533,7 +572,7 @@ bool BotController::IsValidEnemy(Sentient *sent) const
     return true;
 }
 
-void BotController::RefreshAttackState(void)
+BotMoveClearReason BotController::RefreshAttackState(void)
 {
     Container<Sentient *> sents       = SentientList;
     float                 maxDistance = 0.0f;
@@ -571,16 +610,18 @@ void BotController::RefreshAttackState(void)
         m_enemy.lastPos     = bestEnemy->origin;
         m_combat.attackTime = level.inttime + 500 + (int)BotRandom(1000.0f);
         beliefMap.UpdateFromSighting(bestEnemy->origin);
-        return;
+        return BotMoveClearReason::None;
     }
 
     if (m_combat.attackTime && level.inttime > m_combat.attackTime) {
-        movement.ClearMove();
         m_combat.attackTime = 0;
+        return BotMoveClearReason::AttackExpired;
     }
+
+    return BotMoveClearReason::None;
 }
 
-void BotController::RefreshCuriousState(void)
+BotMoveClearReason BotController::RefreshCuriousState(void)
 {
     if (m_combat.attackTime > level.inttime) {
         if (g_bot_debug_state->integer >= 2 && m_curious.time) {
@@ -593,7 +634,7 @@ void BotController::RefreshCuriousState(void)
         m_curious.time        = 0;
         m_curious.lastPos     = vec_zero;
         m_curious.losProbePos = vec_zero;
-        return;
+        return BotMoveClearReason::None;
     }
 
     const bool committedHold =
@@ -613,7 +654,7 @@ void BotController::RefreshCuriousState(void)
             m_curious.time        = 0;
             m_curious.lastPos     = vec_zero;
             m_curious.losProbePos = vec_zero;
-            return;
+            return BotMoveClearReason::None;
         }
 
         ClearOverwatchAnchor("strong curious stimulus", true);
@@ -628,11 +669,13 @@ void BotController::RefreshCuriousState(void)
                 level.inttime
             );
         }
-        movement.ClearMove();
         m_curious.time        = 0;
         m_curious.lastPos     = vec_zero;
         m_curious.losProbePos = vec_zero;
+        return BotMoveClearReason::CuriousExpired;
     }
+
+    return BotMoveClearReason::None;
 }
 
 void BotController::RefreshGrenadeState(void)
@@ -993,8 +1036,8 @@ BotCombatIntent BotController::AdvanceCombatStateAndBuildIntent(const BotPercept
                 if (pWeap->GetMaxFireMovement() < 1 && pWeap->HasAmmoInClip(FIRE_PRIMARY)) {
                     float length = controlledEnt->velocity.length();
                     if ((length / sv_runspeed->value) > pWeap->GetMaxFireMovementMult()) {
-                        bNoMove          = true;
-                        intent.clearMove = true;
+                        bNoMove                = true;
+                        intent.moveClearReason = BotMoveClearReason::CombatStop;
                     }
                 }
 
@@ -1161,11 +1204,11 @@ BotCombatIntent BotController::AdvanceCombatStateAndBuildIntent(const BotPercept
 
         if (bCanSee && bCanAttack && fEnemyDistanceSquared > longRangeThreshold) {
             m_combat.standingStill = true;
-            intent.clearMove       = true;
+            intent.moveClearReason = BotMoveClearReason::CombatStop;
         } else if (bCanSee && bCanAttack && fEnemyDistanceSquared > midRangeThreshold) {
             if (BotRandomPercent(30.0f)) {
                 m_combat.standingStill = true;
-                intent.clearMove       = true;
+                intent.moveClearReason = BotMoveClearReason::CombatStop;
             } else {
                 m_combat.standingStill = false;
             }
@@ -1245,7 +1288,7 @@ BotCombatIntent BotController::AdvanceCombatStateAndBuildIntent(const BotPercept
         }
 
         if (bCanSee && bCanAttack && !bMelee) {
-            intent.clearMove        = true;
+            intent.moveClearReason  = BotMoveClearReason::CombatStop;
             m_combat.losRecoverPos  = vec_zero;
             m_combat.losRecoverTime = 0;
         } else if (bMelee || !bCanSee) {
@@ -1476,7 +1519,7 @@ BotTacticalIntent BotController::AdvanceTacticalStateAndBuildIntent(const BotPer
                 intent.moveType   = BotMoveRequestType::MoveTo;
                 intent.moveTarget = m_overwatch.standPos;
             } else {
-                intent.clearMove           = true;
+                intent.moveClearReason     = BotMoveClearReason::OverwatchAnchor;
                 m_overwatch.displacedSince = 0;
                 m_overwatch.pathFailCount  = 0;
 
@@ -1555,7 +1598,7 @@ BotTacticalIntent BotController::AdvanceTacticalStateAndBuildIntent(const BotPer
                 m_idle.walkTime = level.inttime + 2000 + (int)BotRandom(3000.0f);
             }
         } else {
-            intent.clearMove = true;
+            intent.moveClearReason = BotMoveClearReason::IdlePause;
             intent.run       = false;
 
             if (level.inttime >= m_idle.lookTime) {
@@ -1580,7 +1623,7 @@ BotTacticalIntent BotController::AdvanceTacticalStateAndBuildIntent(const BotPer
         m_idle.pausing   = true;
         m_idle.pauseTime = level.inttime + 1500 + (int)BotRandom(2500.0f);
         m_idle.lookTime  = level.inttime + 500;
-        intent.clearMove = true;
+        intent.moveClearReason = BotMoveClearReason::IdlePause;
         intent.run       = false;
         return intent;
     }
@@ -1687,7 +1730,11 @@ BotTacticalIntent BotController::AdvanceTacticalStateAndBuildIntent(const BotPer
 }
 
 BotResolvedCommand BotController::ResolveIntents(
-    const BotCombatIntent& combat, const BotHazardIntent& hazard, const BotTacticalIntent& tactical
+    const BotCombatIntent& combat,
+    const BotHazardIntent& hazard,
+    const BotTacticalIntent& tactical,
+    BotMoveClearReason perceptionClearReason,
+    BotMoveClearReason transitionClearReason
 )
 {
     BotResolvedCommand resolved;
@@ -1700,6 +1747,8 @@ BotResolvedCommand BotController::ResolveIntents(
     resolved.attackRight    = BotButtonAction::Clear;
     resolved.run            = !(m_idle.pausing || m_combat.standingStill || m_idle.walking);
     resolved.leanDir        = m_idle.leanDir;
+    BotSetMoveClearReason(resolved.moveClearReason, perceptionClearReason);
+    BotSetMoveClearReason(resolved.moveClearReason, transitionClearReason);
 
     if (hazard.mode != BotHazardMode::None) {
         resolved.hazardMode   = hazard.mode;
@@ -1708,7 +1757,7 @@ BotResolvedCommand BotController::ResolveIntents(
         resolved.moveTarget   = hazard.moveTarget;
         resolved.preferredDir = hazard.preferredDir;
         resolved.radius       = hazard.radius;
-        resolved.clearMove    = hazard.clearMove;
+        BotSetMoveClearReason(resolved.moveClearReason, hazard.moveClearReason);
     }
 
     if (tactical.mode != BotTacticalMode::None) {
@@ -1726,9 +1775,7 @@ BotResolvedCommand BotController::ResolveIntents(
             resolved.preferredDir = tactical.preferredDir;
             resolved.radius       = tactical.radius;
         }
-        if (tactical.clearMove) {
-            resolved.clearMove = true;
-        }
+        BotSetMoveClearReason(resolved.moveClearReason, tactical.moveClearReason);
         if (tactical.aimType != BotAimDirective::None) {
             resolved.aimType   = tactical.aimType;
             resolved.aimTarget = tactical.aimTarget;
@@ -1754,9 +1801,7 @@ BotResolvedCommand BotController::ResolveIntents(
             resolved.preferredDir = combat.preferredDir;
             resolved.radius       = combat.radius;
         }
-        if (combat.clearMove) {
-            resolved.clearMove = true;
-        }
+        BotSetMoveClearReason(resolved.moveClearReason, combat.moveClearReason);
         if (combat.aimType != BotAimDirective::None) {
             resolved.aimType   = combat.aimType;
             resolved.aimTarget = combat.aimTarget;
@@ -1768,9 +1813,7 @@ BotResolvedCommand BotController::ResolveIntents(
         && m_reaction.lookPos != vec_zero) {
         resolved.aimType   = BotAimDirective::AimAtPoint;
         resolved.aimTarget = m_reaction.lookPos;
-        if (m_reaction.clearMove) {
-            resolved.clearMove = true;
-        }
+        BotSetMoveClearReason(resolved.moveClearReason, m_reaction.moveClearReason);
     }
 
     return resolved;
@@ -1779,23 +1822,29 @@ BotResolvedCommand BotController::ResolveIntents(
 void BotController::ApplyScriptControl(BotResolvedCommand& command)
 {
     if (m_scriptControl.holdPosition) {
-        command.clearMove  = true;
-        command.moveType   = BotMoveRequestType::None;
-        command.rightmove  = 0;
-        command.run        = false;
+        // Script hold is authoritative and must override lower-priority move clears.
+        command.moveClearReason = BotMoveClearReason::ScriptHold;
+        command.moveType        = BotMoveRequestType::None;
+        command.rightmove       = 0;
+        command.run             = false;
     } else if (m_scriptControl.moveType != BotScriptMoveType::None) {
-        if (m_scriptControl.moveStarted && movement.MoveDone()) {
+        if (m_scriptControl.moveStarted && (movement.ReachedMoveGoal() || movement.CompletedMove())) {
             m_scriptControl.moveType    = BotScriptMoveType::None;
             m_scriptControl.moveStarted = false;
-            command.clearMove           = true;
+            command.moveClearReason     = BotMoveClearReason::ScriptMoveComplete;
             command.moveType            = BotMoveRequestType::None;
             command.rightmove           = 0;
         } else {
-            command.clearMove = false;
-            command.moveType  = BotMoveRequestType::None;
-            command.rightmove = 0;
+            command.moveClearReason = BotMoveClearReason::None;
+            command.moveType        = BotMoveRequestType::None;
+            command.rightmove       = 0;
 
-            if (!m_scriptControl.moveStarted) {
+            if (m_scriptControl.moveStarted && !movement.IsMoving()) {
+                // The path vanished without reaching the goal, so treat the scripted move as failed instead of
+                // retrying a path search every frame.
+                m_scriptControl.moveType    = BotScriptMoveType::None;
+                m_scriptControl.moveStarted = false;
+            } else if (!m_scriptControl.moveStarted) {
                 switch (m_scriptControl.moveType) {
                 case BotScriptMoveType::MoveTo:
                     command.moveType   = BotMoveRequestType::MoveTo;
@@ -1864,8 +1913,8 @@ void BotController::DebugResolvedCommand(const BotResolvedCommand& command) cons
     }
 
     gi.Printf(
-        "BOT %s: resolved engagement=%s tactical=%s hazard=%s move=%d aim=%d rm=%d um=%d clear=%d anchor=%d dist=%.0f "
-        "returning=%d\n",
+        "BOT %s: resolved engagement=%s tactical=%s hazard=%s move=%d aim=%d rm=%d um=%d clear=%s anchor=%d "
+        "dist=%.0f returning=%d\n",
         controlledEnt->client->pers.netname,
         GetEngagementModeName(command.engagementMode),
         GetTacticalModeName(command.tacticalMode),
@@ -1874,7 +1923,7 @@ void BotController::DebugResolvedCommand(const BotResolvedCommand& command) cons
         (int)command.aimType,
         command.rightmove,
         command.upmove,
-        command.clearMove ? 1 : 0,
+        GetMoveClearReasonName(command.moveClearReason),
         (m_overwatch.dwellUntil > level.inttime) ? 1 : 0,
         anchorDist,
         (m_overwatch.displacedSince != 0) ? 1 : 0
@@ -1887,7 +1936,8 @@ void BotController::ExecuteResolvedCommand(const BotResolvedCommand& command)
     m_botCmd.rightmove   = command.rightmove;
     m_botCmd.upmove      = command.upmove;
 
-    if (command.clearMove) {
+    // Keep movement side effects centralized here; decision code should express intent.
+    if (command.moveClearReason != BotMoveClearReason::None) {
         movement.ClearMove();
     }
 
@@ -1996,13 +2046,14 @@ void BotController::UpdateBotStates(void)
     beliefMap.Decay(level.frametime);
     beliefMap.ClearZonesVisibleFrom(controlledEnt);
 
-    RefreshPerceptionState();
+    BotMoveClearReason perceptionClearReason = RefreshPerceptionState();
     BotPerceptionSnapshot snapshot = BuildPerceptionSnapshot();
-    UpdateModeTransitions(snapshot);
+    BotMoveClearReason transitionClearReason = UpdateModeTransitions(snapshot);
     BotCombatIntent    combat   = AdvanceCombatStateAndBuildIntent(snapshot);
     BotHazardIntent    hazard   = BuildHazardIntent(snapshot);
     BotTacticalIntent  tactical = AdvanceTacticalStateAndBuildIntent(snapshot);
-    BotResolvedCommand command  = ResolveIntents(combat, hazard, tactical);
+    BotResolvedCommand command =
+        ResolveIntents(combat, hazard, tactical, perceptionClearReason, transitionClearReason);
     ApplyScriptControl(command);
     ExecuteResolvedCommand(command);
 
@@ -2561,9 +2612,9 @@ void BotController::NoticeEvent(Vector vPos, int iType, Entity *pEnt, float fDis
                 vPos.z
             );
         }
-        m_reaction.lookPos   = vPos;
-        m_reaction.lookUntil = level.inttime + 500;
-        m_reaction.clearMove = true;
+        m_reaction.lookPos          = vPos;
+        m_reaction.lookUntil        = level.inttime + 500;
+        m_reaction.moveClearReason  = BotMoveClearReason::Reaction;
         m_idle.reset();
     }
 }
@@ -2813,9 +2864,9 @@ void BotController::Damaged(const Event& ev)
         return;
     }
 
-    m_reaction.lookPos   = attacker->centroid;
-    m_reaction.lookUntil = level.inttime + 750;
-    m_reaction.clearMove = true;
+    m_reaction.lookPos          = attacker->centroid;
+    m_reaction.lookUntil        = level.inttime + 750;
+    m_reaction.moveClearReason  = BotMoveClearReason::Reaction;
 
     // If the attacker is a valid sentient enemy, enter attack mode
     if (sentAttacker) {

@@ -69,6 +69,14 @@ Keep layer responsibilities explicit:
 
 If two features need the same output, resolve the conflict in `ResolveIntents()` instead of letting both write directly to `movement`, `rotation`, or `m_botCmd`.
 
+For bot-controller movement changes, run the guarded helper from the repository root:
+
+```bash
+./misc/check-bot-build.sh
+```
+
+The script enforces the direct `movement.*` side-effect allowlist before building `game` with Ninja and redirecting compiler output to `build.log`. Update the allowlist only when a new direct movement mutation is intentionally part of the execution/script/lifecycle boundary.
+
 ## Spawn, Respawn, and Persistence
 
 Current behavior:
@@ -141,6 +149,7 @@ When changing bot behavior:
 
 After meaningful bot changes, validate at least these cases:
 
+- `./misc/check-bot-build.sh` passes for bot-controller movement changes.
 - Bot spawns and joins a team.
 - Bot receives a valid weapon and can recover from banned weapon categories.
 - Bot respawns without losing required persistent state.
