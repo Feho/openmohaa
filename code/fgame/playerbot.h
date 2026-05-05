@@ -268,6 +268,7 @@ struct BotCombatState {
     int    lastBurstTime        = 0;        // When last burst fire pause started
     int    lastSeenTime         = 0;        // When enemy was last seen
     int    lastUnseenTime       = 0;        // When enemy became unseen
+    int    reactionReadyTime    = 0;        // Fixed sampled time when bot may fire after reacquiring an enemy
     int    continuousFireTime   = 0;        // How long we've been firing continuously
     int    lastWeaponSwitchTime = 0;        // When last weapon switch was attempted
     Vector aimOffset            = vec_zero; // Current aim offset from target center
@@ -731,6 +732,7 @@ private:
     const char *GetHazardModeName(BotHazardMode mode) const;
     const char *GetMoveClearReasonName(BotMoveClearReason reason) const;
     void        ClearOverwatchAnchor(const char *reason, bool startCooldown);
+    void        StartCombatReactionDelay(void);
     Vector      ProbeLOSPosition(const Vector& targetPos);
     float       BotRandom(void);
     float       BotRandom(float n);

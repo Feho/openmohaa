@@ -572,6 +572,19 @@ bool BotController::IsValidEnemy(Sentient *sent) const
     return true;
 }
 
+void BotController::StartCombatReactionDelay(void)
+{
+    const int minDelay    = Q_max(0, (int)(m_profile.reactionMinDelay * 1000.0f));
+    const int randomDelay = Q_max(0, (int)(m_profile.reactionRandomDelay * 1000.0f));
+
+    m_combat.lastUnseenTime    = level.inttime;
+    m_combat.reactionReadyTime = level.inttime + minDelay;
+
+    if (randomDelay > 0) {
+        m_combat.reactionReadyTime += (int)BotRandom((float)randomDelay);
+    }
+}
+
 BotMoveClearReason BotController::RefreshAttackState(void)
 {
     Container<Sentient *> sents       = SentientList;
@@ -603,7 +616,7 @@ BotMoveClearReason BotController::RefreshAttackState(void)
     if (bestEnemy) {
         if (m_enemy.enemy != bestEnemy) {
             m_enemy.eyesTag = -1;
-            m_combat.lastUnseenTime = level.inttime;
+            StartCombatReactionDelay();
         }
 
         m_enemy.enemy       = bestEnemy;
@@ -1007,20 +1020,23 @@ BotCombatIntent BotController::AdvanceCombatStateAndBuildIntent(const BotPercept
             intent.visibleEnemy = true;
             bCanAttack = true;
             if (m_combat.lastUnseenTime) {
-                const unsigned int minDelay    = m_profile.reactionMinDelay * 1000;
-                const unsigned int randomDelay = m_profile.reactionRandomDelay * 1000;
-                if (level.inttime <= m_combat.lastUnseenTime + minDelay + BotRandom((float)randomDelay)) {
+                if (m_combat.reactionReadyTime <= m_combat.lastUnseenTime) {
+                    StartCombatReactionDelay();
+                }
+
+                if (level.inttime < m_combat.reactionReadyTime) {
                     if (g_bot_debug_state->integer >= 2) {
                         gi.Printf(
-                            "BOT %s: Attack - waiting for reaction delay (elapsed=%dms, min=%dms)\n",
+                            "BOT %s: Attack - waiting for reaction delay (elapsed=%dms, remaining=%dms)\n",
                             controlledEnt->client->pers.netname,
                             level.inttime - m_combat.lastUnseenTime,
-                            minDelay
+                            m_combat.reactionReadyTime - level.inttime
                         );
                     }
                     bCanAttack = false;
                 } else {
-                    m_combat.lastUnseenTime = 0;
+                    m_combat.lastUnseenTime    = 0;
+                    m_combat.reactionReadyTime = 0;
                 }
             }
 
@@ -1136,7 +1152,7 @@ BotCombatIntent BotController::AdvanceCombatStateAndBuildIntent(const BotPercept
             intent.attackRight = BotButtonAction::Clear;
 
             if (level.inttime > m_combat.lastSeenTime + 2000) {
-                m_combat.lastUnseenTime = level.inttime;
+                StartCombatReactionDelay();
             }
         }
 
@@ -2628,13 +2644,15 @@ Clear the bot's enemy
 */
 void BotController::ClearEnemy(void)
 {
-    m_combat.attackTime     = 0;
-    m_combat.losRecoverPos  = vec_zero;
-    m_combat.losRecoverTime = 0;
-    m_enemy.enemy           = NULL;
-    m_enemy.eyesTag         = -1;
-    m_enemy.oldPos          = vec_zero;
-    m_enemy.lastPos         = vec_zero;
+    m_combat.attackTime        = 0;
+    m_combat.lastUnseenTime    = 0;
+    m_combat.reactionReadyTime = 0;
+    m_combat.losRecoverPos     = vec_zero;
+    m_combat.losRecoverTime    = 0;
+    m_enemy.enemy              = NULL;
+    m_enemy.eyesTag            = -1;
+    m_enemy.oldPos             = vec_zero;
+    m_enemy.lastPos            = vec_zero;
 }
 
 Weapon *BotController::FindWeaponWithAmmo()
@@ -2892,7 +2910,7 @@ void BotController::Damaged(const Event& ev)
         m_combat.attackTime        = level.inttime + 5000;
         m_combat.lastSeenTime      = level.inttime;
         m_combat.attackStopAimTime = level.inttime + 2000;
-        m_combat.lastUnseenTime    = level.inttime; // Start reaction delay - need time to aim
+        StartCombatReactionDelay(); // Need time to turn and aim before firing.
 
         // Clear any curious state - we have a real threat now
         m_curious.time      = 0;
