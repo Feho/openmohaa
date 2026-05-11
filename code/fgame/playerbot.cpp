@@ -1139,7 +1139,8 @@ BotCombatIntent BotController::AdvanceCombatStateAndBuildIntent(const BotPercept
         bool    bNoMove          = false;
         bool    bFiring          = false;
 
-        intent.mode = BotEngagementMode::Attack;
+        intent.mode        = BotEngagementMode::Attack;
+        intent.stuckPolicy = BotStuckPolicy::Ignore;
 
         if (!m_enemy.enemy || !IsValidEnemy(m_enemy.enemy)) {
             if (level.inttime < m_combat.attackStopAimTime && m_enemy.lastPos != vec_zero) {
@@ -1503,7 +1504,8 @@ BotCombatIntent BotController::AdvanceCombatStateAndBuildIntent(const BotPercept
     }
 
     if (snapshot.curiousActive) {
-        intent.mode = BotEngagementMode::Curious;
+        intent.mode        = BotEngagementMode::Curious;
+        intent.stuckPolicy = BotStuckPolicy::TrackAndRecover;
 
         Vector targetPos = (m_curious.targetPos != vec_zero) ? m_curious.targetPos
                                                              : beliefMap.GetHighestBeliefPos(controlledEnt->origin);

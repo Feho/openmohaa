@@ -166,17 +166,24 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
             if (dist < Square(128)) {
                 if (ai_debugpath->integer) {
                     gi.Printf(
-                        "BOT[%d] STUCK at (%.0f %.0f %.0f) — banning zone\n",
+                        "BOT[%d] STUCK at (%.0f %.0f %.0f) - recovering\n",
                         controlledEntity->entnum,
                         cur.x,
                         cur.y,
                         cur.z
                     );
                 }
+
+                const BotStuckPolicy activePolicy = m_stuckPolicy;
+                const bool           avoidStarted = AvoidPath(controlledEntity->origin, 256.0f, vec_zero, activePolicy);
+
                 m_collision.useUntil = level.inttime + 1000;
-                BanCurrentZone();
-                AvoidPath(controlledEntity->origin, 512.0f);
-                m_bGaveUp = (m_stuckPolicy == BotStuckPolicy::TrackAndGiveUp);
+                if (activePolicy == BotStuckPolicy::TrackAndGiveUp) {
+                    if (avoidStarted) {
+                        BanCurrentZone();
+                    }
+                    m_bGaveUp = true;
+                }
                 m_stuck.reset();
             }
         }

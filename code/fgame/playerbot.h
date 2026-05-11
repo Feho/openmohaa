@@ -96,8 +96,8 @@ struct BotJumpState {
 };
 
 static constexpr int BOT_BANNED_ZONES_MAX        = 8;
-static constexpr int BOT_BANNED_ZONE_RADIUS      = 128;
-static constexpr int BOT_BANNED_ZONE_DURATION_MS = 120000; // 2 minutes
+static constexpr int BOT_BANNED_ZONE_RADIUS      = 96;
+static constexpr int BOT_BANNED_ZONE_DURATION_MS = 20000;
 
 struct BotBannedZone {
     Vector origin;
