@@ -71,6 +71,7 @@ struct BotCollisionState {
     bool   active       = false;    // Currently avoiding collision
     int    checkTime    = 0;        // Last time we checked for collisions
     int    useUntil     = 0;        // Try pressing use while recently blocked
+    int    crouchUntil  = 0;        // Try crouching briefly after getting stuck
     Vector avoidancePos = vec_zero; // Position to move to for avoidance
 
     void reset()
@@ -95,9 +96,23 @@ struct BotJumpState {
     }
 };
 
+struct BotLadderState {
+    bool   active           = false;
+    bool   respawnQueued    = false;
+    int    lastProgressTime = 0;
+    Vector lastProgressPos  = vec_zero;
+
+    void reset()
+    {
+        *this = BotLadderState();
+    }
+};
+
 static constexpr int BOT_BANNED_ZONES_MAX        = 8;
 static constexpr int BOT_BANNED_ZONE_RADIUS      = 96;
 static constexpr int BOT_BANNED_ZONE_DURATION_MS = 20000;
+static constexpr int BOT_LADDER_RESPAWN_TIME_MS  = 10000;
+static constexpr int BOT_LADDER_PROGRESS_DIST    = 32;
 
 struct BotBannedZone {
     Vector origin;
@@ -165,6 +180,7 @@ private:
     void   CheckJump(usercmd_t& botcmd);
     void   CheckJumpOverEdge(usercmd_t& botcmd);
     void   NewMove();
+    bool   CheckLadderRespawnFallback(usercmd_t& botcmd);
     Vector FixDeltaFromCollision(const Vector& delta);
     void   CalculateBestFrontAvoidance(
           const Vector& targetOrg,
@@ -196,6 +212,7 @@ private:
     BotStuckState     m_stuck;
     BotCollisionState m_collision;
     BotJumpState      m_jump;
+    BotLadderState    m_ladder;
 
     BotBannedZone      m_bannedZones[BOT_BANNED_ZONES_MAX];
     BotStuckPolicy     m_stuckPolicy;

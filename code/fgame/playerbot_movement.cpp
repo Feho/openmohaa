@@ -39,6 +39,7 @@ BotMovement::BotMovement()
     m_stuck.reset();
     m_collision.reset();
     m_jump.reset();
+    m_ladder.reset();
     m_bGaveUp             = false;
     m_stuckPolicy         = BotStuckPolicy::TrackAndGiveUp;
     m_pWaitingForLadder   = nullptr;
@@ -70,6 +71,10 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
     Vector vDelta;
 
     CheckAttractiveNodes();
+
+    if (CheckLadderRespawnFallback(botcmd)) {
+        return;
+    }
 
     if (!IsMoving() || !m_pPath) {
         // Changed in OPM
@@ -177,7 +182,8 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
                 const BotStuckPolicy activePolicy = m_stuckPolicy;
                 const bool           avoidStarted = AvoidPath(controlledEntity->origin, 256.0f, vec_zero, activePolicy);
 
-                m_collision.useUntil = level.inttime + 1000;
+                m_collision.useUntil    = level.inttime + 1000;
+                m_collision.crouchUntil = level.inttime + 1500;
                 if (activePolicy == BotStuckPolicy::TrackAndGiveUp) {
                     if (avoidStarted) {
                         BanCurrentZone();
@@ -236,6 +242,10 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
 
     if (!m_jump.active) {
         CheckJumpOverEdge(botcmd);
+    }
+
+    if (!botcmd.upmove && level.inttime < m_collision.crouchUntil) {
+        botcmd.upmove = -127;
     }
 }
 
@@ -495,6 +505,48 @@ void BotMovement::CheckJumpOverEdge(usercmd_t& botcmd)
     } else {
         botcmd.upmove = 0;
     }
+}
+
+bool BotMovement::CheckLadderRespawnFallback(usercmd_t& botcmd)
+{
+    if (!controlledEntity || !controlledEntity->GetLadder() || g_gametype->integer == GT_SINGLE_PLAYER) {
+        m_ladder.reset();
+        return false;
+    }
+
+    if (!m_ladder.active) {
+        m_ladder.active           = true;
+        m_ladder.lastProgressTime = level.inttime;
+        m_ladder.lastProgressPos  = controlledEntity->origin;
+        m_ladder.respawnQueued    = false;
+        return false;
+    }
+
+    if ((controlledEntity->origin - m_ladder.lastProgressPos).lengthSquared() >= Square(BOT_LADDER_PROGRESS_DIST)) {
+        m_ladder.lastProgressTime = level.inttime;
+        m_ladder.lastProgressPos  = controlledEntity->origin;
+        return false;
+    }
+
+    if (m_ladder.respawnQueued || level.inttime < m_ladder.lastProgressTime + BOT_LADDER_RESPAWN_TIME_MS) {
+        return false;
+    }
+
+    if (ai_debugpath->integer) {
+        gi.Printf(
+            "BOT[%d] ladder stuck for %ds - respawning\n",
+            controlledEntity->entnum,
+            BOT_LADDER_RESPAWN_TIME_MS / 1000
+        );
+    }
+
+    m_ladder.respawnQueued = true;
+    controlledEntity->PostEvent(EV_Player_Respawn, 0);
+    ClearMove();
+    botcmd.forwardmove = 0;
+    botcmd.rightmove   = 0;
+    botcmd.upmove      = 0;
+    return true;
 }
 
 /*
