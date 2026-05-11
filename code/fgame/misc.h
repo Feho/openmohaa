@@ -541,8 +541,9 @@ inline void SupplyWater::Archive(Archiver& arc)
 class FuncLadder : public Entity
 {
 private:
-    Vector m_vFacingAngles;
-    Vector m_vFacingDir;
+    Vector             m_vFacingAngles;
+    Vector             m_vFacingDir;
+    SafePtr<Entity>  m_pCurrentClimber;
 
 public:
     CLASS_PROTOTYPE(FuncLadder);
@@ -563,6 +564,10 @@ public:
     const Vector& getFacingAngles() const;
     const Vector& getFacingDir() const;
 
+    bool TryClaimLadder(Entity *candidate);
+    void ReleaseLadder(Entity *candidate);
+    bool IsClaimedByOther(Entity *candidate) const;
+
     void Archive(Archiver& arc) override;
 };
 
@@ -572,6 +577,7 @@ inline void FuncLadder::Archive(Archiver& arc)
 
     arc.ArchiveVector(&m_vFacingAngles);
     arc.ArchiveVector(&m_vFacingDir);
+    arc.ArchiveSafePointer(&m_pCurrentClimber);
 }
 
 //

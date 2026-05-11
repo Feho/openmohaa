@@ -8708,7 +8708,19 @@ void Player::AttachToLadder(Event *ev)
         return;
     }
 
-    pLadder   = (FuncLadder *)trace.ent->entity;
+    pLadder = (FuncLadder *)trace.ent->entity;
+
+    BotController *botController = botManager.getControllerManager().findController(this);
+    if (botController) {
+        if (!pLadder->TryClaimLadder(this)) {
+            botController->GetMovement().SetWaitingForLadder(pLadder);
+            return;
+        }
+        botController->GetMovement().SetWaitingForLadder(nullptr);
+    } else {
+        pLadder->TryClaimLadder(this);
+    }
+
     m_pLadder = pLadder;
 
     pLadder->PositionOnLadder(this);
@@ -8718,7 +8730,16 @@ void Player::AttachToLadder(Event *ev)
 
 void Player::UnattachFromLadder(Event *ev)
 {
-    m_pLadder = NULL;
+    if (m_pLadder) {
+        static_cast<FuncLadder *>(m_pLadder.Pointer())->ReleaseLadder(this);
+    }
+
+    BotController *botController = botManager.getControllerManager().findController(this);
+    if (botController) {
+        botController->GetMovement().SetWaitingForLadder(nullptr);
+    }
+
+    m_pLadder = nullptr;
 }
 
 void Player::TweakLadderPos(Event *ev)

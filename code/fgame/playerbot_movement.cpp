@@ -39,8 +39,9 @@ BotMovement::BotMovement()
     m_stuck.reset();
     m_collision.reset();
     m_jump.reset();
-    m_bGaveUp     = false;
-    m_stuckPolicy = BotStuckPolicy::TrackAndGiveUp;
+    m_bGaveUp             = false;
+    m_stuckPolicy         = BotStuckPolicy::TrackAndGiveUp;
+    m_pWaitingForLadder   = nullptr;
 
     for (int i = 0; i < BOT_BANNED_ZONES_MAX; i++) {
         m_bannedZones[i].expireTime = 0;
@@ -55,6 +56,11 @@ BotMovement::~BotMovement()
 void BotMovement::SetControlledEntity(Player *newEntity)
 {
     controlledEntity = newEntity;
+}
+
+void BotMovement::SetWaitingForLadder(FuncLadder *ladder)
+{
+    m_pWaitingForLadder = ladder;
 }
 
 void BotMovement::MoveThink(usercmd_t& botcmd)
@@ -72,6 +78,18 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
         //  the movement system owns forward/backward when there's no active path.
         botcmd.forwardmove = 0;
         return;
+    }
+
+    if (m_pWaitingForLadder) {
+        if (m_pWaitingForLadder->IsClaimedByOther(controlledEntity)) {
+            botcmd.forwardmove = 0;
+            botcmd.rightmove   = 0;
+            botcmd.upmove      = 0;
+            m_stuck.reset();
+            return;
+        }
+
+        m_pWaitingForLadder = nullptr;
     }
 
     if (m_pPath->GetNodeCount()) {
@@ -120,7 +138,7 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
     // Combat pursuit still needs blocked-path recovery, but only patrol-style
     // movement should blacklist goals and report a give-up back to the intent layer.
     if (m_stuckPolicy != BotStuckPolicy::Ignore && level.inttime >= m_stuck.checkTime + 1000
-        && !controlledEntity->GetLadder()) {
+        && !controlledEntity->GetLadder() && !m_pWaitingForLadder) {
         m_stuck.checkTime = level.inttime;
 
         const Vector& cur = controlledEntity->origin;

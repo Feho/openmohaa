@@ -2880,6 +2880,10 @@ qboolean FuncLadder::CanUseLadder(Entity *pUser)
     Vector  start, end;
     trace_t trace;
 
+    if (IsClaimedByOther(pUser)) {
+        return qfalse;
+    }
+
     vDelta    = origin - pUser->origin;
     vDelta[2] = 0;
 
@@ -3092,6 +3096,27 @@ const Vector& FuncLadder::getFacingAngles() const
 const Vector& FuncLadder::getFacingDir() const
 {
     return m_vFacingDir;
+}
+
+bool FuncLadder::TryClaimLadder(Entity *candidate)
+{
+    if (!m_pCurrentClimber || m_pCurrentClimber == candidate) {
+        m_pCurrentClimber = candidate;
+        return true;
+    }
+    return false;
+}
+
+void FuncLadder::ReleaseLadder(Entity *candidate)
+{
+    if (m_pCurrentClimber == candidate) {
+        m_pCurrentClimber = nullptr;
+    }
+}
+
+bool FuncLadder::IsClaimedByOther(Entity *candidate) const
+{
+    return m_pCurrentClimber && m_pCurrentClimber != candidate;
 }
 
 

@@ -2318,7 +2318,19 @@ void BotController::CheckUse(void)
             m_botCmd.buttons &= ~BUTTON_USE;
             return;
         }
-    } else if (!trace.ent->entity->isSubclassOf(FuncLadder)) {
+    } else if (trace.ent->entity->isSubclassOf(FuncLadder)) {
+        FuncLadder *ladder = static_cast<FuncLadder *>(trace.ent->entity);
+        if (ladder->IsClaimedByOther(controlledEnt)) {
+            movement.SetWaitingForLadder(ladder);
+            m_botCmd.buttons &= ~BUTTON_USE;
+            m_botCmd.forwardmove = 0;
+            m_botCmd.rightmove   = 0;
+            m_botCmd.upmove      = 0;
+            return;
+        }
+
+        movement.SetWaitingForLadder(nullptr);
+    } else {
         if (useWhenBlocked) {
             m_botCmd.buttons ^= BUTTON_USE;
         } else {

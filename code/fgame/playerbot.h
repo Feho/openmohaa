@@ -155,6 +155,7 @@ public:
     void   ClearMove(bool completed = false);
     Vector GetCurrentGoal() const;
     Vector GetCurrentPathDirection() const;
+    void   SetWaitingForLadder(FuncLadder *ladder);
 
 private:
     Vector CalculateDir(const Vector& delta) const;
@@ -196,8 +197,9 @@ private:
     BotCollisionState m_collision;
     BotJumpState      m_jump;
 
-    BotBannedZone  m_bannedZones[BOT_BANNED_ZONES_MAX];
-    BotStuckPolicy m_stuckPolicy;
+    BotBannedZone      m_bannedZones[BOT_BANNED_ZONES_MAX];
+    BotStuckPolicy     m_stuckPolicy;
+    SafePtr<FuncLadder> m_pWaitingForLadder;
 
 private:
     bool IsPathSegmentBanned(const Vector& start, const Vector& end) const;
