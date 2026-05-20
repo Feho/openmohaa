@@ -70,7 +70,6 @@ struct BotStuckState {
 struct BotCollisionState {
     bool   active       = false;    // Currently avoiding collision
     int    checkTime    = 0;        // Last time we checked for collisions
-    int    useUntil     = 0;        // Try pressing use while recently blocked
     int    crouchUntil  = 0;        // Try crouching briefly after getting stuck
     Vector avoidancePos = vec_zero; // Position to move to for avoidance
 
@@ -164,7 +163,6 @@ public:
     bool   CompletedMove() const;
     bool   IsMoving() const;
     bool   WasGivenUp() const;
-    bool   ShouldUseWhenBlocked() const;
     bool   IsPositionBanned(const Vector& pos) const;
     void   ClearBannedZones();
     void   ClearMove(bool completed = false);

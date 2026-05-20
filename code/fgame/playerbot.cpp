@@ -2287,13 +2287,10 @@ void BotController::CheckUse(void)
     Vector  start;
     Vector  end;
     trace_t trace;
-    bool    useWhenBlocked;
 
     if (controlledEnt->GetLadder()) {
         return;
     }
-
-    useWhenBlocked = movement.ShouldUseWhenBlocked();
 
     controlledEnt->angles.AngleVectorsLeft(&dir);
 
@@ -2305,11 +2302,7 @@ void BotController::CheckUse(void)
     );
 
     if (!trace.ent || trace.ent->entity == world) {
-        if (useWhenBlocked) {
-            m_botCmd.buttons ^= BUTTON_USE;
-        } else {
-            m_botCmd.buttons &= ~BUTTON_USE;
-        }
+        m_botCmd.buttons &= ~BUTTON_USE;
         return;
     }
 
@@ -2333,11 +2326,7 @@ void BotController::CheckUse(void)
 
         movement.SetWaitingForLadder(nullptr);
     } else {
-        if (useWhenBlocked) {
-            m_botCmd.buttons ^= BUTTON_USE;
-        } else {
-            m_botCmd.buttons &= ~BUTTON_USE;
-        }
+        m_botCmd.buttons &= ~BUTTON_USE;
         return;
     }
 
