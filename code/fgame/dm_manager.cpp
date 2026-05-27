@@ -1792,15 +1792,15 @@ int DM_Manager::GetTeamSpawnTimeLeft() const
         return -1;
     }
 
-    if (g_gametype->integer != GT_TOW && (g_gametype->integer > GT_TOW || g_gametype->integer != GT_TEAM)) {
+    switch (g_gametype->integer) {
+    case GT_TEAM:
+    case GT_TOW:
+    case GT_LIBERATION:
+    case GT_OBJECTIVE:
+        return g_teamSpawnClock.GetSecondsLeft();
+    default:
         return 0;
     }
-
-    if (g_gametype->integer == GT_TEAM || g_gametype->integer == GT_TOW || g_gametype->integer == GT_LIBERATION) {
-        return g_teamSpawnClock.GetSecondsLeft();
-    }
-
-    return 0;
 }
 
 DM_Team *DM_Manager::GetTeam(str name)
