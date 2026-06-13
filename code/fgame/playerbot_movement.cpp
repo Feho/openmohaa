@@ -23,8 +23,17 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "playerbot.h"
 #include "debuglines.h"
+#include "g_phys.h"
 
 static int maxFallHeight = 400;
+
+static constexpr float BOT_YIELD_CONTACT_MARGIN = 8.0f;
+static constexpr float BOT_YIELD_DISTANCE       = 48.0f;
+static constexpr float BOT_YIELD_STOP_DISTANCE  = 8.0f;
+static constexpr float BOT_YIELD_MIN_INPUT      = 16.0f;
+static constexpr float BOT_YIELD_MIN_ALIGNMENT  = 0.5f;
+static constexpr int   BOT_YIELD_DURATION_MS    = 750;
+static constexpr int   BOT_YIELD_COOLDOWN_MS    = 500;
 
 BotMovement::BotMovement()
 {
@@ -40,6 +49,7 @@ BotMovement::BotMovement()
     m_collision.reset();
     m_jump.reset();
     m_ladder.reset();
+    m_yield.reset();
     m_bGaveUp             = false;
     m_stuckPolicy         = BotStuckPolicy::TrackAndGiveUp;
     m_pWaitingForLadder   = nullptr;
@@ -57,6 +67,7 @@ BotMovement::~BotMovement()
 void BotMovement::SetControlledEntity(Player *newEntity)
 {
     controlledEntity = newEntity;
+    m_yield.reset();
 }
 
 void BotMovement::SetWaitingForLadder(FuncLadder *ladder)
@@ -73,6 +84,10 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
     CheckAttractiveNodes();
 
     if (CheckLadderRespawnFallback(botcmd)) {
+        return;
+    }
+
+    if (ApplyPlayerYield(botcmd)) {
         return;
     }
 
@@ -246,6 +261,159 @@ void BotMovement::MoveThink(usercmd_t& botcmd)
     if (!botcmd.upmove && level.inttime < m_collision.crouchUntil) {
         botcmd.upmove = -127;
     }
+}
+
+bool BotMovement::ApplyPlayerYield(usercmd_t& botcmd)
+{
+    if (!controlledEntity || controlledEntity->IsDead() || controlledEntity->IsSpectator()
+        || controlledEntity->GetLadder() || (controlledEntity->flags & (FL_IMMOBILE | FL_PARTIAL_IMMOBILE))
+        || (!controlledEntity->groundentity && !controlledEntity->client->ps.walking)) {
+        m_yield.active = false;
+        return false;
+    }
+
+    if (m_yield.active) {
+        const Vector remaining = m_yield.destination - controlledEntity->origin;
+        if (level.inttime >= m_yield.expireTime || remaining.lengthXYSquared() <= Square(BOT_YIELD_STOP_DISTANCE)) {
+            m_yield.active        = false;
+            m_yield.cooldownUntil = level.inttime + BOT_YIELD_COOLDOWN_MS;
+        }
+    }
+
+    if (!m_yield.active && level.inttime >= m_yield.cooldownUntil) {
+        Vector pushDirection;
+        Vector destination;
+
+        if (FindPlayerPushDirection(pushDirection) && FindYieldDestination(pushDirection, destination)) {
+            m_yield.active      = true;
+            m_yield.expireTime  = level.inttime + BOT_YIELD_DURATION_MS;
+            m_yield.direction   = pushDirection;
+            m_yield.destination = destination;
+        }
+    }
+
+    if (!m_yield.active) {
+        return false;
+    }
+
+    const Vector wishDir = CalculateRelativeWishDirection(m_yield.direction);
+    float        forward = wishDir.x * 127.0f;
+    float        right   = -wishDir.y * 127.0f;
+    botcmd.forwardmove   = (signed char)Q_clamp(forward, -127.0f, 127.0f);
+    botcmd.rightmove     = (signed char)Q_clamp(right, -127.0f, 127.0f);
+    return true;
+}
+
+bool BotMovement::FindPlayerPushDirection(Vector& pushDirection) const
+{
+    const Vector botMins  = controlledEntity->origin + controlledEntity->mins;
+    const Vector botMaxs  = controlledEntity->origin + controlledEntity->maxs;
+    float        bestScore = BOT_YIELD_MIN_ALIGNMENT;
+    bool         found     = false;
+
+    for (int i = 0; i < game.maxclients; i++) {
+        gentity_t *edict = &g_entities[i];
+        if (!edict->inuse || !edict->entity || edict->entity == controlledEntity
+            || !edict->entity->isSubclassOf(Player)) {
+            continue;
+        }
+
+        Player *player = static_cast<Player *>(edict->entity);
+        if (player->IsDead() || player->IsSpectator() || player->getMoveType() == MOVETYPE_NOCLIP) {
+            continue;
+        }
+
+        const Vector playerMins = player->origin + player->mins;
+        const Vector playerMaxs = player->origin + player->maxs;
+        if (playerMaxs.x + BOT_YIELD_CONTACT_MARGIN < botMins.x
+            || playerMins.x - BOT_YIELD_CONTACT_MARGIN > botMaxs.x
+            || playerMaxs.y + BOT_YIELD_CONTACT_MARGIN < botMins.y
+            || playerMins.y - BOT_YIELD_CONTACT_MARGIN > botMaxs.y || playerMaxs.z < botMins.z
+            || playerMins.z > botMaxs.z) {
+            continue;
+        }
+
+        const usercmd_t& playerCmd = player->GetLastUsercmd();
+        Vector           forward;
+        Vector           left;
+        Vector(0, player->GetViewAngles().y, 0).AngleVectorsLeft(&forward, &left, NULL);
+
+        Vector inputDirection = forward * playerCmd.forwardmove - left * playerCmd.rightmove;
+        inputDirection.z      = 0;
+        if (inputDirection.lengthXYSquared() < Square(BOT_YIELD_MIN_INPUT)) {
+            continue;
+        }
+        VectorNormalize2D(inputDirection);
+
+        Vector towardBot = controlledEntity->origin - player->origin;
+        towardBot.z      = 0;
+        if (towardBot.lengthXYSquared() < 1.0f) {
+            continue;
+        }
+        VectorNormalize2D(towardBot);
+
+        const float alignment = DotProduct2D(inputDirection, towardBot);
+        if (alignment > bestScore) {
+            bestScore     = alignment;
+            pushDirection = inputDirection;
+            found         = true;
+        }
+    }
+
+    return found;
+}
+
+bool BotMovement::FindYieldDestination(const Vector& pushDirection, Vector& destination) const
+{
+    const int    traceMask = (MASK_PLAYERSOLID | CONTENTS_BOTCLIP) & ~CONTENTS_BODY;
+    const Vector start     = controlledEntity->origin;
+    const Vector end       = start + pushDirection * BOT_YIELD_DISTANCE;
+    const trace_t moveTrace = G_Trace(
+        start,
+        controlledEntity->mins,
+        controlledEntity->maxs,
+        end,
+        controlledEntity,
+        traceMask,
+        qtrue,
+        "BotMovement::FindYieldDestination"
+    );
+    const Vector moveEnd = moveTrace.endpos;
+
+    if (moveTrace.startsolid || (moveEnd - start).lengthXYSquared() < Square(BOT_YIELD_STOP_DISTANCE)) {
+        return false;
+    }
+
+    const Vector midpoint     = start + (moveEnd - start) * 0.5f;
+    const Vector groundOffset = Vector(0, 0, STEPSIZE * 2.0f);
+    const trace_t middleGround = G_Trace(
+        midpoint,
+        controlledEntity->mins,
+        controlledEntity->maxs,
+        midpoint - groundOffset,
+        controlledEntity,
+        traceMask,
+        qtrue,
+        "BotMovement::FindYieldDestination"
+    );
+    const trace_t endGround = G_Trace(
+        moveEnd,
+        controlledEntity->mins,
+        controlledEntity->maxs,
+        moveEnd - groundOffset,
+        controlledEntity,
+        traceMask,
+        qtrue,
+        "BotMovement::FindYieldDestination"
+    );
+
+    if (middleGround.fraction == 1.0f || middleGround.plane.normal[2] < MIN_WALK_NORMAL
+        || endGround.fraction == 1.0f || endGround.plane.normal[2] < MIN_WALK_NORMAL) {
+        return false;
+    }
+
+    destination = moveEnd;
+    return true;
 }
 
 Vector BotMovement::CalculateDir(const Vector& delta) const

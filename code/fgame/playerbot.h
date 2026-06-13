@@ -107,6 +107,19 @@ struct BotLadderState {
     }
 };
 
+struct BotYieldState {
+    bool   active        = false;
+    int    expireTime    = 0;
+    int    cooldownUntil = 0;
+    Vector direction     = vec_zero;
+    Vector destination   = vec_zero;
+
+    void reset()
+    {
+        *this = BotYieldState();
+    }
+};
+
 static constexpr int BOT_BANNED_ZONES_MAX        = 8;
 static constexpr int BOT_BANNED_ZONE_RADIUS      = 96;
 static constexpr int BOT_BANNED_ZONE_DURATION_MS = 20000;
@@ -179,6 +192,9 @@ private:
     void   CheckJumpOverEdge(usercmd_t& botcmd);
     void   NewMove();
     bool   CheckLadderRespawnFallback(usercmd_t& botcmd);
+    bool   ApplyPlayerYield(usercmd_t& botcmd);
+    bool   FindPlayerPushDirection(Vector& pushDirection) const;
+    bool   FindYieldDestination(const Vector& pushDirection, Vector& destination) const;
     Vector FixDeltaFromCollision(const Vector& delta);
     void   CalculateBestFrontAvoidance(
           const Vector& targetOrg,
@@ -211,6 +227,7 @@ private:
     BotCollisionState m_collision;
     BotJumpState      m_jump;
     BotLadderState    m_ladder;
+    BotYieldState     m_yield;
 
     BotBannedZone      m_bannedZones[BOT_BANNED_ZONES_MAX];
     BotStuckPolicy     m_stuckPolicy;

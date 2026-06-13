@@ -731,6 +731,7 @@ public:
     void SetTargetViewAngles(Vector angles) override;
 
     Vector GetViewAngles(void) override { return v_angle; };
+    const usercmd_t& GetLastUsercmd(void) const { return last_ucmd; }
 
     void  SetFov(float newFov);
     float GetFov() const;
