@@ -1986,8 +1986,36 @@ BotResolvedCommand BotController::ResolveIntents(
     return resolved;
 }
 
+void BotController::BeginLatchedHold(BotResolvedCommand& command)
+{
+    m_scriptControl.holdPosition  = true;
+    m_scriptControl.holdAfterMove = false;
+    // A zero duration means hold indefinitely, matching bot_holdposition 1.
+    if (m_scriptControl.holdDuration > 0.0f) {
+        m_scriptControl.holdUntil = level.inttime + (int)(m_scriptControl.holdDuration * 1000.0f);
+    } else {
+        m_scriptControl.holdUntil = 0;
+    }
+    m_scriptControl.holdDuration = 0.0f;
+
+    // Runs inside the frame pipeline, so suppress movement through the command like the
+    // neighbouring ScriptMoveComplete path rather than touching movement directly.
+    command.moveClearReason = BotMoveClearReason::ScriptHold;
+    command.moveType        = BotMoveRequestType::None;
+    command.rightmove       = 0;
+    command.run             = false;
+}
+
 void BotController::ApplyScriptControl(BotResolvedCommand& command)
 {
+    if (m_scriptControl.holdPosition && m_scriptControl.holdUntil
+        && level.inttime >= m_scriptControl.holdUntil) {
+        // A timed hold expired, so release the bot back to its normal AI.
+        m_scriptControl.holdPosition = false;
+        m_scriptControl.holdUntil    = 0;
+        m_scriptControl.holdDuration = 0.0f;
+    }
+
     if (m_scriptControl.holdPosition) {
         // Script hold is authoritative and must override lower-priority move clears.
         command.moveClearReason = BotMoveClearReason::ScriptHold;
@@ -2001,6 +2029,10 @@ void BotController::ApplyScriptControl(BotResolvedCommand& command)
             command.moveClearReason     = BotMoveClearReason::ScriptMoveComplete;
             command.moveType            = BotMoveRequestType::None;
             command.rightmove           = 0;
+            // Arrived: latch the hold and only now start the duration clock.
+            if (m_scriptControl.holdAfterMove) {
+                BeginLatchedHold(command);
+            }
         } else {
             command.moveClearReason = BotMoveClearReason::None;
             command.moveType        = BotMoveRequestType::None;
@@ -2011,6 +2043,11 @@ void BotController::ApplyScriptControl(BotResolvedCommand& command)
                 // retrying a path search every frame.
                 m_scriptControl.moveType    = BotScriptMoveType::None;
                 m_scriptControl.moveStarted = false;
+                // The point is unreachable, so guard where the bot actually stopped rather
+                // than silently handing it back to the combat AI mid-order.
+                if (m_scriptControl.holdAfterMove) {
+                    BeginLatchedHold(command);
+                }
             } else if (!m_scriptControl.moveStarted) {
                 switch (m_scriptControl.moveType) {
                 case BotScriptMoveType::MoveTo:
@@ -2432,6 +2469,10 @@ static void BotApplyModHeight(Player *player, const char *height)
 void BotController::ScriptHoldPosition(bool enabled)
 {
     m_scriptControl.holdPosition = enabled;
+    // An explicit hold/release supersedes any pending move-then-hold order.
+    m_scriptControl.holdAfterMove = false;
+    m_scriptControl.holdDuration  = 0.0f;
+    m_scriptControl.holdUntil     = 0;
     if (enabled) {
         movement.ClearMove();
         m_botCmd.forwardmove = 0;
@@ -2441,10 +2482,32 @@ void BotController::ScriptHoldPosition(bool enabled)
     }
 }
 
+void BotController::ScriptHoldPositionAt(const Vector& target, float duration, float radius)
+{
+    // Phase 1: travel. The hold itself is armed here but only latches on arrival,
+    // so holdPosition stays false or the move branch would never run.
+    m_scriptControl.holdPosition  = false;
+    m_scriptControl.holdAfterMove = true;
+    m_scriptControl.holdDuration  = duration < 0.0f ? 0.0f : duration;
+    m_scriptControl.holdUntil     = 0;
+    // With a radius, several bots ordered to the same point spread out around it instead of
+    // fighting over one spot and blocking each other short of the goal.
+    m_scriptControl.moveRadius    = radius < 0.0f ? 0.0f : radius;
+    m_scriptControl.moveType =
+        m_scriptControl.moveRadius > 0.0f ? BotScriptMoveType::MoveNear : BotScriptMoveType::MoveTo;
+    m_scriptControl.moveTarget    = target;
+    m_scriptControl.moveStarted   = false;
+    movement.ClearMove();
+}
+
 void BotController::ScriptStop(void)
 {
     m_scriptControl.moveType    = BotScriptMoveType::None;
     m_scriptControl.moveStarted = false;
+    // Cancelling the move also cancels a hold that had not latched yet, so bot_stop
+    // remains a complete abort of a move-then-hold order.
+    m_scriptControl.holdAfterMove = false;
+    m_scriptControl.holdDuration  = 0.0f;
     movement.ClearMove();
     m_botCmd.forwardmove = 0;
     m_botCmd.rightmove   = 0;
@@ -2488,21 +2551,23 @@ void BotController::ScriptSetPosture(BotScriptPosture posture, bool enabled)
 
 void BotController::ScriptMoveTo(const Vector& target)
 {
-    m_scriptControl.holdPosition = false;
-    m_scriptControl.moveType     = BotScriptMoveType::MoveTo;
-    m_scriptControl.moveTarget   = target;
-    m_scriptControl.moveRadius   = 0.0f;
-    m_scriptControl.moveStarted  = false;
+    m_scriptControl.holdPosition  = false;
+    m_scriptControl.holdAfterMove = false;
+    m_scriptControl.moveType      = BotScriptMoveType::MoveTo;
+    m_scriptControl.moveTarget    = target;
+    m_scriptControl.moveRadius    = 0.0f;
+    m_scriptControl.moveStarted   = false;
     movement.ClearMove();
 }
 
 void BotController::ScriptMoveNear(const Vector& target, float radius)
 {
-    m_scriptControl.holdPosition = false;
-    m_scriptControl.moveType     = BotScriptMoveType::MoveNear;
-    m_scriptControl.moveTarget   = target;
-    m_scriptControl.moveRadius   = radius < 0.0f ? 0.0f : radius;
-    m_scriptControl.moveStarted  = false;
+    m_scriptControl.holdPosition  = false;
+    m_scriptControl.holdAfterMove = false;
+    m_scriptControl.moveType      = BotScriptMoveType::MoveNear;
+    m_scriptControl.moveTarget    = target;
+    m_scriptControl.moveRadius    = radius < 0.0f ? 0.0f : radius;
+    m_scriptControl.moveStarted   = false;
     movement.ClearMove();
 }
 

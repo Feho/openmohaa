@@ -1134,9 +1134,12 @@ Event EV_Player_BotHoldPosition
 (
     "bot_holdposition",
     EV_DEFAULT,
-    "b",
-    "enabled",
-    "For bots, hold or release the current position.",
+    "sff",
+    "enabled_or_position duration radius",
+    "For bots, hold or release the current position.\n"
+    "Passing a vector instead of a boolean moves the bot to that position and holds it once "
+    "there, for an optional duration in seconds (0 or omitted holds indefinitely). An optional "
+    "radius spreads several bots around the point instead of stacking them on it.",
     EV_NORMAL
 );
 Event EV_Player_BotStop
@@ -10754,9 +10757,19 @@ static BotController *GetPlayerBotController(Player *player, const char *eventNa
 void Player::EventBotHoldPosition(Event *ev)
 {
     BotController *controller = GetPlayerBotController(this, "bot_holdposition");
-    if (controller) {
-        controller->ScriptHoldPosition(ev->GetBoolean(1));
+    if (!controller) {
+        return;
     }
+
+    if (ev->NumArgs() > 0 && ev->IsVectorAt(1)) {
+        // bot_holdposition <vector> [duration] [radius]: move to the position, then hold it.
+        float duration = ev->NumArgs() > 1 ? ev->GetFloat(2) : 0.0f;
+        float radius   = ev->NumArgs() > 2 ? ev->GetFloat(3) : 0.0f;
+        controller->ScriptHoldPositionAt(ev->GetVector(1), duration, radius);
+        return;
+    }
+
+    controller->ScriptHoldPosition(ev->GetBoolean(1));
 }
 
 void Player::EventBotStop(Event *ev)

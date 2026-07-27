@@ -484,6 +484,11 @@ enum class BotScriptPosture {
 
 struct BotScriptControlState {
     bool              holdPosition    = false;
+    // Set when a scripted move must latch into a hold on arrival. The hold duration only
+    // starts once the bot gets there, so travel time never eats into the guard time.
+    bool              holdAfterMove   = false;
+    float             holdDuration    = 0.0f;
+    int               holdUntil       = 0;
     BotScriptMoveType moveType        = BotScriptMoveType::None;
     Vector            moveTarget      = vec_zero;
     float             moveRadius      = 0.0f;
@@ -804,7 +809,10 @@ public:
 
     void SendCommand(const char *text);
 
+    void BeginLatchedHold(BotResolvedCommand& command);
+
     void ScriptHoldPosition(bool enabled);
+    void ScriptHoldPositionAt(const Vector& target, float duration, float radius);
     void ScriptStop(void);
     void ScriptSetPosture(BotScriptPosture posture, bool enabled);
     void ScriptMoveTo(const Vector& target);

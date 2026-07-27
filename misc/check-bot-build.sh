@@ -18,6 +18,7 @@ allowlist_output="$(
     function allowed(fn) {
         return fn == "BotController::ExecuteResolvedCommand" \
             || fn == "BotController::ScriptHoldPosition" \
+            || fn == "BotController::ScriptHoldPositionAt" \
             || fn == "BotController::ScriptStop" \
             || fn == "BotController::ScriptMoveTo" \
             || fn == "BotController::ScriptMoveNear" \
