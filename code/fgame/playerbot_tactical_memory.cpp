@@ -38,6 +38,7 @@ void BotTacticalMemory::Cleanup()
         m_spots[i].validationFailures = 0;
         m_spots[i].occupantEntNum     = -1;
         m_spots[i].active             = false;
+        m_spots[i].pinned             = false;
     }
 }
 
@@ -84,6 +85,8 @@ bool BotTacticalMemory::TryRecordSpot(const Vector& standPos, const Vector& look
     spot.validationFailures = 0;
     spot.occupantEntNum     = -1;
     spot.active             = true;
+    // A recycled slot may have held a pinned spot; learned spots are never pinned.
+    spot.pinned             = false;
 
     if (fresh) {
         ++m_numSpots;
@@ -92,6 +95,114 @@ bool BotTacticalMemory::TryRecordSpot(const Vector& standPos, const Vector& look
     if (g_bot_debug_tactical_spots->integer) {
         gi.Printf(
             "BOT tactical: recorded team=%d slot=%d score=%.2f reach=%.0f pos=(%.0f, %.0f, %.0f)\n",
+            teamnum,
+            slot,
+            score,
+            reach,
+            standPos.x,
+            standPos.y,
+            standPos.z
+        );
+    }
+
+    return true;
+}
+
+bool BotTacticalMemory::AddPinnedSpot(const Vector& standPos, const Vector& lookDir, int teamnum, Entity *passEnt)
+{
+    if (lookDir.lengthSquared() < Square(0.01f)) {
+        gi.Printf("BOT tactical: authored point rejected -- zero look direction.\n");
+        return false;
+    }
+
+    Vector dir = lookDir;
+    VectorNormalizeFast(dir);
+
+    if (IsDuplicate(standPos, dir, teamnum)) {
+        // Registration happens at map init before any bot has learned anything, so in
+        // practice this means two authored points sit within 64 units of each other
+        // sharing a look direction. Say so -- a silently dropped point is the kind of
+        // thing an author never notices.
+        gi.Printf(
+            "BOT tactical: authored point at (%.0f, %.0f, %.0f) on map '%s' dropped -- "
+            "duplicate of an existing point for the same team.\n",
+            standPos.x,
+            standPos.y,
+            standPos.z,
+            level.mapname.c_str()
+        );
+        return false;
+    }
+
+    float score;
+    float reach;
+
+    // Score the spot for ranking, but do NOT gate on it: an authored point is
+    // authoritative even where the geometry heuristic disagrees. A point that fails
+    // outright (EvaluateSpot false) still registers, with a warning and a floor score
+    // so it ranks below anything that measured cleanly.
+    if (!EvaluateSpot(standPos, dir, passEnt, score, reach)) {
+        gi.Printf(
+            "BOT tactical: WARNING authored point at (%.0f, %.0f, %.0f) on map '%s' failed "
+            "geometry evaluation -- registering anyway, but verify a player can stand there.\n",
+            standPos.x,
+            standPos.y,
+            standPos.z,
+            level.mapname.c_str()
+        );
+        score = 0.0f;
+        reach = 0.0f;
+    } else if (score < g_bot_tactical_min_score->value || reach < g_bot_tactical_min_reach->value) {
+        gi.Printf(
+            "BOT tactical: note authored point at (%.0f, %.0f, %.0f) scores below the "
+            "learned-spot threshold (score=%.2f reach=%.0f) -- keeping it.\n",
+            standPos.x,
+            standPos.y,
+            standPos.z,
+            score,
+            reach
+        );
+    }
+
+    int slot = FindLRUSlot(teamnum);
+    if (slot < 0) {
+        gi.Printf(
+            "BOT tactical: WARNING authored point at (%.0f, %.0f, %.0f) dropped -- team %d "
+            "already holds %d points, all pinned.\n",
+            standPos.x,
+            standPos.y,
+            standPos.z,
+            teamnum,
+            MAX_SPOTS_PER_TEAM
+        );
+        return false;
+    }
+
+    TacticalSpot& spot  = m_spots[slot];
+    const bool    fresh = !spot.active;
+
+    spot.standPos           = standPos;
+    spot.lookDir            = dir;
+    spot.forwardReach       = reach;
+    spot.score              = score;
+    spot.teamnum            = teamnum;
+    // Leave lastUsedMs at 0 so an authored point is immediately eligible rather than
+    // sitting out the 10s reuse cooldown QueryBestSpot applies to recently used spots.
+    spot.lastUsedMs         = 0;
+    spot.lastValidatedMs    = level.inttime;
+    spot.validationFailures = 0;
+    spot.occupantEntNum     = -1;
+    spot.active             = true;
+    spot.pinned             = true;
+
+    if (fresh) {
+        ++m_numSpots;
+    }
+
+    if (g_bot_debug_tactical_spots->integer) {
+        gi.Printf(
+            "BOT tactical: pinned authored point team=%d slot=%d score=%.2f reach=%.0f "
+            "pos=(%.0f, %.0f, %.0f)\n",
             teamnum,
             slot,
             score,
@@ -201,7 +312,25 @@ void BotTacticalMemory::RevalidateSpots(Entity *passEnt)
             ++spot.validationFailures;
             spot.lastValidatedMs = level.inttime;
 
-            if (spot.validationFailures >= 3) {
+            if (spot.validationFailures == 3 && spot.pinned) {
+                // Authored points are kept even when they look bad -- the human is the
+                // authority -- but say so loudly and name the position so the coordinate
+                // can be fixed in the preset rather than silently doing nothing.
+                gi.Printf(
+                    "BOT tactical: WARNING authored point on map '%s' failed validation "
+                    "(team=%d score=%.2f reach=%.0f pos=(%.0f, %.0f, %.0f)) -- keeping it, "
+                    "but check the coordinate.\n",
+                    level.mapname.c_str(),
+                    spot.teamnum,
+                    score,
+                    reach,
+                    spot.standPos.x,
+                    spot.standPos.y,
+                    spot.standPos.z
+                );
+            }
+
+            if (spot.validationFailures >= 3 && !spot.pinned) {
                 if (g_bot_debug_tactical_spots->integer) {
                     gi.Printf("BOT tactical: evict slot=%d after %d validation failures\n", i, spot.validationFailures);
                 }
@@ -270,6 +399,14 @@ int BotTacticalMemory::FindLRUSlot(int teamnum) const
         }
 
         ++teamCount;
+
+        // Pinned spots are authored and still count against the per-team budget, but they
+        // are never eviction candidates -- otherwise a bot learning spots mid-round would
+        // silently push out the map's hand-placed points.
+        if (spot.pinned) {
+            continue;
+        }
+
         if (spot.lastUsedMs < oldestTime) {
             oldestTime = spot.lastUsedMs;
             oldestSlot = i;

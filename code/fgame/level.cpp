@@ -32,6 +32,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "entity.h"
 #include "dm_manager.h"
 #include "player.h"
+#include "playerbot.h"
 #include "Entities.h"
 #include "health.h"
 
@@ -655,9 +656,23 @@ Event EV_Level_GetForceTeamObjectiveLocation
     EV_GETTER
 );
 
+Event EV_Level_BotAddTacticalPoint
+(
+    "bot_addtacticalpoint",
+    EV_DEFAULT,
+    "vvs",
+    "position lookdir axis_or_allies",
+    "Registers an authored tactical point that bots may occupy and fight from.\n"
+    "'position' is where the bot stands and 'lookdir' is the direction it watches.\n"
+    "The point is pinned: bots never evict it when learning spots at runtime. Points\n"
+    "are level-scoped and cleared on map change, so register them at map init.",
+    EV_NORMAL
+);
+
 extern Event EV_Entity_Start;
 
 CLASS_DECLARATION(Listener, Level, NULL) {
+    {&EV_Level_BotAddTacticalPoint,           &Level::EventBotAddTacticalPoint     },
     {&EV_Level_GetTime,                       &Level::GetTime                      },
     {&EV_Level_GetTotalSecrets,               &Level::GetTotalSecrets              },
     {&EV_Level_GetFoundSecrets,               &Level::GetFoundSecrets              },
@@ -2203,6 +2218,21 @@ void Level::EventSetBombPlantTeam(Event *ev)
     }
 
     dmManager.SetBombPlantTeam(plant_team);
+}
+
+void Level::EventBotAddTacticalPoint(Event *ev)
+{
+    const_str team = ev->GetConstString(3);
+
+    if (team != STRING_ALLIES && team != STRING_AXIS) {
+        ScriptError("bot_addtacticalpoint team must be 'axis' or 'allies'");
+    }
+
+    // QueryBestSpot matches spot.teamnum against (int)Player::GetTeam(), so store the
+    // teamtype_t value rather than the const_str.
+    const int teamnum = (team == STRING_ALLIES) ? TEAM_ALLIES : TEAM_AXIS;
+
+    botManager.GetTacticalMemory().AddPinnedSpot(ev->GetVector(1), ev->GetVector(2), teamnum, NULL);
 }
 
 void Level::EventGetTargetsToDestroy(Event *ev)

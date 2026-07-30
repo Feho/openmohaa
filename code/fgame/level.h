@@ -349,6 +349,7 @@ public:
     void EventSetClockSide(Event *ev);
     void EventGetBombPlantTeam(Event *ev);
     void EventSetBombPlantTeam(Event *ev);
+    void EventBotAddTacticalPoint(Event *ev);
     void EventGetTargetsToDestroy(Event *ev);
     void EventSetTargetsToDestroy(Event *ev);
     void EventGetTargetsDestroyed(Event *ev);

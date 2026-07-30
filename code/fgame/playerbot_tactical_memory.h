@@ -18,6 +18,10 @@ struct TacticalSpot {
     int    validationFailures;
     int    occupantEntNum;
     bool   active;
+    // Authored from script rather than learned at runtime. Pinned spots are never
+    // evicted by the LRU and survive revalidation failures, so a map's hand-placed
+    // points cannot be pushed out by spots bots discover during the round.
+    bool   pinned;
 };
 
 class BotTacticalMemory
@@ -30,6 +34,11 @@ public:
     void Cleanup();
 
     bool TryRecordSpot(const Vector& standPos, const Vector& lookDir, int teamnum, Entity *passEnt);
+
+    // Register an authored point from script. Unlike TryRecordSpot this bypasses the
+    // score/reach quality gates -- a level designer's point is authoritative -- but still
+    // reports why a point looked bad so a human can go fix the coordinate.
+    bool AddPinnedSpot(const Vector& standPos, const Vector& lookDir, int teamnum, Entity *passEnt);
 
     int QueryBestSpot(
         int teamnum,
