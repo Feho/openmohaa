@@ -509,6 +509,29 @@ struct BotScriptControlState {
     }
 };
 
+enum class BotScriptCommandStatus {
+    Unknown,
+    Running,
+    Reached,
+    Failed,
+    Cancelled,
+    Superseded
+};
+
+struct BotScriptCommandRecord {
+    int                    id     = 0;
+    BotScriptCommandStatus status = BotScriptCommandStatus::Unknown;
+};
+
+static constexpr int BOT_SCRIPT_COMMAND_HISTORY_MAX = 16;
+
+struct BotScriptCommandState {
+    BotScriptCommandRecord history[BOT_SCRIPT_COMMAND_HISTORY_MAX] = {};
+    int                    historyNext                            = 0;
+    int                    nextId                                 = 1;
+    int                    activeId                               = 0;
+};
+
 struct BotReactionState {
     Vector             lookPos          = vec_zero;
     int                lookUntil        = 0;
@@ -718,14 +741,15 @@ private:
     ScriptThreadLabel m_RunLabel;
 
     // Taunts
-    int               m_iNextTauntTime;
-    int               m_iLastFireTime;
-    int               m_iLastPosDebugTime;
-    int               m_randomSeed;
-    BotEngagementMode m_engagementMode;
-    BotTacticalMode   m_tacticalMode;
-    BotHazardMode     m_hazardMode;
+    int                   m_iNextTauntTime;
+    int                   m_iLastFireTime;
+    int                   m_iLastPosDebugTime;
+    int                   m_randomSeed;
+    BotEngagementMode     m_engagementMode;
+    BotTacticalMode       m_tacticalMode;
+    BotHazardMode         m_hazardMode;
     BotScriptControlState m_scriptControl;
+    BotScriptCommandState m_scriptCommands;
 
 private:
     DelegateHandle delegateHandle_gotKill;
@@ -787,6 +811,10 @@ private:
     int         BotRandomInt(int upperExclusive);
     bool        BotRandomOneIn(int n);
     bool        BotRandomPercent(float percent);
+    BotScriptCommandRecord       *FindScriptCommand(int commandId);
+    const BotScriptCommandRecord *FindScriptCommand(int commandId) const;
+    int                           BeginScriptMoveCommand(void);
+    void                          FinishActiveScriptCommand(BotScriptCommandStatus status);
 
 public:
     CLASS_PROTOTYPE(BotController);
@@ -812,11 +840,11 @@ public:
     void BeginLatchedHold(BotResolvedCommand& command);
 
     void ScriptHoldPosition(bool enabled);
-    void ScriptHoldPositionAt(const Vector& target, float duration, float radius);
+    int  ScriptHoldPositionAt(const Vector& target, float duration, float radius);
     void ScriptStop(void);
     void ScriptSetPosture(BotScriptPosture posture, bool enabled);
-    void ScriptMoveTo(const Vector& target);
-    void ScriptMoveNear(const Vector& target, float radius);
+    int  ScriptMoveTo(const Vector& target);
+    int  ScriptMoveNear(const Vector& target, float radius);
     void ScriptLookAt(const Vector& target);
     void ScriptClearLook(void);
     void ScriptWatchAt(const Vector& target);
@@ -827,6 +855,7 @@ public:
     void ScriptReload(void);
     void ScriptReleaseControl(void);
     bool ScriptControlsUse(void) const;
+    const char *ScriptCommandStatus(int commandId) const;
 
     void Think();
 

@@ -815,6 +815,9 @@ public:
     void EventBotUse(Event *ev);
     void EventBotReload(Event *ev);
     void EventBotReleaseControl(Event *ev);
+    void EventBotCommandStatus(Event *ev);
+    void EventBotMoveDone(Event *ev);
+    void NotifyBotMoveDone(void);
     void EventSetVoiceType(Event *ev);
     void GetTeamDialogPrefix(str& outPrefix);
     void PlayInstantMessageSound(const char *name);

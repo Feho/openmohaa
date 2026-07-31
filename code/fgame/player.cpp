@@ -1149,6 +1149,15 @@ Event EV_Player_BotHoldPosition
     "radius spreads several bots around the point instead of stacking them on it.",
     EV_NORMAL
 );
+Event EV_Player_BotHoldPositionReturn
+(
+    "bot_holdposition",
+    EV_DEFAULT,
+    "sff",
+    "enabled_or_position duration radius",
+    "For bots, moves to and holds a position, returning the accepted command ID. Boolean form returns NIL.",
+    EV_RETURN
+);
 Event EV_Player_BotStop
 (
     "bot_stop",
@@ -1194,6 +1203,15 @@ Event EV_Player_BotMoveTo
     "For bots, move to the specified position.",
     EV_NORMAL
 );
+Event EV_Player_BotMoveToReturn
+(
+    "bot_moveto",
+    EV_DEFAULT,
+    "v",
+    "position",
+    "For bots, moves to the specified position and returns the accepted command ID.",
+    EV_RETURN
+);
 Event EV_Player_BotMoveNear
 (
     "bot_movenear",
@@ -1202,6 +1220,15 @@ Event EV_Player_BotMoveNear
     "position radius",
     "For bots, move near the specified position.",
     EV_NORMAL
+);
+Event EV_Player_BotMoveNearReturn
+(
+    "bot_movenear",
+    EV_DEFAULT,
+    "vf",
+    "position radius",
+    "For bots, moves near the specified position and returns the accepted command ID.",
+    EV_RETURN
 );
 Event EV_Player_BotLookAt
 (
@@ -1282,6 +1309,24 @@ Event EV_Player_BotReleaseControl
     NULL,
     NULL,
     "For bots, clear all script control overrides.",
+    EV_NORMAL
+);
+Event EV_Player_BotCommandStatus
+(
+    "bot_commandstatus",
+    EV_DEFAULT,
+    "i",
+    "command_id",
+    "Returns running, reached, failed, cancelled, or superseded for a bot movement command; NIL if unknown.",
+    EV_RETURN
+);
+Event EV_Player_BotMoveDone
+(
+    "_bot_move_done",
+    EV_CODEONLY,
+    NULL,
+    NULL,
+    "Notifies scripts that a bot movement command reached a terminal state.",
     EV_NORMAL
 );
 Event EV_Player_DMMessage
@@ -2057,12 +2102,15 @@ CLASS_DECLARATION(Sentient, Player, "player") {
     {&EV_Player_Stats,                    &Player::Stats                        },
     {&EV_Player_StuffText,                &Player::EventStuffText               },
     {&EV_Player_BotHoldPosition,          &Player::EventBotHoldPosition         },
+    {&EV_Player_BotHoldPositionReturn,    &Player::EventBotHoldPosition         },
     {&EV_Player_BotStop,                  &Player::EventBotStop                 },
     {&EV_Player_BotStand,                 &Player::EventBotStand                },
     {&EV_Player_BotCrouch,                &Player::EventBotCrouch               },
     {&EV_Player_BotProne,                 &Player::EventBotProne                },
     {&EV_Player_BotMoveTo,                &Player::EventBotMoveTo               },
+    {&EV_Player_BotMoveToReturn,          &Player::EventBotMoveTo               },
     {&EV_Player_BotMoveNear,              &Player::EventBotMoveNear             },
+    {&EV_Player_BotMoveNearReturn,        &Player::EventBotMoveNear             },
     {&EV_Player_BotLookAt,                &Player::EventBotLookAt               },
     {&EV_Player_BotClearLook,             &Player::EventBotClearLook            },
     {&EV_Player_BotWatchAt,               &Player::EventBotWatchAt              },
@@ -2072,6 +2120,8 @@ CLASS_DECLARATION(Sentient, Player, "player") {
     {&EV_Player_BotUse,                   &Player::EventBotUse                  },
     {&EV_Player_BotReload,                &Player::EventBotReload               },
     {&EV_Player_BotReleaseControl,        &Player::EventBotReleaseControl       },
+    {&EV_Player_BotCommandStatus,         &Player::EventBotCommandStatus        },
+    {&EV_Player_BotMoveDone,              &Player::EventBotMoveDone             },
     {&EV_Player_DMMessage,                &Player::EventDMMessage               },
     {&EV_Player_IPrint,                   &Player::EventIPrint                  },
     {&EV_SetViewangles,                   &Player::SetViewangles                },
@@ -2169,6 +2219,8 @@ movecontrolfunc_t Player::MoveStartFuncs[] = {
 
 Player::Player()
 {
+    AddWaitTill("bot_move_done");
+
     //
     // set the entity type
     //
@@ -10772,7 +10824,7 @@ void Player::EventBotHoldPosition(Event *ev)
         // bot_holdposition <vector> [duration] [radius]: move to the position, then hold it.
         float duration = ev->NumArgs() > 1 ? ev->GetFloat(2) : 0.0f;
         float radius   = ev->NumArgs() > 2 ? ev->GetFloat(3) : 0.0f;
-        controller->ScriptHoldPositionAt(ev->GetVector(1), duration, radius);
+        ev->AddInteger(controller->ScriptHoldPositionAt(ev->GetVector(1), duration, radius));
         return;
     }
 
@@ -10815,7 +10867,7 @@ void Player::EventBotMoveTo(Event *ev)
 {
     BotController *controller = GetPlayerBotController(this, "bot_moveto");
     if (controller) {
-        controller->ScriptMoveTo(ev->GetVector(1));
+        ev->AddInteger(controller->ScriptMoveTo(ev->GetVector(1)));
     }
 }
 
@@ -10823,7 +10875,7 @@ void Player::EventBotMoveNear(Event *ev)
 {
     BotController *controller = GetPlayerBotController(this, "bot_movenear");
     if (controller) {
-        controller->ScriptMoveNear(ev->GetVector(1), ev->GetFloat(2));
+        ev->AddInteger(controller->ScriptMoveNear(ev->GetVector(1), ev->GetFloat(2)));
     }
 }
 
@@ -10897,6 +10949,32 @@ void Player::EventBotReleaseControl(Event *ev)
     if (controller) {
         controller->ScriptReleaseControl();
     }
+}
+
+void Player::EventBotCommandStatus(Event *ev)
+{
+    BotController *controller = GetPlayerBotController(this, "bot_commandstatus");
+    if (!controller) {
+        ev->AddNil();
+        return;
+    }
+
+    const char *status = controller->ScriptCommandStatus(ev->GetInteger(1));
+    if (status) {
+        ev->AddString(status);
+    } else {
+        ev->AddNil();
+    }
+}
+
+void Player::NotifyBotMoveDone(void)
+{
+    PostEvent(EV_Player_BotMoveDone, 0);
+}
+
+void Player::EventBotMoveDone(Event *ev)
+{
+    Unregister("bot_move_done");
 }
 
 void Player::EventSetVoiceType(Event *ev)

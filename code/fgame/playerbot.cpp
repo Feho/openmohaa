@@ -38,6 +38,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "gamecvars.h"
 #include "windows.h"
 #include <float.h>
+#include <limits>
 
 // We assume that we have limited access to the server-side
 // and that most logic come from the playerstate_s structure
@@ -2033,6 +2034,7 @@ void BotController::ApplyScriptControl(BotResolvedCommand& command)
             if (m_scriptControl.holdAfterMove) {
                 BeginLatchedHold(command);
             }
+            FinishActiveScriptCommand(BotScriptCommandStatus::Reached);
         } else {
             command.moveClearReason = BotMoveClearReason::None;
             command.moveType        = BotMoveRequestType::None;
@@ -2048,12 +2050,13 @@ void BotController::ApplyScriptControl(BotResolvedCommand& command)
                 if (m_scriptControl.holdAfterMove) {
                     BeginLatchedHold(command);
                 }
+                FinishActiveScriptCommand(BotScriptCommandStatus::Failed);
             } else if (!m_scriptControl.moveStarted) {
                 switch (m_scriptControl.moveType) {
                 case BotScriptMoveType::MoveTo:
-                    command.moveType   = BotMoveRequestType::MoveTo;
+                    command.moveType    = BotMoveRequestType::MoveTo;
                     command.stuckPolicy = BotStuckPolicy::Ignore;
-                    command.moveTarget = m_scriptControl.moveTarget;
+                    command.moveTarget  = m_scriptControl.moveTarget;
                     break;
                 case BotScriptMoveType::MoveNear:
                     command.moveType   = BotMoveRequestType::MoveNear;
@@ -2466,8 +2469,96 @@ static void BotApplyModHeight(Player *player, const char *height)
     player->ProcessEvent(event);
 }
 
+BotScriptCommandRecord *BotController::FindScriptCommand(int commandId)
+{
+    for (BotScriptCommandRecord& command : m_scriptCommands.history) {
+        if (command.id == commandId) {
+            return &command;
+        }
+    }
+
+    return nullptr;
+}
+
+const BotScriptCommandRecord *BotController::FindScriptCommand(int commandId) const
+{
+    for (const BotScriptCommandRecord& command : m_scriptCommands.history) {
+        if (command.id == commandId) {
+            return &command;
+        }
+    }
+
+    return nullptr;
+}
+
+void BotController::FinishActiveScriptCommand(BotScriptCommandStatus status)
+{
+    if (!m_scriptCommands.activeId) {
+        return;
+    }
+
+    BotScriptCommandRecord *command = FindScriptCommand(m_scriptCommands.activeId);
+    if (command) {
+        command->status = status;
+    }
+
+    m_scriptCommands.activeId = 0;
+    if (controlledEnt) {
+        controlledEnt->NotifyBotMoveDone();
+    }
+}
+
+int BotController::BeginScriptMoveCommand(void)
+{
+    FinishActiveScriptCommand(BotScriptCommandStatus::Superseded);
+
+    const int commandId = m_scriptCommands.nextId;
+    if (m_scriptCommands.nextId == std::numeric_limits<int>::max()) {
+        m_scriptCommands.nextId = 1;
+    } else {
+        m_scriptCommands.nextId++;
+    }
+
+    BotScriptCommandRecord& command = m_scriptCommands.history[m_scriptCommands.historyNext];
+    command.id                      = commandId;
+    command.status                  = BotScriptCommandStatus::Running;
+    m_scriptCommands.historyNext    = (m_scriptCommands.historyNext + 1) % BOT_SCRIPT_COMMAND_HISTORY_MAX;
+    m_scriptCommands.activeId       = commandId;
+    return commandId;
+}
+
+const char *BotController::ScriptCommandStatus(int commandId) const
+{
+    const BotScriptCommandRecord *command = FindScriptCommand(commandId);
+    if (!command) {
+        return nullptr;
+    }
+
+    switch (command->status) {
+    case BotScriptCommandStatus::Running:
+        return "running";
+    case BotScriptCommandStatus::Reached:
+        return "reached";
+    case BotScriptCommandStatus::Failed:
+        return "failed";
+    case BotScriptCommandStatus::Cancelled:
+        return "cancelled";
+    case BotScriptCommandStatus::Superseded:
+        return "superseded";
+    case BotScriptCommandStatus::Unknown:
+    default:
+        return nullptr;
+    }
+}
+
 void BotController::ScriptHoldPosition(bool enabled)
 {
+    if (enabled) {
+        FinishActiveScriptCommand(BotScriptCommandStatus::Cancelled);
+        m_scriptControl.moveType    = BotScriptMoveType::None;
+        m_scriptControl.moveStarted = false;
+    }
+
     m_scriptControl.holdPosition = enabled;
     // An explicit hold/release supersedes any pending move-then-hold order.
     m_scriptControl.holdAfterMove = false;
@@ -2482,8 +2573,10 @@ void BotController::ScriptHoldPosition(bool enabled)
     }
 }
 
-void BotController::ScriptHoldPositionAt(const Vector& target, float duration, float radius)
+int BotController::ScriptHoldPositionAt(const Vector& target, float duration, float radius)
 {
+    const int commandId = BeginScriptMoveCommand();
+
     // Phase 1: travel. The hold itself is armed here but only latches on arrival,
     // so holdPosition stays false or the move branch would never run.
     m_scriptControl.holdPosition  = false;
@@ -2498,10 +2591,12 @@ void BotController::ScriptHoldPositionAt(const Vector& target, float duration, f
     m_scriptControl.moveTarget    = target;
     m_scriptControl.moveStarted   = false;
     movement.ClearMove();
+    return commandId;
 }
 
 void BotController::ScriptStop(void)
 {
+    FinishActiveScriptCommand(BotScriptCommandStatus::Cancelled);
     m_scriptControl.moveType    = BotScriptMoveType::None;
     m_scriptControl.moveStarted = false;
     // Cancelling the move also cancels a hold that had not latched yet, so bot_stop
@@ -2549,8 +2644,10 @@ void BotController::ScriptSetPosture(BotScriptPosture posture, bool enabled)
     }
 }
 
-void BotController::ScriptMoveTo(const Vector& target)
+int BotController::ScriptMoveTo(const Vector& target)
 {
+    const int commandId = BeginScriptMoveCommand();
+
     m_scriptControl.holdPosition  = false;
     m_scriptControl.holdAfterMove = false;
     m_scriptControl.moveType      = BotScriptMoveType::MoveTo;
@@ -2558,10 +2655,13 @@ void BotController::ScriptMoveTo(const Vector& target)
     m_scriptControl.moveRadius    = 0.0f;
     m_scriptControl.moveStarted   = false;
     movement.ClearMove();
+    return commandId;
 }
 
-void BotController::ScriptMoveNear(const Vector& target, float radius)
+int BotController::ScriptMoveNear(const Vector& target, float radius)
 {
+    const int commandId = BeginScriptMoveCommand();
+
     m_scriptControl.holdPosition  = false;
     m_scriptControl.holdAfterMove = false;
     m_scriptControl.moveType      = BotScriptMoveType::MoveNear;
@@ -2569,6 +2669,7 @@ void BotController::ScriptMoveNear(const Vector& target, float radius)
     m_scriptControl.moveRadius    = radius < 0.0f ? 0.0f : radius;
     m_scriptControl.moveStarted   = false;
     movement.ClearMove();
+    return commandId;
 }
 
 void BotController::ScriptLookAt(const Vector& target)
@@ -2620,6 +2721,8 @@ void BotController::ScriptReload(void)
 
 void BotController::ScriptReleaseControl(void)
 {
+    FinishActiveScriptCommand(BotScriptCommandStatus::Cancelled);
+
     if (m_scriptControl.posture == BotScriptPosture::Crouch || m_scriptControl.posture == BotScriptPosture::Prone) {
         BotApplyModHeight(controlledEnt, "stand");
     }
@@ -2972,6 +3075,7 @@ void BotController::UseWeaponWithAmmo()
 
 void BotController::Spawned(void)
 {
+    FinishActiveScriptCommand(BotScriptCommandStatus::Cancelled);
     m_randomSeed = ((controlledEnt ? controlledEnt->entnum : 0) + 1) * 1103515245u ^ level.inttime;
     ClearEnemy();
     ClearOverwatchAnchor("spawned", false);
