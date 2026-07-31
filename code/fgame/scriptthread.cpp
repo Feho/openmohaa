@@ -2091,8 +2091,17 @@ Event EV_ScriptThread_FS_WriteContent
     EV_DEFAULT,
     "sS",
     "fileName content",
-    "Write the specified content to a file (replaces the existing file).",
+    "Writes the specified content to a file (replaces the existing file).",
     EV_NORMAL
+);
+Event EV_ScriptThread_FS_WriteContentReturn
+(
+    "fs_write_content",
+    EV_DEFAULT,
+    "sS",
+    "fileName content",
+    "Writes the specified content to a file (replaces the existing file) and returns the number of bytes written.",
+    EV_RETURN
 );
 Event EV_ScriptThread_FS_OpenRead
 (
@@ -2354,6 +2363,7 @@ CLASS_DECLARATION(Listener, ScriptThread, NULL) {
     {&EV_ScriptThread_IsBot,                   &ScriptThread::IsPlayerBot             },
     {&EV_ScriptThread_FS_ReadContent,          &ScriptThread::FS_ReadContent          },
     {&EV_ScriptThread_FS_WriteContent,         &ScriptThread::FS_WriteContent         },
+    {&EV_ScriptThread_FS_WriteContentReturn,   &ScriptThread::FS_WriteContent         },
     {&EV_ScriptThread_FS_OpenRead,             &ScriptThread::FS_OpenRead             },
     {&EV_ScriptThread_FS_OpenWrite,            &ScriptThread::FS_OpenWrite            },
     {&EV_ScriptThread_FS_OpenAppend,           &ScriptThread::FS_OpenAppend           },
@@ -5151,7 +5161,7 @@ void ScriptThread::GetEntArray(Event *ev)
             }
 
             // Check if it matches with the name
-            if (variable->stringValue() == name) {
+            if (variable->stringValue() != name) {
                 continue;
             }
         } else {
@@ -5177,7 +5187,7 @@ void ScriptThread::GetEntArray(Event *ev)
         index.setIntValue(x);
         value.setListenerValue(entity);
 
-        array.setArrayAt(index, value);
+        array.setArrayAtRef(index, value);
 
         x++;
     }
@@ -6345,46 +6355,36 @@ void ScriptThread::FileRemoveDirectory(Event *ev)
 
 void ScriptThread::GetArrayKeys(Event *ev)
 {
-    Entity         *ent = NULL;
-    ScriptVariable  array;
-    ScriptVariable *value;
-    int             i = 0;
-    int             arraysize;
+    ScriptVariable array = ev->GetValue(1);
 
-    /* Retrieve the array */
-    array = ev->GetValue(1);
-
-    /* Cast the array */
-    array.CastConstArrayValue();
-    arraysize = array.arraysize();
-
-    if (arraysize < 1) {
+    if (array.GetType() == VARIABLE_NONE || array.arraysize() < 1) {
         return;
     }
 
-    ScriptVariable *ref = new ScriptVariable, *newArray = new ScriptVariable;
+    ScriptVariable keys;
+    ScriptVariable resultIndex;
+    int            index = 0;
 
-    ref->setRefValue(newArray);
+    if (array.GetType() == VARIABLE_ARRAY) {
+        con_map_enum<ScriptVariable, ScriptVariable> entries(array.m_data.arrayValue->arrayValue);
 
-    for (int i = 1; i <= arraysize; i++) {
-        value = array[i];
+        for (ScriptVariable *key = entries.NextKey(); key; key = entries.NextKey()) {
+            resultIndex.setIntValue(index++);
+            keys.setArrayAtRef(resultIndex, *key);
+        }
+    } else {
+        const int arraySize = array.arraysize();
 
-        /* Get the array's name */
-        //str name = value->getName();
+        for (int keyIndex = 1; keyIndex <= arraySize; keyIndex++) {
+            ScriptVariable key;
 
-        gi.Printf("name = %s\n", value->GetTypeName());
-
-        ScriptVariable *newIndex = new ScriptVariable, *newValue = new ScriptVariable;
-
-        newIndex->setIntValue(i);
-        newValue->setStringValue("NIL");
-
-        //name.removeRef();
-
-        ref->setArrayAt(*newIndex, *newValue);
+            key.setIntValue(keyIndex);
+            resultIndex.setIntValue(index++);
+            keys.setArrayAtRef(resultIndex, key);
+        }
     }
 
-    ev->AddValue(*newArray);
+    ev->AddValue(keys);
 }
 
 void ScriptThread::GetArrayValues(Event *ev)
@@ -7453,7 +7453,7 @@ void ScriptThread::FS_WriteContent(Event *ev) {
     const str path = ev->GetString(1);
     const str content = ev->GetString(2);
 
-    gi.FS_WriteFile(path, content, content.length());
+    ev->AddInteger(gi.FS_WriteFile(path, content, content.length()));
 }
 
 void ScriptThread::FS_OpenRead(Event *ev) {
@@ -7475,7 +7475,7 @@ void ScriptThread::FS_OpenWrite(Event *ev) {
     fileHandle_t f;
 
     const str path = ev->GetString(1);
-    if ((f = gi.FS_FOpenFileWrite(path)) == -1) {
+    if (!(f = gi.FS_FOpenFileWrite(path))) {
         ev->AddNil();
         return;
     }
@@ -7489,7 +7489,7 @@ void ScriptThread::FS_OpenAppend(Event *ev) {
     fileHandle_t f;
 
     const str path = ev->GetString(1);
-    if ((f = gi.FS_FOpenFileAppend(path)) == -1) {
+    if (!(f = gi.FS_FOpenFileAppend(path))) {
         ev->AddNil();
         return;
     }
@@ -7558,8 +7558,18 @@ Event EV_FSFile_Write
     EV_DEFAULT,
     "si",
     "buffer length",
-    "Writes n characters from file.",
+    "Writes n characters to the file.",
     EV_NORMAL
+);
+
+Event EV_FSFile_WriteReturn
+(
+    "write",
+    EV_DEFAULT,
+    "si",
+    "buffer length",
+    "Writes n characters to the file and returns the number of bytes written.",
+    EV_RETURN
 );
 
 Event EV_FSFile_Seek
@@ -7590,15 +7600,15 @@ CLASS_DECLARATION(Listener, FSFile, NULL) {
     {&EV_FSFile_Flush, &FSFile::FlushEvent},
     {&EV_FSFile_Read,  &FSFile::ReadEvent },
     {&EV_FSFile_Write, &FSFile::WriteEvent},
+    {&EV_FSFile_WriteReturn, &FSFile::WriteEvent},
     {&EV_FSFile_Seek,  &FSFile::SeekEvent },
     {&EV_FSFile_Tell,  &FSFile::TellEvent },
     {NULL,             NULL               }
 };
 
 FSFile::FSFile()
-{
-    handle = -1;
-}
+    : handle(0)
+{}
 
 FSFile::FSFile(fileHandle_t inFile)
     : handle(inFile)
@@ -7606,7 +7616,7 @@ FSFile::FSFile(fileHandle_t inFile)
 
 FSFile::~FSFile()
 {
-    if (handle != -1) {
+    if (handle) {
         gi.FS_FCloseFile(handle);
     }
 }
@@ -7623,7 +7633,7 @@ void FSFile::CloseEvent(Event *ev)
 
 void FSFile::FlushEvent(Event *ev)
 {
-    if (handle == -1) {
+    if (!handle) {
         return;
     }
 
@@ -7634,7 +7644,7 @@ void FSFile::ReadEvent(Event *ev)
 {
     const int length  = ev->GetInteger(1);
 
-    if (handle == -1) {
+    if (!handle) {
         return;
     }
 
@@ -7652,11 +7662,16 @@ void FSFile::WriteEvent(Event *ev)
     const str buffer = ev->GetString(1);
     const int length = ev->GetInteger(2);
 
-    if (handle == -1) {
+    if (length < 0 || static_cast<size_t>(length) > buffer.length()) {
+        throw ScriptException("FSFile::write length %d exceeds the buffer size %zu", length, buffer.length());
+    }
+
+    if (!handle) {
+        ev->AddInteger(0);
         return;
     }
 
-    gi.FS_Write(buffer, length, handle);
+    ev->AddInteger(static_cast<int>(gi.FS_Write(buffer, length, handle)));
 }
 
 void FSFile::SeekEvent(Event *ev)
@@ -7664,7 +7679,7 @@ void FSFile::SeekEvent(Event *ev)
     const long offset = ev->GetInteger(1);
     const int  origin = ev->GetInteger(2);
 
-    if (handle == -1) {
+    if (!handle) {
         return;
     }
 
@@ -7674,8 +7689,8 @@ void FSFile::SeekEvent(Event *ev)
 void FSFile::TellEvent(Event *ev)
 {
     long offset;
-    
-    if (handle == -1) {
+
+    if (!handle) {
         return;
     }
 
