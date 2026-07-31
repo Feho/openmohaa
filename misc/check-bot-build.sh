@@ -55,12 +55,14 @@ echo "Allowlist check passed."
 echo "Building: ninja -C $build_dir $target"
 echo "Log: $log_file"
 
-if ninja -C "$build_dir" "$target" > "$log_file" 2>&1; then
+ninja -C "$build_dir" "$target" > "$log_file" 2>&1
+build_status=$?
+
+if [ "$build_status" -eq 0 ]; then
     echo "Build passed."
     exit 0
 fi
 
-build_status=$?
 echo "Build failed with exit code $build_status."
 echo "Last 40 log lines:"
 tail -n 40 "$log_file"
