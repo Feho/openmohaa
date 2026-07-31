@@ -68,6 +68,9 @@ ScriptDelegate Player::scriptDelegate_disconnecting(
 );
 ScriptDelegate
     Player::scriptDelegate_spawned("player_spawned", "The player has spawned", ScriptDelegate::Policy::Observer);
+ScriptDelegate Player::scriptDelegate_teamChanged(
+    "player_teamchanged", "The player's team changed", ScriptDelegate::Policy::Observer
+);
 ScriptDelegate Player::scriptDelegate_weaponFired(
     "player_weaponfired", "The player fired a weapon", ScriptDelegate::Policy::Observer
 );

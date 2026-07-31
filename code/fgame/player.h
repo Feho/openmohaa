@@ -320,6 +320,7 @@ public:
     static ScriptDelegate scriptDelegate_connected;
     static ScriptDelegate scriptDelegate_disconnecting;
     static ScriptDelegate scriptDelegate_spawned;
+    static ScriptDelegate scriptDelegate_teamChanged;
     static ScriptDelegate scriptDelegate_weaponFired;
     static ScriptDelegate scriptDelegate_damage;
     static ScriptDelegate scriptDelegate_kill;

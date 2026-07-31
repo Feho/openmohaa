@@ -35,6 +35,23 @@ DM_Manager dmManager;
 
 static CTeamSpawnClock g_teamSpawnClock;
 
+static const char *TeamTypeToScriptName(teamtype_t team)
+{
+    switch (team) {
+    case TEAM_SPECTATOR:
+        return "spectator";
+    case TEAM_FREEFORALL:
+        return "freeforall";
+    case TEAM_ALLIES:
+        return "allies";
+    case TEAM_AXIS:
+        return "axis";
+    case TEAM_NONE:
+    default:
+        return "none";
+    }
+}
+
 typedef struct spawnsort_s {
     PlayerStart *spawnpoint;
     float        fMetric;
@@ -752,8 +769,9 @@ void DM_Manager::RemovePlayer(Player *player)
 
 bool DM_Manager::JoinTeam(Player *player, teamtype_t teamType)
 {
-    DM_Team *team    = player->GetDM_Team();
-    DM_Team *pDMTeam = GetTeam(teamType);
+    const teamtype_t oldTeam = player->GetTeam();
+    DM_Team         *team    = player->GetDM_Team();
+    DM_Team         *pDMTeam = GetTeam(teamType);
 
     if (!pDMTeam) {
         return false;
@@ -776,6 +794,14 @@ bool DM_Manager::JoinTeam(Player *player, teamtype_t teamType)
         player->EndFight();
     } else {
         player->BeginFight();
+    }
+
+    const teamtype_t newTeam = player->GetTeam();
+    if (oldTeam != newTeam) {
+        Event event;
+        event.AddString(TeamTypeToScriptName(oldTeam));
+        event.AddString(TeamTypeToScriptName(newTeam));
+        Player::scriptDelegate_teamChanged.Trigger(player, event);
     }
 
     return true;

@@ -118,6 +118,17 @@ This is called after the player finished spawning.
 
 The event can be called even for spectators (when the spectator gets respawned).
 
+#### player_teamchanged
+
+The player's team changed. Initial assignment from `none` is included, while assigning the same team again does not
+emit an event.
+
+```
+player_teamchanged local.old_team local.new_team
+```
+
+Team names are `none`, `spectator`, `freeforall`, `allies`, or `axis`.
+
 #### player_textMessage
 
 The player sent a text message.
