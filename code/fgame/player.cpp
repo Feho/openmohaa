@@ -60,12 +60,19 @@ const Vector power_color(0.0, 1.0, 0.0);
 const Vector acolor(1.0, 1.0, 1.0);
 const Vector bcolor(1.0, 0.0, 0.0);
 
-ScriptDelegate Player::scriptDelegate_connected("player_connected", "Sent once when the player connected");
-ScriptDelegate Player::scriptDelegate_disconnecting("player_disconnecting", "The player is disconnecting");
-ScriptDelegate Player::scriptDelegate_spawned("player_spawned", "The player has spawned");
-ScriptDelegate Player::scriptDelegate_damage("player_damaged", "The player got hit");
-ScriptDelegate Player::scriptDelegate_kill("player_killed", "The player got killed");
-ScriptDelegate Player::scriptDelegate_textMessage("player_textMessage", "The player just sent a text message");
+ScriptDelegate Player::scriptDelegate_connected(
+    "player_connected", "Sent once when the player connected", ScriptDelegate::Policy::Observer
+);
+ScriptDelegate Player::scriptDelegate_disconnecting(
+    "player_disconnecting", "The player is disconnecting", ScriptDelegate::Policy::Observer
+);
+ScriptDelegate
+    Player::scriptDelegate_spawned("player_spawned", "The player has spawned", ScriptDelegate::Policy::Observer);
+ScriptDelegate Player::scriptDelegate_damage("player_damaged", "The player got hit", ScriptDelegate::Policy::Observer);
+ScriptDelegate Player::scriptDelegate_kill("player_killed", "The player got killed", ScriptDelegate::Policy::Observer);
+ScriptDelegate Player::scriptDelegate_textMessage(
+    "player_textMessage", "The player just sent a text message", ScriptDelegate::Policy::Query
+);
 
 //
 // mohaas 2.0 and above

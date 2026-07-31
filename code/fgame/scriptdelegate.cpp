@@ -88,9 +88,10 @@ bool ScriptRegisteredDelegate_Code::operator==(const ScriptRegisteredDelegate_Co
     return response == registeredDelegate.response;
 }
 
-ScriptDelegate::ScriptDelegate(const char *inName, const char *inDescription)
+ScriptDelegate::ScriptDelegate(const char *inName, const char *inDescription, Policy inPolicy)
     : name(inName)
     , description(inDescription)
+    , policy(inPolicy)
 {
     LL_SafeAddFirst(root, this, next, prev);
 }
@@ -157,12 +158,15 @@ ScriptVariable ScriptDelegate::Trigger(const Event& ev) const
 ScriptVariable ScriptDelegate::Trigger(Listener *object, const Event& ev) const
 {
     size_t         i;
-    ScriptVariable lastResult;
+    ScriptVariable result;
 
     {
         const Container<ScriptRegisteredDelegate_Script> tmpList = list_script;
         for (i = 1; i <= tmpList.NumObjects(); i++) {
-            lastResult = tmpList.ObjectAt(i).Execute(object, ev);
+            ScriptVariable handlerResult = tmpList.ObjectAt(i).Execute(object, ev);
+            if (policy == Policy::Query && !result.HasValue() && handlerResult.HasValue()) {
+                result = handlerResult;
+            }
         }
     }
 
@@ -180,7 +184,7 @@ ScriptVariable ScriptDelegate::Trigger(Listener *object, const Event& ev) const
         }
     }
 
-    return lastResult;
+    return result;
 }
 
 ScriptDelegate *ScriptDelegate::GetScriptDelegate(const char *name)

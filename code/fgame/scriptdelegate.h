@@ -101,7 +101,21 @@ private:
 class ScriptDelegate
 {
 public:
-    ScriptDelegate(const char *name, const char *description);
+    /**
+     * Defines how handlers communicate with the trigger site.
+     *
+     * Observer handlers cannot affect the caller. Veto and transformation
+     * handlers operate on a shared context supplied in the event. Query
+     * handlers return the first non-NIL value in registration order.
+     */
+    enum class Policy {
+        Observer,
+        Veto,
+        Transformation,
+        Query
+    };
+
+    ScriptDelegate(const char *name, const char *description, Policy policy);
     ~ScriptDelegate();
 
     static const ScriptDelegate *GetRoot();
@@ -154,6 +168,9 @@ public:
     /**
      * Executes all registered delegates with the specified event.
      *
+     * All handlers run regardless of policy. Script return values are ignored
+     * unless this is a query delegate.
+     *
      * @param ev Parameter list
      */
     ScriptVariable Trigger(const Event& ev = Event()) const;
@@ -191,6 +208,7 @@ private:
     static ScriptDelegate *root;
     const char            *name;
     const char            *description;
+    Policy                 policy;
 
     Container<ScriptRegisteredDelegate_Script>     list_script;
     Container<ScriptRegisteredDelegate_Code>       list_code;

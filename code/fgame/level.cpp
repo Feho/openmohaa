@@ -49,8 +49,9 @@ Level level;
 
 gclient_t *spawn_client = NULL;
 
-ScriptDelegate Level::scriptDelegate_intermission("level_intermission", "Level intermission");
-ScriptDelegate Level::scriptDelegate_exit("level_exit", "Exiting world");
+ScriptDelegate
+    Level::scriptDelegate_intermission("level_intermission", "Level intermission", ScriptDelegate::Policy::Observer);
+ScriptDelegate Level::scriptDelegate_exit("level_exit", "Exiting world", ScriptDelegate::Policy::Observer);
 
 Event EV_Level_GetTime
 (
