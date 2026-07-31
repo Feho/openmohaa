@@ -1345,9 +1345,10 @@ str Weapon::GetTagBarrel() const
 //======================
 void Weapon::Shoot(Event *ev)
 {
-    Vector     pos, forward, right, up, vBarrel, delta;
-    firemode_t mode = FIRE_PRIMARY;
-    qboolean   mc;
+    Vector      pos, forward, right, up, vBarrel, delta;
+    firemode_t  mode = FIRE_PRIMARY;
+    qboolean    mc;
+    SentientPtr firingOwner;
 
     if (ev->NumArgs() > 0) {
         mode = WeaponModeNameToNum(ev->GetString(1));
@@ -1386,6 +1387,11 @@ void Weapon::Shoot(Event *ev)
 
     GetMuzzlePosition(pos, vBarrel, forward, right, up);
     ApplyFireKickback(forward, 1000.0);
+
+    firingOwner = owner;
+    if (IsSubclassOfVehicleTurretGun()) {
+        firingOwner = static_cast<VehicleTurretGun *>(this)->GetSentientOwner();
+    }
 
     if (firetype[mode] != FT_LANDMINE || CanPlaceLandmine(pos, owner)) {
         if (m_fFireSpreadMultAmount[mode] != 0.0f) {
@@ -1650,6 +1656,15 @@ void Weapon::Shoot(Event *ev)
 
         m_fLastFireTime = level.time;
         m_eLastFireMode = mode;
+
+        if (firetype[mode] != FT_NONE && firingOwner && firingOwner->IsSubclassOfPlayer()) {
+            Event firedEvent;
+            firedEvent.AddEntity(this);
+            firedEvent.AddString(mode == FIRE_SECONDARY ? "secondary" : "primary");
+            firedEvent.AddVector(pos);
+            firedEvent.AddVector(forward);
+            Player::scriptDelegate_weaponFired.Trigger(static_cast<Player *>(firingOwner.Pointer()), firedEvent);
+        }
     } else {
         // Landmine weapon
         if (ammo_clip_size[mode]) {

@@ -82,6 +82,17 @@ The parameters are the same as the `damage` command:
 player_damaged local.attacker local.damage local.inflictor local.position local.direction local.normal local.knockback local.damageflags local.meansofdeath local.location
 ```
 
+#### player_weaponfired
+
+The player fired a weapon. The event is emitted after the shot has been accepted by the weapon.
+
+```
+player_weaponfired local.weapon local.firemode local.position local.direction
+```
+
+`local.firemode` is either `"primary"` or `"secondary"`. The position and direction are the resolved muzzle
+position and firing direction.
+
 #### player_disconnecting
 
 The player is disconnecting.
