@@ -72,10 +72,10 @@ If two features need the same output, resolve the conflict in `ResolveIntents()`
 For bot-controller movement changes, run the guarded helper from the repository root:
 
 ```bash
-./misc/check-bot-build.sh
+just bots
 ```
 
-The script enforces the direct `movement.*` side-effect allowlist before building `game` with Ninja and redirecting compiler output to `build.log`. Update the allowlist only when a new direct movement mutation is intentionally part of the execution/script/lifecycle boundary.
+For the fuller build, CTest, and patch-whitespace check, run `just check-bots`. These recipes invoke `misc/check-bot-build.sh`, which enforces the direct `movement.*` side-effect allowlist before building `game` with Ninja and redirecting compiler output to `build.log`. Update the allowlist only when a new direct movement mutation is intentionally part of the execution/script/lifecycle boundary.
 
 ## Spawn, Respawn, and Persistence
 

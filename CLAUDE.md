@@ -30,13 +30,35 @@ ninja
 cmake --install .
 ```
 
-For bot-controller changes under `code/fgame/playerbot*`, prefer the guarded build helper:
+### Just Recipes (Preferred)
+
+The repository-root `justfile` provides quiet, repeatable commands for development and runtime checks. Agents should run `just --list` to discover the current recipes and prefer them over raw CMake/Ninja commands so compiler output stays in `build.log` instead of consuming session context.
+
+Common recipes:
 
 ```bash
-./misc/check-bot-build.sh
+just doctor             # Verify required tools and the MOHAA asset path
+just configure          # Create or refresh the Ninja build
+just game               # Quietly build the server game module
+just game-refresh       # Refresh CMake source globs, then build game
+just check              # Build game, run CTest, and check patch whitespace
+just bots               # Guarded bot-controller build
+just check-bots         # Guarded bot build plus tests and whitespace checks
+just server-build       # Quietly build the dedicated server
+just server-clean       # Run against an isolated original Pak0-Pak5 fixture
+just build <target>     # Quietly build another Ninja target
+just build-log          # Show the tail of the most recent quiet build log
 ```
 
-This script checks the bot movement side-effect allowlist, then runs `ninja -C .cmake game` with compiler output redirected to `build.log`. Do not run raw `ninja -C .cmake game` for bot-controller work unless explicitly debugging build output or the user asks for the raw command.
+Formatting is available through `just format <files...>` and `just format-check <files...>`. Operational recipes from `~/MOHAA/justfile` can be invoked with `just mohaa <recipe>`. Run a raw build command only when explicitly debugging compiler output or when a recipe cannot cover the task.
+
+For bot-controller changes under `code/fgame/playerbot*`, use the guarded recipe:
+
+```bash
+just bots
+```
+
+This recipe invokes `misc/check-bot-build.sh`, which checks the bot movement side-effect allowlist and builds `game` with compiler output redirected to `build.log`. Do not run raw `ninja -C .cmake game` for bot-controller work unless explicitly debugging build output or the user asks for the raw command.
 
 ### Build Options
 
