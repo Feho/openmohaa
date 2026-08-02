@@ -368,7 +368,8 @@ BotPerceptionSnapshot BotController::BuildPerceptionSnapshot(void) const
         (m_grenade.grenade && m_grenade.grenade->IsSubclassOfProjectile()
          && (m_grenade.grenade->origin - controlledEnt->origin).lengthSquared() < grenadeRadiusSq)
         || (m_grenade.avoidTime > level.inttime);
-    snapshot.overwatchActive = (m_overwatch.dwellUntil > level.inttime);
+    snapshot.overwatchActive =
+        m_overwatch.dwellUntil && (!m_overwatch.committedSince || m_overwatch.dwellUntil > level.inttime);
     snapshot.idleActive      = !snapshot.curiousActive && !snapshot.attackActive && !snapshot.overwatchActive;
     snapshot.moving            = movement.IsMoving();
     snapshot.anchorActive      = snapshot.overwatchActive;
@@ -406,16 +407,17 @@ void BotController::ClearOverwatchAnchor(const char *reason, bool startCooldown)
 
     botManager.GetTacticalMemory().ReleaseOccupant(controlledEnt ? controlledEnt->entnum : -1);
 
-    m_overwatch.windowPos      = vec_zero;
-    m_overwatch.standPos       = vec_zero;
-    m_overwatch.lookDir        = vec_zero;
-    m_overwatch.anchorPos      = vec_zero;
-    m_overwatch.dwellUntil     = 0;
-    m_overwatch.scanTime       = 0;
-    m_overwatch.displacedSince = 0;
-    m_overwatch.committedSince = 0;
-    m_overwatch.pathFailCount  = 0;
-    m_overwatch.spotIndex      = -1;
+    m_overwatch.windowPos        = vec_zero;
+    m_overwatch.standPos         = vec_zero;
+    m_overwatch.lookDir          = vec_zero;
+    m_overwatch.anchorPos        = vec_zero;
+    m_overwatch.dwellUntil       = 0;
+    m_overwatch.scanTime         = 0;
+    m_overwatch.displacedSince   = 0;
+    m_overwatch.travelPauseSince = 0;
+    m_overwatch.committedSince   = 0;
+    m_overwatch.pathFailCount    = 0;
+    m_overwatch.spotIndex        = -1;
 }
 
 BotMoveClearReason BotController::UpdateModeTransitions(const BotPerceptionSnapshot& snapshot)
@@ -807,22 +809,18 @@ BotMoveClearReason BotController::RefreshCuriousState(void)
         && level.inttime >= m_overwatch.committedSince + g_bot_tactical_commit_ms->integer;
 
     if (committedHold && m_curious.time > level.inttime) {
-        const bool strongType = (m_curious.stimulusType == AI_EVENT_WEAPON_FIRE
-                                 || m_curious.stimulusType == AI_EVENT_EXPLOSION);
-        const bool closeRange = (m_curious.stimulusDistanceSq < Square(g_bot_tactical_break_dist->value));
-
-        if (!strongType && !closeRange) {
-            if (m_reaction.lookUntil < level.inttime) {
-                m_reaction.lookPos   = m_curious.targetPos;
-                m_reaction.lookUntil = level.inttime + 1500;
-            }
-            m_curious.time        = 0;
-            m_curious.lastPos     = vec_zero;
-            m_curious.losProbePos = vec_zero;
-            return BotMoveClearReason::None;
+        // The anchor owns movement for its sampled dwell. React to sounds by
+        // looking toward them, but do not turn curiosity into a move request
+        // that abandons the position early. Grenade avoidance remains a
+        // separate, higher-priority hazard intent.
+        if (m_reaction.lookUntil < level.inttime) {
+            m_reaction.lookPos   = m_curious.targetPos;
+            m_reaction.lookUntil = level.inttime + 1500;
         }
-
-        ClearOverwatchAnchor("strong curious stimulus", true);
+        m_curious.time        = 0;
+        m_curious.lastPos     = vec_zero;
+        m_curious.losProbePos = vec_zero;
+        return BotMoveClearReason::None;
     }
 
     if (m_curious.time && level.inttime > m_curious.time) {
@@ -898,13 +896,14 @@ void BotController::RefreshOverwatchState(void)
         return;
     }
 
-    if (m_overwatch.dwellUntil > level.inttime) {
-        return;
-    }
-
     if (m_overwatch.dwellUntil) {
-        m_overwatch.cooldownUntil = level.inttime + 10000 + (int)BotRandom(20000.0f);
-        m_overwatch.dwellUntil    = 0;
+        // Travel time must not consume the hold. committedSince is set on first
+        // arrival, at which point dwellUntil is re-armed for the sampled duration.
+        if (!m_overwatch.committedSince || m_overwatch.dwellUntil > level.inttime) {
+            return;
+        }
+
+        ClearOverwatchAnchor("dwell complete", true);
         return;
     }
 
@@ -922,16 +921,17 @@ void BotController::RefreshOverwatchState(void)
         int idx = botManager.GetTacticalMemory().QueryBestSpot(team, controlledEnt->origin, 2048.0f, controlledEnt, params);
         if (idx >= 0) {
             const TacticalSpot& spot = botManager.GetTacticalMemory().GetSpot(idx);
-            m_overwatch.standPos       = spot.standPos;
-            m_overwatch.lookDir        = spot.lookDir;
-            m_overwatch.anchorPos      = spot.standPos + spot.lookDir * 256.0f;
-            m_overwatch.windowPos      = m_overwatch.anchorPos;
-            m_overwatch.dwellUntil     = level.inttime + 5000 + (int)BotRandom(5000.0f);
-            m_overwatch.scanTime       = 0;
-            m_overwatch.displacedSince = 0;
-            m_overwatch.committedSince = 0;
-            m_overwatch.pathFailCount  = 0;
-            m_overwatch.spotIndex      = idx;
+            m_overwatch.standPos         = spot.standPos;
+            m_overwatch.lookDir          = spot.lookDir;
+            m_overwatch.anchorPos        = spot.standPos + spot.lookDir * 256.0f;
+            m_overwatch.windowPos        = m_overwatch.anchorPos;
+            m_overwatch.dwellUntil       = level.inttime + 5000 + (int)BotRandom(5000.0f);
+            m_overwatch.scanTime         = 0;
+            m_overwatch.displacedSince   = 0;
+            m_overwatch.travelPauseSince = 0;
+            m_overwatch.committedSince   = 0;
+            m_overwatch.pathFailCount    = 0;
+            m_overwatch.spotIndex        = idx;
             botManager.GetTacticalMemory().SetOccupant(idx, controlledEnt->entnum);
             return;
         }
@@ -1032,16 +1032,17 @@ void BotController::RefreshOverwatchState(void)
     Vector anchorPos = standPos + lookDir * 256.0f;
     anchorPos.z      = standPos.z + controlledEnt->viewheight;
 
-    m_overwatch.windowPos      = windowCentroid;
-    m_overwatch.standPos       = standPos;
-    m_overwatch.lookDir        = lookDir;
-    m_overwatch.anchorPos      = anchorPos;
-    m_overwatch.dwellUntil     = level.inttime + 3000 + (int)BotRandom(4000.0f);
-    m_overwatch.scanTime       = 0;
-    m_overwatch.displacedSince = 0;
-    m_overwatch.committedSince = 0;
-    m_overwatch.pathFailCount  = 0;
-    m_overwatch.spotIndex      = -1;
+    m_overwatch.windowPos        = windowCentroid;
+    m_overwatch.standPos         = standPos;
+    m_overwatch.lookDir          = lookDir;
+    m_overwatch.anchorPos        = anchorPos;
+    m_overwatch.dwellUntil       = level.inttime + 3000 + (int)BotRandom(4000.0f);
+    m_overwatch.scanTime         = 0;
+    m_overwatch.displacedSince   = 0;
+    m_overwatch.travelPauseSince = 0;
+    m_overwatch.committedSince   = 0;
+    m_overwatch.pathFailCount    = 0;
+    m_overwatch.spotIndex        = -1;
 }
 
 Vector BotController::ProbeLOSPosition(const Vector& targetPos)
@@ -1646,17 +1647,28 @@ BotTacticalIntent BotController::AdvanceTacticalStateAndBuildIntent(const BotPer
         intent.mode         = BotTacticalMode::Overwatch;
         intent.stuckPolicy  = BotStuckPolicy::Ignore;
         intent.anchorActive = true;
+        intent.lockPosition = true;
 
-        const float holdRadiusSq    = Square(16.0f);
-        const float combatLeashSq   = Square(1024.0f);
-        const int   returnTimeoutMs = 4000;
-        const int   maxPathFailures = 2;
+        const float holdRadiusSq      = Square(16.0f);
+        const float combatLeashSq     = Square(1024.0f);
+        const int   approachTimeoutMs = 15000;
+        const int   returnTimeoutMs   = 4000;
+        const int   maxPathFailures   = 2;
 
         if (snapshot.grenadeActive) {
-            m_overwatch.displacedSince = 0;
-            m_overwatch.pathFailCount  = 0;
+            if (!m_overwatch.travelPauseSince) {
+                m_overwatch.travelPauseSince = level.inttime;
+            }
+            m_overwatch.pathFailCount = 0;
             return intent;
         } else {
+            if (m_overwatch.travelPauseSince) {
+                if (m_overwatch.displacedSince) {
+                    m_overwatch.displacedSince += level.inttime - m_overwatch.travelPauseSince;
+                }
+                m_overwatch.travelPauseSince = 0;
+            }
+
             if (snapshot.anchorDistSq > holdRadiusSq) {
                 intent.anchorReturning = true;
 
@@ -1673,10 +1685,13 @@ BotTacticalIntent BotController::AdvanceTacticalStateAndBuildIntent(const BotPer
 
                 if (!m_overwatch.displacedSince) {
                     m_overwatch.displacedSince = level.inttime;
-                } else if (level.inttime >= m_overwatch.displacedSince + returnTimeoutMs) {
-                    ClearOverwatchAnchor("return timeout", true);
-                    intent.reset();
-                    return intent;
+                } else {
+                    const int travelTimeoutMs = m_overwatch.committedSince ? returnTimeoutMs : approachTimeoutMs;
+                    if (level.inttime >= m_overwatch.displacedSince + travelTimeoutMs) {
+                        ClearOverwatchAnchor(m_overwatch.committedSince ? "return timeout" : "approach timeout", true);
+                        intent.reset();
+                        return intent;
+                    }
                 }
 
                 if (snapshot.attackActive && snapshot.enemyAnchorDistSq > combatLeashSq) {
@@ -1687,6 +1702,7 @@ BotTacticalIntent BotController::AdvanceTacticalStateAndBuildIntent(const BotPer
 
                 intent.moveType   = BotMoveRequestType::MoveTo;
                 intent.moveTarget = m_overwatch.standPos;
+                intent.aimType    = BotAimDirective::AimAlongPath;
             } else {
                 intent.moveClearReason     = BotMoveClearReason::OverwatchAnchor;
                 m_overwatch.displacedSince = 0;
@@ -1694,23 +1710,22 @@ BotTacticalIntent BotController::AdvanceTacticalStateAndBuildIntent(const BotPer
 
                 if (m_overwatch.committedSince == 0) {
                     m_overwatch.committedSince = level.inttime;
+                    if (m_overwatch.spotIndex >= 0) {
+                        m_overwatch.dwellUntil = level.inttime + 5000 + (int)BotRandom(5000.0f);
+                    } else {
+                        m_overwatch.dwellUntil = level.inttime + 3000 + (int)BotRandom(4000.0f);
+                    }
                     botManager.GetTacticalMemory().TryRecordSpot(
                         m_overwatch.standPos, m_overwatch.lookDir, (int)controlledEnt->GetTeam(), controlledEnt
                     );
                 }
 
-                // At the anchor with a visible enemy: lock position so combat strafing
-                // doesn't push the bot off the window.
-                if (snapshot.attackActive && m_enemy.enemy) {
-                    float visionDist = GetVisionDistance();
-                    if (controlledEnt->CanSee(m_enemy.enemy, m_profile.spotPeripheralFov, visionDist, false)) {
-                        intent.lockPosition = true;
-                    }
-                }
+                // Keep combat and curiosity from replacing the anchor hold with
+                // pursuit or strafing. Hazard movement still has higher priority.
             }
         }
 
-        if (!snapshot.attackActive && level.inttime >= m_overwatch.scanTime) {
+        if (!intent.anchorReturning && !snapshot.attackActive && level.inttime >= m_overwatch.scanTime) {
             m_overwatch.scanTime = level.inttime + 800 + (int)BotRandom(700.0f);
 
             Vector baseDir = m_overwatch.lookDir;
@@ -2112,8 +2127,10 @@ void BotController::ApplyScriptControl(BotResolvedCommand& command)
 
 void BotController::DebugResolvedCommand(const BotResolvedCommand& command) const
 {
+    const bool anchorActive =
+        m_overwatch.dwellUntil && (!m_overwatch.committedSince || m_overwatch.dwellUntil > level.inttime);
     float anchorDist = -1.0f;
-    if (m_overwatch.dwellUntil > level.inttime) {
+    if (anchorActive) {
         Vector flatOffset = controlledEnt->origin - m_overwatch.standPos;
         flatOffset.z      = 0;
         anchorDist        = sqrtf(flatOffset.lengthSquared());
@@ -2131,7 +2148,7 @@ void BotController::DebugResolvedCommand(const BotResolvedCommand& command) cons
         command.rightmove,
         command.upmove,
         GetMoveClearReasonName(command.moveClearReason),
-        (m_overwatch.dwellUntil > level.inttime) ? 1 : 0,
+        anchorActive ? 1 : 0,
         anchorDist,
         (m_overwatch.displacedSince != 0) ? 1 : 0
     );

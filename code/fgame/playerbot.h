@@ -380,13 +380,14 @@ struct BotOverwatchState {
     Vector standPos       = vec_zero; // Where the bot should stand (close to window, with sightline)
     Vector lookDir        = vec_zero; // Normalized direction from standPos through the window
     Vector anchorPos      = vec_zero; // Logical aim anchor for scan behavior
-    int    dwellUntil     = 0;        // When to give up and resume patrol
-    int    scanTime       = 0;        // When to next update scan angle
-    int    cooldownUntil  = 0;        // Earliest time this window can be used again (anti-reentry)
-    int    displacedSince = 0;
-    int    committedSince = 0;
-    int    pathFailCount  = 0;
-    int    spotIndex      = -1;
+    int    dwellUntil       = 0;   // When to give up after reaching the stand position
+    int    scanTime         = 0;   // When to next update scan angle
+    int    cooldownUntil    = 0;   // Earliest time this window can be used again (anti-reentry)
+    int    displacedSince   = 0;
+    int    travelPauseSince = 0;   // When hazard avoidance paused the approach/return timeout
+    int    committedSince   = 0;
+    int    pathFailCount    = 0;
+    int    spotIndex        = -1;
 
     void reset()
     {
@@ -636,7 +637,7 @@ struct BotTacticalIntent {
     bool               run;
     bool               anchorActive;
     bool               anchorReturning;
-    bool               lockPosition; // Prevent combat from overwriting the move (at anchor with visible enemy)
+    bool               lockPosition; // Prevent engagement movement from overwriting anchor travel or hold
     bool               updatedLastFireTime;
 
     void reset()
