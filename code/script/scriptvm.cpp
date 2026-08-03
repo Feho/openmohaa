@@ -32,6 +32,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../fgame/game.h"
 #include "../fgame/level.h"
 #include "../fgame/parm.h"
+#include "../fgame/session.h"
 #include "../fgame/worldspawn.h"
 
 #include <utility>
@@ -1504,6 +1505,10 @@ void ScriptVM::Execute(ScriptVariable *data, int dataSize, str label)
                 loadTop(m_ScriptClass->m_Self);
                 break;
 
+            case OP_LOAD_SESSION_VAR:
+                loadTop(&session);
+                break;
+
             case OP_LOAD_STORE_GAME_VAR:
                 loadStoreTop(&game);
                 break;
@@ -1545,6 +1550,10 @@ void ScriptVM::Execute(ScriptVariable *data, int dataSize, str label)
                 }
 
                 loadStoreTop(m_ScriptClass->m_Self);
+                break;
+
+            case OP_LOAD_STORE_SESSION_VAR:
+                loadStoreTop(&session);
                 break;
 
             case OP_MARK_STACK_POS:
@@ -1700,6 +1709,10 @@ void ScriptVM::Execute(ScriptVariable *data, int dataSize, str label)
                 storeTop(m_ScriptClass->m_Self);
                 break;
 
+            case OP_STORE_SESSION_VAR:
+                storeTop(&session);
+                break;
+
             case OP_STORE_GAME:
                 m_VMStack.Push();
                 m_VMStack.GetTop().setListenerValue(&game);
@@ -1739,6 +1752,11 @@ void ScriptVM::Execute(ScriptVariable *data, int dataSize, str label)
             case OP_STORE_SELF:
                 m_VMStack.Push();
                 m_VMStack.GetTop().setListenerValue(m_ScriptClass->m_Self);
+                break;
+
+            case OP_STORE_SESSION:
+                m_VMStack.Push();
+                m_VMStack.GetTop().setListenerValue(&session);
                 break;
 
             case OP_STORE_NIL:

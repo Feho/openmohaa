@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../fgame/level.h"
 #include "../fgame/parm.h"
 #include "../fgame/game.h"
+#include "../fgame/session.h"
 #include "../fgame/scriptmaster.h"
 #include "../fgame/scriptthread.h"
 #include "scriptclass.h"
@@ -37,6 +38,31 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 ScriptCompiler Compiler;
 int            ScriptCompiler::current_label;
+
+namespace
+{
+
+    int LoadVariableOpcode(int method)
+    {
+        return method == method_session ? OP_LOAD_SESSION_VAR : OP_LOAD_GAME_VAR + method;
+    }
+
+    int LoadStoreVariableOpcode(int method)
+    {
+        return method == method_session ? OP_LOAD_STORE_SESSION_VAR : OP_LOAD_STORE_GAME_VAR + method;
+    }
+
+    int StoreVariableOpcode(int method)
+    {
+        return method == method_session ? OP_STORE_SESSION_VAR : OP_STORE_GAME_VAR + method;
+    }
+
+    int StoreListenerOpcode(int method)
+    {
+        return method == method_session ? OP_STORE_SESSION : OP_STORE_GAME + method;
+    }
+
+} // namespace
 
 ScriptCompiler::ScriptCompiler()
 {
@@ -180,6 +206,10 @@ bool ScriptCompiler::BuiltinReadVariable(unsigned int sourcePos, int type, int e
         c = Parm::classinfostatic();
         break;
 
+    case method_session:
+        c = Session::classinfostatic();
+        break;
+
     case method_group:
         c = ScriptClass::classinfostatic();
         break;
@@ -222,6 +252,10 @@ bool ScriptCompiler::BuiltinWriteVariable(unsigned int sourcePos, int type, int 
 
     case method_parm:
         c = Parm::classinfostatic();
+        break;
+
+    case method_session:
+        c = Session::classinfostatic();
         break;
 
     case method_group:
@@ -277,7 +311,7 @@ void ScriptCompiler::EmitAssignmentStatement(sval_t lhs, unsigned int sourcePos)
         EmitValue(listener_val);
         EmitOpcode(OP_LOAD_FIELD_VAR, sourcePos);
     } else {
-        EmitOpcode(OP_LOAD_GAME_VAR + listener_val.node[1].intValue, sourcePos);
+        EmitOpcode(LoadVariableOpcode(listener_val.node[1].intValue), sourcePos);
     }
 
     EmitOpcodeValue((unsigned int)index, sizeof(unsigned int));
@@ -508,12 +542,12 @@ void ScriptCompiler::EmitField(sval_t listener_val, sval_t field_val, unsigned i
         EmitValue(listener_val);
         EmitOpcode(OP_STORE_FIELD, sourcePos);
         EmitOpcodeValue((unsigned int)index, sizeof(unsigned int));
-    } else if (PrevOpcode() != (OP_LOAD_GAME_VAR + listener_val.node[1].intValue) || prev_index != index) {
-        EmitOpcode(OP_STORE_GAME_VAR + listener_val.node[1].intValue, sourcePos);
+    } else if (PrevOpcode() != LoadVariableOpcode(listener_val.node[1].intValue) || prev_index != index) {
+        EmitOpcode(StoreVariableOpcode(listener_val.node[1].intValue), sourcePos);
         EmitOpcodeValue((unsigned int)index, sizeof(unsigned int));
     } else {
         AbsorbPrevOpcode();
-        EmitOpcode(OP_LOAD_STORE_GAME_VAR + listener_val.node[1].intValue, sourcePos);
+        EmitOpcode(LoadStoreVariableOpcode(listener_val.node[1].intValue), sourcePos);
         code_pos += sizeof(unsigned int);
     }
 }
@@ -930,7 +964,7 @@ void ScriptCompiler::EmitParameter(sval_t lhs, unsigned int sourcePos)
         CompileError(sourcePos, "built-in field '%s' not allowed", name);
     } else {
         EmitOpcode(OP_STORE_PARAM, sourcePos);
-        EmitOpcode(OP_LOAD_GAME_VAR + listener_val.node[1].intValue, sourcePos);
+        EmitOpcode(LoadVariableOpcode(listener_val.node[1].intValue), sourcePos);
 
         unsigned int index = Director.AddString(name);
         EmitOpcodeValue((unsigned int)index, sizeof(unsigned int));
@@ -1266,7 +1300,7 @@ __emit:
         break;
 
     case ENUM_listener:
-        EmitOpcode(OP_STORE_GAME + val.node[1].intValue, val.node[2].sourcePosValue);
+        EmitOpcode(StoreListenerOpcode(val.node[1].intValue), val.node[2].sourcePosValue);
         break;
 
     case ENUM_NIL:

@@ -164,6 +164,11 @@ static opcode_t OpcodeInfo[] = {
 
     {"OPCODE_END",                       1,                        -1,   0},
     {"OPCODE_RETURN",                    1,                        -1,   0},
+
+    {"OPCODE_LOAD_SESSION_VAR",          5,                        -1,   0},
+    {"OPCODE_LOAD_STORE_SESSION_VAR",    5,                        0,    0},
+    {"OPCODE_STORE_SESSION_VAR",         5,                        1,    0},
+    {"OPCODE_STORE_SESSION",             1,                        1,    0},
 };
 
 static const char *aszVarGroupNames[] = {"game", "level", "local", "parm", "self"};

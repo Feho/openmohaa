@@ -32,6 +32,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "player.h"
 #include "scriptmaster.h"
 #include "scriptexception.h"
+#include "session.h"
 #include "lightstyleclass.h"
 #include "lodthing.h"
 #include "viewthing.h"
@@ -350,6 +351,7 @@ void G_ShutdownGame()
 
     // write all the client session data so we can get it back
     G_WriteSessionData();
+    session.Save();
 
     ClosePlayerLogFile();
 
@@ -1239,7 +1241,9 @@ void G_Cleanup(qboolean samemap)
 
     G_WriteSessionData();
 
+    session.PrepareForScriptReset();
     level.CleanUp(samemap, qtrue);
+    session.Restore();
 }
 
 void ArchiveAliases(Archiver& arc)

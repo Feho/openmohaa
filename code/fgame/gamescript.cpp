@@ -422,6 +422,7 @@ void ArchiveOpcode(Archiver& arc, unsigned char *code)
     case OP_LOAD_OWNER_VAR:
     case OP_LOAD_PARM_VAR:
     case OP_LOAD_SELF_VAR:
+    case OP_LOAD_SESSION_VAR:
     case OP_LOAD_STORE_GAME_VAR:
     case OP_LOAD_STORE_GROUP_VAR:
     case OP_LOAD_STORE_LEVEL_VAR:
@@ -429,6 +430,7 @@ void ArchiveOpcode(Archiver& arc, unsigned char *code)
     case OP_LOAD_STORE_OWNER_VAR:
     case OP_LOAD_STORE_PARM_VAR:
     case OP_LOAD_STORE_SELF_VAR:
+    case OP_LOAD_STORE_SESSION_VAR:
     case OP_STORE_FIELD:
     case OP_STORE_FIELD_REF:
     case OP_STORE_GAME_VAR:
@@ -438,6 +440,7 @@ void ArchiveOpcode(Archiver& arc, unsigned char *code)
     case OP_STORE_OWNER_VAR:
     case OP_STORE_PARM_VAR:
     case OP_STORE_SELF_VAR:
+    case OP_STORE_SESSION_VAR:
     case OP_STORE_STRING:
         if (!arc.Loading()) {
             index = archivedStrings.AddUniqueObject(*reinterpret_cast<const_str *>(code + 1));

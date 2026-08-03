@@ -111,6 +111,7 @@ enum {
     method_owner,
     method_field,
     method_array,
+    method_session,
 };
 
 void   parsetree_freeall();

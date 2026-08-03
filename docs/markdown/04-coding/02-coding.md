@@ -11,3 +11,16 @@ The documentation is currently incomplete.
 - [Event subscription](02-scripting/01-script-events.md)
 - [Reading and writing files](02-scripting/02-files.md)
 - [Scripting commands](https://htmlpreview.github.io/?https://github.com/openmoh/openmohaa/blob/main/docs/markdown/04-coding/02-scripting/g_allclasses.html) (all classes documentation)
+
+### Session script variables
+
+Use `session.*` for server-side script state that must survive map changes and map restarts:
+
+```scr
+session.rounds_played++
+session.map_wins["allies"] = 3
+```
+
+Session values last for the lifetime of the server process. They are cleared when the process exits and are not written
+to configuration files. NIL, strings, integers, floats, characters, vectors, and arrays of those types are supported.
+Engine listeners, entities, references, containers, pointers, and cyclic arrays are not persisted.

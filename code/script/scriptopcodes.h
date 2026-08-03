@@ -192,6 +192,12 @@ typedef enum {
     OP_END,
     OP_RETURN,
 
+    // Keep session opcodes at the end to preserve existing opcode values.
+    OP_LOAD_SESSION_VAR,
+    OP_LOAD_STORE_SESSION_VAR,
+    OP_STORE_SESSION_VAR,
+    OP_STORE_SESSION,
+
     OP_PREVIOUS,
     OP_MAX = OP_PREVIOUS
 } opcode_e;
