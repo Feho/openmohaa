@@ -4,6 +4,7 @@
 
 #include "g_local.h"
 #include "scriptmaster.h"
+#include "../script/scriptexception.h"
 #include "../script/scriptvariable.h"
 
 #include <bit>
@@ -349,6 +350,13 @@ void Session::Restore()
         return;
     }
 
+    const auto restoreFailed = [this](const char *message)
+    {
+        Vars()->ClearList();
+        gi.cvar_set(kSessionCvar, "");
+        gi.Printf("^1Could not restore session variables: %s\n", message);
+    };
+
     try {
         if (!data.starts_with(kFormatHeader)) {
             throw std::runtime_error("unknown format version");
@@ -367,10 +375,10 @@ void Session::Restore()
         if (!decoder.AtEnd()) {
             throw std::runtime_error("trailing data");
         }
+    } catch (const ScriptException& error) {
+        restoreFailed(error.string.c_str());
     } catch (const std::exception& error) {
-        Vars()->ClearList();
-        gi.cvar_set(kSessionCvar, "");
-        gi.Printf("^1Could not restore session variables: %s\n", error.what());
+        restoreFailed(error.what());
     }
 }
 
@@ -384,11 +392,24 @@ void Session::Save()
     con_set_enum<short3, ScriptVariable>             entries = Vars()->list;
 
     for (auto *entry = entries.NextElement(); entry; entry = entries.NextElement()) {
+        str variableName;
+
         try {
             SessionEncoder encoder;
-            variables.emplace_back(entry->value.getName().c_str(), encoder.Encode(entry->value));
+            variableName = entry->value.getName();
+            variables.emplace_back(variableName.c_str(), encoder.Encode(entry->value));
+        } catch (const ScriptException& error) {
+            gi.Printf(
+                "^1Not persisting session.%s: %s\n",
+                variableName.length() ? variableName.c_str() : "<unknown>",
+                error.string.c_str()
+            );
         } catch (const std::exception& error) {
-            gi.Printf("^1Not persisting session.%s: %s\n", entry->value.getName().c_str(), error.what());
+            gi.Printf(
+                "^1Not persisting session.%s: %s\n",
+                variableName.length() ? variableName.c_str() : "<unknown>",
+                error.what()
+            );
         }
     }
 
