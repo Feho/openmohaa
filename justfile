@@ -100,13 +100,56 @@ mohaa +args="":
     @test -f "{{mohaa_dir}}/justfile" || { echo "Missing operational justfile: {{mohaa_dir}}/justfile"; exit 1; }
     just --justfile "{{mohaa_dir}}/justfile" {{args}}
 
-# Run the built dedicated server against the normal MOHAA asset tree.
+# Run against the normal MOHAA asset tree with an isolated writable home.
+# Set SERVER_HOME only for an intentional non-production persistent overlay.
 server map="dm/mohdm1" gametype="1" port="12204" gamespy_port="12301" +args="":
-    @test -x "{{server_bin}}" || { echo "Missing server binary: {{server_bin}} (run 'just server-build')"; exit 1; }
-    "{{server_bin}}" +set fs_basepath "{{mohaa_dir}}" +set com_target_game 0 +set dedicated 2 +set g_gametype "{{gametype}}" +set net_port "{{port}}" +set net_gamespy_port "{{gamespy_port}}" +set thereisnomonkey 1 +set cheats 1 +set developer 1 +map "{{map}}" {{args}}
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    mohaa_dir="{{mohaa_dir}}"
+    server_bin="{{server_bin}}"
+
+    if [[ ! -x "$server_bin" ]]; then
+        echo "Missing server binary: $server_bin (run 'just server-build')"
+        exit 1
+    fi
+
+    runtime_root="$(mktemp -d "${TMPDIR:-/tmp}/openmohaa-just.XXXXXX")"
+    trap 'rm -rf -- "$runtime_root"' EXIT
+
+    runtime_home="{{server_home}}"
+    if [[ -z "$runtime_home" ]]; then
+        runtime_home="$runtime_root/home"
+    fi
+
+    production_home="${HOME}/.openmohaa"
+    if [[ "$(realpath -m -- "$runtime_home")" == "$(realpath -m -- "$production_home")" ]]; then
+        echo "Refusing to use the production home: $production_home"
+        echo "Choose another SERVER_HOME or leave it unset for a temporary home."
+        exit 1
+    fi
+
+    mkdir -p "$runtime_home/main"
+
+    echo "Asset base: $mohaa_dir"
+    echo "Server home: $runtime_home"
+    "$server_bin" \
+        +set fs_basepath "$mohaa_dir" \
+        +set fs_homepath "$runtime_home" \
+        +set fs_homedatapath "$runtime_home" \
+        +set com_target_game 0 \
+        +set dedicated 2 \
+        +set g_gametype "{{gametype}}" \
+        +set net_port "{{port}}" \
+        +set net_gamespy_port "{{gamespy_port}}" \
+        +set logfile 0 \
+        +set thereisnomonkey 1 \
+        +set cheats 1 \
+        +set developer 1 \
+        +map "{{map}}" {{args}}
 
 # Run against only the original Pak0-Pak5 archives, isolated from installed mods.
-# Set SERVER_HOME to overlay scripts/configuration; otherwise a temporary home is used.
+# Set SERVER_HOME to a non-production overlay; otherwise a temporary home is used.
 server-clean map="dm/mohdm1" gametype="1" port="12204" gamespy_port="12301" +args="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -127,6 +170,13 @@ server-clean map="dm/mohdm1" gametype="1" port="12204" gamespy_port="12301" +arg
     runtime_home="{{server_home}}"
     if [[ -z "$runtime_home" ]]; then
         runtime_home="$generated_home"
+    fi
+
+    production_home="${HOME}/.openmohaa"
+    if [[ "$(realpath -m -- "$runtime_home")" == "$(realpath -m -- "$production_home")" ]]; then
+        echo "Refusing to use the production home: $production_home"
+        echo "Choose another SERVER_HOME or leave it unset for a temporary home."
+        exit 1
     fi
 
     mkdir -p "$clean_base/main" "$runtime_home/main/bots"

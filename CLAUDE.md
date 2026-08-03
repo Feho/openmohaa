@@ -45,12 +45,13 @@ just check              # Build game, run CTest, and check patch whitespace
 just bots               # Guarded bot-controller build
 just check-bots         # Guarded bot build plus tests and whitespace checks
 just server-build       # Quietly build the dedicated server
+just server             # Run with full MOHAA assets and an isolated writable home
 just server-clean       # Run against an isolated original Pak0-Pak5 fixture
 just build <target>     # Quietly build another Ninja target
 just build-log          # Show the tail of the most recent quiet build log
 ```
 
-Formatting is available through `just format <files...>` and `just format-check <files...>`. Operational recipes from `~/MOHAA/justfile` can be invoked with `just mohaa <recipe>`. Run a raw build command only when explicitly debugging compiler output or when a recipe cannot cover the task.
+Both server recipes refuse to use the production `~/.openmohaa` home. Formatting is available through `just format <files...>` and `just format-check <files...>`. Operational recipes from `~/MOHAA/justfile` can be invoked with `just mohaa <recipe>`. Run a raw build command only when explicitly debugging compiler output or when a recipe cannot cover the task.
 
 For bot-controller changes under `code/fgame/playerbot*`, use the guarded recipe:
 
