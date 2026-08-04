@@ -6,6 +6,7 @@ build_type := env_var_or_default("BUILD_TYPE", "Release")
 build_log := env_var_or_default("BUILD_LOG", "build.log")
 clang_format := env_var_or_default("CLANG_FORMAT", "clang-format")
 mohaa_dir := env_var_or_default("MOHAA_DIR", home_directory() + "/MOHAA")
+game_bin := env_var_or_default("GAME_BIN", build_dir + "/" + build_type + "/game.so")
 server_home := env_var_or_default("SERVER_HOME", "")
 server_bin := env_var_or_default("SERVER_BIN", build_dir + "/" + build_type + "/omohaaded")
 
@@ -46,6 +47,40 @@ bots:
 game-refresh:
     @just reconfigure
     @just game
+
+# Refresh, build, and atomically publish game.so without restarting the production server.
+deploy: game-refresh
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    source="{{game_bin}}"
+    destination_dir="{{mohaa_dir}}"
+    destination="$destination_dir/game.so"
+    staged="$destination.new"
+
+    if [[ ! -f "$source" ]]; then
+        echo "Missing built game module: $source"
+        exit 1
+    fi
+
+    if [[ ! -d "$destination_dir/main" ]]; then
+        echo "Refusing to deploy outside a MOHAA installation: $destination_dir"
+        exit 1
+    fi
+
+    trap 'rm -f -- "$staged"' EXIT
+    cp --remove-destination -- "$source" "$staged"
+    chmod --reference="$source" "$staged"
+
+    if ! cmp --silent -- "$source" "$staged"; then
+        echo "Staged game module does not match the build: $staged"
+        exit 1
+    fi
+
+    mv -fT -- "$staged" "$destination"
+    trap - EXIT
+    echo "Published $source -> $destination"
+    echo "The running server was not restarted. The module will load at the next game-module reload."
 
 # Quietly build the dedicated-server executable.
 server-build:

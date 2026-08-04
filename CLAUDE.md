@@ -41,6 +41,7 @@ just doctor             # Verify required tools and the MOHAA asset path
 just configure          # Create or refresh the Ninja build
 just game               # Quietly build the server game module
 just game-refresh       # Refresh CMake source globs, then build game
+just deploy             # Build and atomically publish game.so without restarting production
 just check              # Build game, run CTest, and check patch whitespace
 just bots               # Guarded bot-controller build
 just check-bots         # Guarded bot build plus tests and whitespace checks
@@ -52,6 +53,8 @@ just build-log          # Show the tail of the most recent quiet build log
 ```
 
 Both server recipes refuse to use the production `~/.openmohaa` home. Formatting is available through `just format <files...>` and `just format-check <files...>`. Operational recipes from `~/MOHAA/justfile` can be invoked with `just mohaa <recipe>`. Run a raw build command only when explicitly debugging compiler output or when a recipe cannot cover the task.
+
+`just deploy` refreshes the build, builds `game.so`, stages it as `game.so.new` in `MOHAA_DIR` (default `~/MOHAA`), verifies the staged copy, and atomically renames it to `game.so`. It does not deploy `omohaaded` or restart the production server; the new module is loaded on the next game-module reload.
 
 For bot-controller changes under `code/fgame/playerbot*`, use the guarded recipe:
 
