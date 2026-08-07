@@ -441,23 +441,58 @@ PathNav RecastPather::GetNode(unsigned int index) const
         ConvertRecastToGameCoord(&con->pos[0], start);
         ConvertRecastToGameCoord(&con->pos[3], end);
 
+        delta = end - start;
+
         nav.origin = start;
-        nav.dir[0] = end[0] - start[0];
-        nav.dir[1] = end[1] - start[1];
+        nav.dir[0] = delta[0];
+        nav.dir[1] = delta[1];
         VectorNormalize2D(nav.dir);
         nav.dist = delta.length();
     } else {
-        const dtPolyDetail *dm = &tile->detailMeshes[tileId];
-        Vector              middle[1];
+        // The direction is the vector going from the centroid of this polygon
+        // towards the centroid of the next one in the corridor.
+        Vector middle[2];
 
-        for (int i = 0; i < 1; i++) {
+        for (int i = 0; i < 2; i++) {
+            const dtMeshTile *nodeTile = tile;
+            const dtPoly     *nodePoly = poly;
+
+            if (i > 0
+                && navigationMap.GetNavMesh()->getTileAndPolyByRef(path[index + i], &nodeTile, &nodePoly)
+                       != DT_SUCCESS) {
+                // Can't resolve the next polygon, fall back to this one's centroid
+                middle[i] = middle[i - 1];
+                continue;
+            }
+
+            const unsigned int nodeId = (unsigned int)(nodePoly - nodeTile->polys);
+
+            if (nodePoly->getType() == DT_POLYTYPE_OFFMESH_CONNECTION) {
+                // Off-mesh connections have no detail mesh, use the start of the link
+                const dtOffMeshConnection *nodeCon = &nodeTile->offMeshCons[nodeId - nodeTile->header->offMeshBase];
+
+                middle[i] = &nodeCon->pos[0];
+                continue;
+            }
+
+            const dtPolyDetail *dm = &nodeTile->detailMeshes[nodeId];
+            if (!dm->triCount) {
+                // Degenerate detail mesh, no usable centroid
+                if (i == 0) {
+                    return {};
+                }
+
+                middle[i] = middle[i - 1];
+                continue;
+            }
+
             for (int j = 0; j < dm->triCount; ++j) {
-                const unsigned char *t = &tile->detailTris[(dm->triBase + j) * 4];
+                const unsigned char *t = &nodeTile->detailTris[(dm->triBase + j) * 4];
                 for (int k = 0; k < 3; ++k) {
-                    if (t[k] < poly->vertCount) {
-                        middle[i] += &tile->verts[poly->verts[t[k]] * 3];
+                    if (t[k] < nodePoly->vertCount) {
+                        middle[i] += &nodeTile->verts[nodePoly->verts[t[k]] * 3];
                     } else {
-                        middle[i] += &tile->detailVerts[(dm->vertBase + t[k] - poly->vertCount) * 3];
+                        middle[i] += &nodeTile->detailVerts[(dm->vertBase + t[k] - nodePoly->vertCount) * 3];
                     }
                 }
             }
