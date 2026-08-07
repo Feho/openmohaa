@@ -762,7 +762,13 @@ void NavigationMap::LoadWorldMap(const char *mapname)
     if (cacheEnabled && !forceRebuild) {
         start = gi.Milliseconds();
         if (LoadNavigationCache(mapname)) {
+            // Extensions are needed even when loading from cache: off-mesh links are
+            // already baked into the cached tiles, but the per-area costs they declare
+            // are part of the query filter and must be registered again.
+            InitializeExtensions();
             InitializeFilter();
+            ClearExtensions();
+
             pathMaster.PostLoadNavigation(*this);
             navigationObstacleMap.Init();
             end = gi.Milliseconds();
