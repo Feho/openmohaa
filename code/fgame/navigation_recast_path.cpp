@@ -457,6 +457,11 @@ PathNav RecastPather::GetNode(unsigned int index) const
             const dtMeshTile *nodeTile = tile;
             const dtPoly     *nodePoly = poly;
 
+            if (i > 0 && index + i + 1 == npath) {
+                middle[i] = inCorridor->getTarget();
+                continue;
+            }
+
             if (i > 0
                 && navigationMap.GetNavMesh()->getTileAndPolyByRef(path[index + i], &nodeTile, &nodePoly)
                        != DT_SUCCESS) {
@@ -468,10 +473,18 @@ PathNav RecastPather::GetNode(unsigned int index) const
             const unsigned int nodeId = (unsigned int)(nodePoly - nodeTile->polys);
 
             if (nodePoly->getType() == DT_POLYTYPE_OFFMESH_CONNECTION) {
-                // Off-mesh connections have no detail mesh, use the start of the link
-                const dtOffMeshConnection *nodeCon = &nodeTile->offMeshCons[nodeId - nodeTile->header->offMeshBase];
+                // Off-mesh connections have no detail mesh. Resolve the entry point relative to the preceding
+                // polygon so bidirectional links are oriented in the corridor's traversal direction.
+                float start[3];
+                float end[3];
+                if (dtStatusFailed(navigationMap.GetNavMesh()->getOffMeshConnectionPolyEndPoints(
+                        path[index], path[index + 1], start, end
+                    ))) {
+                    middle[i] = middle[i - 1];
+                    continue;
+                }
 
-                middle[i] = &nodeCon->pos[0];
+                middle[i] = start;
                 continue;
             }
 
