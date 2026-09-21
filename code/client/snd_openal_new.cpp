@@ -640,8 +640,8 @@ static bool S_OPENAL_InitExtensions()
 
     ima4_ext         = qalIsExtensionPresent("AL_EXT_IMA4");
     soft_block_align = qalIsExtensionPresent("AL_SOFT_block_alignment");
-    al_use_efx       = qalcIsExtensionPresent(al_device, "ALC_EXT_EFX") && qalGenEffects && qalDeleteEffects && qalEffecti
-                 && qalEffectf && qalGenFilters && qalDeleteFilters && qalFilteri && qalFilterf
+    al_use_efx       = qalcIsExtensionPresent(al_device, "ALC_EXT_EFX") && qalSource3i && qalGenEffects && qalDeleteEffects
+                 && qalEffecti && qalEffectf && qalGenFilters && qalDeleteFilters && qalFilteri && qalFilterf
                  && qalGenAuxiliaryEffectSlots && qalDeleteAuxiliaryEffectSlots && qalAuxiliaryEffectSloti;
 
     qalGetError();
@@ -2727,6 +2727,12 @@ static void S_OPENAL_UpdateChannelDistanceEffects(openal_channel *channel, const
 
     if (!channel || !channel->pSfx || !s_impulse_distance_fx->integer || !al_use_efx || !channel->source
         || channel->iDistanceFxType == OPENAL_DISTANCE_FX_NONE) {
+        S_OPENAL_ClearChannelDistanceEffects(channel);
+        return;
+    }
+
+    if ((channel->iFlags & CHANNEL_FLAG_LOCAL_LISTENER) || channel->iEntNum == s_iListenerNumber
+        || DistanceSquared(listenerOrigin, soundOrigin) <= 1.0f) {
         S_OPENAL_ClearChannelDistanceEffects(channel);
         return;
     }
