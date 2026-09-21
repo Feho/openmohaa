@@ -139,6 +139,7 @@ static void S_OPENAL_Pitch();
 static int
 S_OPENAL_SpatializeStereoSound(const vec3_t listener_origin, const vec3_t listener_left, const vec3_t origin);
 static void   S_OPENAL_reverb(int iChannel, int iReverbType, float fReverbLevel);
+static void   S_OPENAL_ClearChannelDistanceReverbSend(openal_channel *channel);
 static void   S_OPENAL_ClearChannelDistanceEffects(openal_channel *channel);
 static void   S_OPENAL_UpdateChannelDistanceEffects(openal_channel *channel, const vec3_t listenerOrigin, const vec3_t soundOrigin);
 static void   S_OPENAL_UpdateImpulseReverb(int iReverbType, float fReverbLevel);
@@ -2669,14 +2670,24 @@ static void S_OPENAL_ClearChannelDistanceEffects(openal_channel *channel)
     if (al_use_efx) {
         qalSourcei(channel->source, AL_DIRECT_FILTER, AL_FILTER_NULL);
         alDieIfError();
-        qalSource3i(channel->source, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 0, AL_FILTER_NULL);
-        alDieIfError();
     }
+
+    S_OPENAL_ClearChannelDistanceReverbSend(channel);
 
     channel->fDistanceFxAmount    = -1.0f;
     channel->fDistanceFxDirectHF  = -1.0f;
     channel->fDistanceFxSendGain  = -1.0f;
     channel->fDistanceFxSendHF    = -1.0f;
+}
+
+static void S_OPENAL_ClearChannelDistanceReverbSend(openal_channel *channel)
+{
+    if (!channel || !channel->source || !al_use_efx) {
+        return;
+    }
+
+    qalSource3i(channel->source, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 0, AL_FILTER_NULL);
+    alDieIfError();
 }
 
 static void S_OPENAL_UpdateImpulseReverb(int iReverbType, float fReverbLevel)
@@ -2809,8 +2820,7 @@ static void S_OPENAL_reverb(int iChannel, int iReverbType, float fReverbLevel)
     S_OPENAL_UpdateImpulseReverb(iReverbType, fReverbLevel);
 
     if (!al_use_reverb || !al_reverb_slot) {
-        qalSource3i(channel->source, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 0, AL_FILTER_NULL);
-        alDieIfError();
+        S_OPENAL_ClearChannelDistanceReverbSend(channel);
         return;
     }
 
