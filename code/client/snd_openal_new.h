@@ -38,6 +38,12 @@ typedef enum {
     FADE_OUT
 } fade_t;
 
+typedef enum {
+    OPENAL_DISTANCE_FX_NONE,
+    OPENAL_DISTANCE_FX_GUNSHOT,
+    OPENAL_DISTANCE_FX_EXPLOSION
+} openal_distance_fx_t;
+
 typedef struct {
     vec3_t vOrigin;
     vec3_t vRelativeOrigin;
@@ -87,6 +93,16 @@ struct openal_channel {
     ALuint   source;
     ALuint   buffer;
     ALubyte *bufferdata;
+    // Added in OPM
+    //  Reusable EFX state for distance-based filtering on eligible impulsive sounds.
+    ALuint   directFilter;
+    ALuint   sendFilter;
+
+    int   iDistanceFxType;
+    float fDistanceFxAmount;
+    float fDistanceFxDirectHF;
+    float fDistanceFxSendGain;
+    float fDistanceFxSendHF;
 
 public:
     void         play();

@@ -26,6 +26,14 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../server/server.h"
 #include "snd_codec.h"
 
+#ifdef USE_INTERNAL_OPENAL_HEADERS
+#    include "AL/efx.h"
+#elif defined(_MSC_VER) || defined(__APPLE__)
+#    include <efx.h>
+#else
+#    include <AL/efx.h>
+#endif
+
 typedef struct {
     const char *funcname;
     void      **funcptr;
@@ -56,6 +64,12 @@ cvar_t *s_lastSoundTime;
 // Added in OPM
 cvar_t *s_openaldriver;
 cvar_t *s_alAvailableDevices;
+cvar_t *s_impulse_distance_fx;
+cvar_t *s_impulse_distance_fx_far_hf;
+cvar_t *s_impulse_distance_fx_start;
+cvar_t *s_impulse_distance_fx_end;
+cvar_t *s_impulse_distance_fx_reverb_base;
+cvar_t *s_impulse_distance_fx_reverb_far;
 
 static float reverb_table[] = {
     0.5f,   0.25f,        0.417f, 0.653f,      0.208f,      0.5f,   0.403f, 0.5f,   0.5f,
@@ -68,16 +82,30 @@ int                 s_iNumMilesAudioProviders  = 0;
 bool                s_bProvidersEmunerated     = false;
 static bool         al_initialized             = false;
 static bool         al_use_reverb              = false;
+static bool         al_use_efx                 = false;
 static float        al_current_volume          = 0;
 static unsigned int al_frequency               = 22050;
 static ALCcontext  *al_context_id              = NULL;
 static ALCdevice   *al_device                  = NULL;
 static ALsizei      al_default_resampler_index = 0;
 static ALsizei      al_resampler_index         = 0;
+static ALuint       al_reverb_effect           = 0;
+static ALuint       al_reverb_slot             = 0;
 
 static ALboolean (*_alutLoadMP3_LOKI)(unsigned int buffer, const byte *data, int length);
 static void (*_alReverbScale_LOKI)();
 static void (*_alReverbDelay_LOKI)();
+static LPALGENEFFECTS               qalGenEffects;
+static LPALDELETEEFFECTS            qalDeleteEffects;
+static LPALEFFECTI                  qalEffecti;
+static LPALEFFECTF                  qalEffectf;
+static LPALGENFILTERS               qalGenFilters;
+static LPALDELETEFILTERS            qalDeleteFilters;
+static LPALFILTERI                  qalFilteri;
+static LPALFILTERF                  qalFilterf;
+static LPALGENAUXILIARYEFFECTSLOTS  qalGenAuxiliaryEffectSlots;
+static LPALDELETEAUXILIARYEFFECTSLOTS qalDeleteAuxiliaryEffectSlots;
+static LPALAUXILIARYEFFECTSLOTI     qalAuxiliaryEffectSloti;
 
 static qboolean music_active            = qfalse;
 int             music_current_mood      = 0;
@@ -111,6 +139,10 @@ static void S_OPENAL_Pitch();
 static int
 S_OPENAL_SpatializeStereoSound(const vec3_t listener_origin, const vec3_t listener_left, const vec3_t origin);
 static void   S_OPENAL_reverb(int iChannel, int iReverbType, float fReverbLevel);
+static void   S_OPENAL_ClearChannelDistanceEffects(openal_channel *channel);
+static void   S_OPENAL_UpdateChannelDistanceEffects(openal_channel *channel, const vec3_t listenerOrigin, const vec3_t soundOrigin);
+static void   S_OPENAL_UpdateImpulseReverb(void);
+static bool   S_OPENAL_ConfigureChannelDistanceFilters(openal_channel *channel);
 static bool   S_OPENAL_LoadMP3_Codec(const char *_path, sfx_t *pSfx);
 static ALuint S_OPENAL_Format(float width, int channels);
 
@@ -148,6 +180,65 @@ static void __alDieIfError(const char *file, int line)
             Com_DPrintf("OpenAL error, %s, line %i: [%s].\n", file, line, qalGetString(alErr));
         }
     }
+}
+
+// Added in OPM
+//  Classify and scale distance-based filtering for impulsive sounds.
+static bool S_OPENAL_StringContainsToken(const char *name, const char *const *tokens)
+{
+    if (!name) {
+        return false;
+    }
+
+    for (; *tokens; ++tokens) {
+        if (Q_stristr(name, *tokens)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static int S_OPENAL_ClassifyDistanceFxSound(const sfx_t *pSfx, int iEntChannel)
+{
+    static const char *const explosionTokens[] = {
+        "gren", "explosion", "explode", "blast", "bazooka", "rocket", "mortar", "heavyshell", "tankexp", NULL
+    };
+    static const char *const gunshotExclusionTokens[] = {
+        "reload", "select", "draw", "holster", "putaway", "idle", "bolt", "pump", "pickup",
+        "switch", "empty", "dryfire", "melee", "hit", "impact", "ricochet", "bounce", NULL
+    };
+
+    if (!pSfx || !pSfx->name[0]) {
+        return OPENAL_DISTANCE_FX_NONE;
+    }
+
+    if (S_OPENAL_StringContainsToken(pSfx->name, explosionTokens)) {
+        return OPENAL_DISTANCE_FX_EXPLOSION;
+    }
+
+    if (iEntChannel == CHAN_WEAPON && !S_OPENAL_StringContainsToken(pSfx->name, gunshotExclusionTokens)) {
+        return OPENAL_DISTANCE_FX_GUNSHOT;
+    }
+
+    return OPENAL_DISTANCE_FX_NONE;
+}
+
+static float S_OPENAL_ComputeDistanceFxAmount(float distance, float minDistance, float maxDistance)
+{
+    float distanceRange;
+    float normalizedDistance;
+    float startRange;
+    float endRange;
+    float amount;
+
+    distanceRange      = Q_max(maxDistance - minDistance, 1.0f);
+    normalizedDistance = Q_clamp_float((distance - minDistance) / distanceRange, 0.0f, 1.0f);
+    startRange         = Q_clamp_float(s_impulse_distance_fx_start->value, 0.0f, 0.95f);
+    endRange           = Q_clamp_float(s_impulse_distance_fx_end->value, startRange + 0.01f, 1.0f);
+    amount             = Q_clamp_float((normalizedDistance - startRange) / (endRange - startRange), 0.0f, 1.0f);
+
+    return amount * amount * (3.0f - 2.0f * amount);
 }
 
 /*
@@ -214,6 +305,20 @@ static void S_OPENAL_NukeChannel(openal_channel *channel)
         return;
     }
 
+    S_OPENAL_ClearChannelDistanceEffects(channel);
+
+    if (al_use_efx && qalDeleteFilters) {
+        if (channel->directFilter) {
+            qalDeleteFilters(1, &channel->directFilter);
+            channel->directFilter = 0;
+        }
+
+        if (channel->sendFilter) {
+            qalDeleteFilters(1, &channel->sendFilter);
+            channel->sendFilter = 0;
+        }
+    }
+
     S_OPENAL_NukeSource(&channel->source);
     S_OPENAL_NukeBuffer(&channel->buffer);
 
@@ -244,6 +349,16 @@ static void S_OPENAL_NukeContext()
     }
 
     S_OPENAL_NukeBuffer(&openal.movieSFX.buffer);
+
+    if (al_use_efx && qalDeleteAuxiliaryEffectSlots && al_reverb_slot) {
+        qalDeleteAuxiliaryEffectSlots(1, &al_reverb_slot);
+        al_reverb_slot = 0;
+    }
+
+    if (al_use_efx && qalDeleteEffects && al_reverb_effect) {
+        qalDeleteEffects(1, &al_reverb_effect);
+        al_reverb_effect = 0;
+    }
 
     if (al_context_id) {
         Com_Printf("OpenAL: Destroying context...\n");
@@ -487,6 +602,17 @@ static bool S_OPENAL_InitExtensions()
                             "alGetStringiSOFT", (void **)&qalGetStringiSOFT,
                             false, },
 #endif
+        extensions_table_t {"alGenEffects", (void **)&qalGenEffects, false},
+        extensions_table_t {"alDeleteEffects", (void **)&qalDeleteEffects, false},
+        extensions_table_t {"alEffecti", (void **)&qalEffecti, false},
+        extensions_table_t {"alEffectf", (void **)&qalEffectf, false},
+        extensions_table_t {"alGenFilters", (void **)&qalGenFilters, false},
+        extensions_table_t {"alDeleteFilters", (void **)&qalDeleteFilters, false},
+        extensions_table_t {"alFilteri", (void **)&qalFilteri, false},
+        extensions_table_t {"alFilterf", (void **)&qalFilterf, false},
+        extensions_table_t {"alGenAuxiliaryEffectSlots", (void **)&qalGenAuxiliaryEffectSlots, false},
+        extensions_table_t {"alDeleteAuxiliaryEffectSlots", (void **)&qalDeleteAuxiliaryEffectSlots, false},
+        extensions_table_t {"alAuxiliaryEffectSloti", (void **)&qalAuxiliaryEffectSloti, false},
         extensions_table_t {NULL, NULL, false}
     };
 
@@ -514,6 +640,9 @@ static bool S_OPENAL_InitExtensions()
 
     ima4_ext         = qalIsExtensionPresent("AL_EXT_IMA4");
     soft_block_align = qalIsExtensionPresent("AL_SOFT_block_alignment");
+    al_use_efx       = qalcIsExtensionPresent(al_device, "ALC_EXT_EFX") && qalGenEffects && qalDeleteEffects && qalEffecti
+                 && qalEffectf && qalGenFilters && qalDeleteFilters && qalFilteri && qalFilterf
+                 && qalGenAuxiliaryEffectSlots && qalDeleteAuxiliaryEffectSlots && qalAuxiliaryEffectSloti;
 
     qalGetError();
     return true;
@@ -544,6 +673,13 @@ static bool S_OPENAL_InitChannel(int idx, openal_channel *chan)
     chan->source          = 0;
     chan->buffer          = 0;
     chan->bufferdata      = 0;
+    chan->directFilter    = 0;
+    chan->sendFilter      = 0;
+    chan->iDistanceFxType = OPENAL_DISTANCE_FX_NONE;
+    chan->fDistanceFxAmount = -1.0f;
+    chan->fDistanceFxDirectHF = -1.0f;
+    chan->fDistanceFxSendGain = -1.0f;
+    chan->fDistanceFxSendHF   = -1.0f;
     chan->fading          = FADE_NONE;
     chan->fade_time       = 0;
     chan->fade_start_time = 0;
@@ -558,6 +694,8 @@ static bool S_OPENAL_InitChannel(int idx, openal_channel *chan)
     qalSourcei(chan->source, AL_SOURCE_RESAMPLER_SOFT, al_resampler_index);
     alDieIfError();
 #endif
+
+    S_OPENAL_ConfigureChannelDistanceFilters(chan);
 
     return true;
 }
@@ -592,6 +730,12 @@ qboolean S_OPENAL_Init()
     s_show_sounds            = Cvar_Get("s_show_sounds", "0", 0);
     s_speaker_type           = Cvar_Get("s_speaker_type", "0", CVAR_ARCHIVE);
     s_obstruction_cal_time   = Cvar_Get("s_obstruction_cal_time", "500", CVAR_ARCHIVE);
+    s_impulse_distance_fx    = Cvar_Get("s_impulse_distance_fx", "1", CVAR_ARCHIVE);
+    s_impulse_distance_fx_far_hf = Cvar_Get("s_impulse_distance_fx_far_hf", "0.18", CVAR_ARCHIVE);
+    s_impulse_distance_fx_start  = Cvar_Get("s_impulse_distance_fx_start", "0.10", CVAR_ARCHIVE);
+    s_impulse_distance_fx_end    = Cvar_Get("s_impulse_distance_fx_end", "0.85", CVAR_ARCHIVE);
+    s_impulse_distance_fx_reverb_base = Cvar_Get("s_impulse_distance_fx_reverb_base", "0.15", CVAR_ARCHIVE);
+    s_impulse_distance_fx_reverb_far  = Cvar_Get("s_impulse_distance_fx_reverb_far", "0.45", CVAR_ARCHIVE);
     //
     // Added in OPM
     //  Initialize the AL driver DLL
@@ -619,15 +763,25 @@ qboolean S_OPENAL_Init()
         return false;
     }
 
-    al_use_reverb = false;
-    if (s_reverb->integer) {
-        STUB_DESC("reenable reverb support later.");
+    al_use_reverb = al_use_efx;
+    if (al_use_reverb) {
+        qalGenEffects(1, &al_reverb_effect);
+        alDieIfError();
+        qalGenAuxiliaryEffectSlots(1, &al_reverb_slot);
+        alDieIfError();
 
-        if (al_use_reverb) {
+        if (al_reverb_effect && al_reverb_slot) {
+            S_OPENAL_UpdateImpulseReverb();
+            qalAuxiliaryEffectSloti(al_reverb_slot, AL_EFFECTSLOT_EFFECT, al_reverb_effect);
+            alDieIfError();
             S_OPENAL_SetReverb(s_iReverbType, s_fReverbLevel);
         } else {
-            Com_Printf("OpenAL: No reverb support. Reverb is disabled.\n");
+            al_use_reverb = false;
         }
+    }
+
+    if (s_reverb->integer && !al_use_reverb) {
+        Com_Printf("OpenAL: No reverb support. Reverb is disabled.\n");
     }
     s_reverb->modified = false;
 
@@ -760,6 +914,8 @@ void S_OPENAL_Shutdown()
 
     s_bProvidersEmunerated = false;
     al_initialized         = false;
+    al_use_reverb          = false;
+    al_use_efx             = false;
 
     QAL_Shutdown();
 }
@@ -1386,6 +1542,7 @@ static void S_OPENAL_Start2DSound(
     pChannel->pSfx          = pSfx;
     pChannel->iEntNum       = iRealEntNum;
     pChannel->iEntChannel   = iEntChannel;
+    pChannel->iDistanceFxType = OPENAL_DISTANCE_FX_NONE;
     if (iRealEntNum == ENTITYNUM_NONE) {
         VectorClear(pChannel->vOrigin);
         pChannel->iFlags |= CHANNEL_FLAG_NO_ENTITY;
@@ -1554,6 +1711,8 @@ void S_OPENAL_StartSound(
     // Fixed in OPM
     //  Setup the channel for 3D
     pChannel->set_3d();
+    pChannel->iDistanceFxType = S_OPENAL_ClassifyDistanceFxSound(pSfx, iEntChannel);
+    S_OPENAL_reverb(iChannel, s_iReverbType, s_fReverbLevel);
 
     if (s_show_sounds->integer > 0) {
         Com_DPrintf(
@@ -1951,6 +2110,7 @@ static int S_OPENAL_Start3DLoopSound(
     pChan3D->pSfx = pLoopSound->pSfx;
     pChan3D->iFlags |= CHANNEL_FLAG_PAUSED | CHANNEL_FLAG_NO_ENTITY;
     pChan3D->iBaseRate = pChan3D->sample_playback_rate();
+    pChan3D->iDistanceFxType = S_OPENAL_ClassifyDistanceFxSound(pLoopSound->pSfx, pChan3D->iEntChannel);
 
     iSoundOffset = (int)((int)pLoopSound->pSfx->info.width * pLoopSound->pSfx->info.rate
                          * (float)(cls.realtime - pLoopSound->iStartTime) / 1000.0)
@@ -1962,6 +2122,7 @@ static int S_OPENAL_Start3DLoopSound(
     pChan3D->play();
 
     S_OPENAL_reverb(iChannel, s_iReverbType, s_fReverbLevel);
+    S_OPENAL_UpdateChannelDistanceEffects(pChan3D, vListenerOrigin, vLoopOrigin);
 
     return iChannel;
 }
@@ -2031,6 +2192,7 @@ static bool S_OPENAL_UpdateLoopSound(
         pChannel->set_position(vLoopOrigin[0], vLoopOrigin[1], vLoopOrigin[2]);
         pChannel->fVolume = fVolumeToPlay;
         pChannel->set_gain(fVolumeToPlay);
+        S_OPENAL_UpdateChannelDistanceEffects(pChannel, vListenerOrigin, vLoopOrigin);
     }
 
     if (s_bReverbChanged) {
@@ -2425,6 +2587,8 @@ void S_OPENAL_Respatialize(int iEntNum, const vec3_t vHeadPos, const vec3_t vAxi
         if (i >= MAX_SOUNDSYSTEM_CHANNELS_3D) {
             pChannel->set_gain(fVolume);
             pChannel->set_sample_pan(iPan);
+        } else {
+            S_OPENAL_UpdateChannelDistanceEffects(pChannel, vListenerOrigin, vOrigin);
         }
 
         if (s_bReverbChanged) {
@@ -2459,6 +2623,161 @@ static int S_OPENAL_SpatializeStereoSound(const vec3_t listener_origin, const ve
     return ceilf(pan * 127);
 }
 
+static bool S_OPENAL_ConfigureChannelDistanceFilters(openal_channel *channel)
+{
+    if (!al_use_efx || !channel) {
+        return false;
+    }
+
+    if (!channel->directFilter && qalGenFilters) {
+        qalGenFilters(1, &channel->directFilter);
+        alDieIfError();
+
+        if (channel->directFilter) {
+            qalFilteri(channel->directFilter, AL_FILTER_TYPE, AL_FILTER_LOWPASS);
+            alDieIfError();
+            qalFilterf(channel->directFilter, AL_LOWPASS_GAIN, 1.0f);
+            alDieIfError();
+            qalFilterf(channel->directFilter, AL_LOWPASS_GAINHF, 1.0f);
+            alDieIfError();
+        }
+    }
+
+    if (!channel->sendFilter && qalGenFilters) {
+        qalGenFilters(1, &channel->sendFilter);
+        alDieIfError();
+
+        if (channel->sendFilter) {
+            qalFilteri(channel->sendFilter, AL_FILTER_TYPE, AL_FILTER_LOWPASS);
+            alDieIfError();
+            qalFilterf(channel->sendFilter, AL_LOWPASS_GAIN, 0.0f);
+            alDieIfError();
+            qalFilterf(channel->sendFilter, AL_LOWPASS_GAINHF, 1.0f);
+            alDieIfError();
+        }
+    }
+
+    return channel->directFilter && channel->sendFilter;
+}
+
+static void S_OPENAL_ClearChannelDistanceEffects(openal_channel *channel)
+{
+    if (!channel || !channel->source) {
+        return;
+    }
+
+    if (al_use_efx) {
+        qalSourcei(channel->source, AL_DIRECT_FILTER, AL_FILTER_NULL);
+        alDieIfError();
+        qalSource3i(channel->source, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 0, AL_FILTER_NULL);
+        alDieIfError();
+    }
+
+    channel->fDistanceFxAmount    = -1.0f;
+    channel->fDistanceFxDirectHF  = -1.0f;
+    channel->fDistanceFxSendGain  = -1.0f;
+    channel->fDistanceFxSendHF    = -1.0f;
+}
+
+static void S_OPENAL_UpdateImpulseReverb(void)
+{
+    float decayTime;
+    float baseLevel;
+    int   reverbType;
+
+    if (!al_use_reverb || !al_reverb_effect || !qalEffecti || !qalEffectf) {
+        return;
+    }
+
+    reverbType = Q_clamp_int(s_iReverbType, 0, (int)(ARRAY_LEN(reverb_table) - 1));
+    decayTime  = Q_clamp_float(reverb_table[reverbType] * 3.0f, 0.2f, 8.0f);
+    baseLevel  = Q_max(s_fReverbLevel, s_impulse_distance_fx_reverb_base->value);
+    baseLevel  = Q_clamp_float(baseLevel, 0.0f, 1.0f);
+
+    qalEffecti(al_reverb_effect, AL_EFFECT_TYPE, AL_EFFECT_REVERB);
+    alDieIfError();
+    qalEffectf(al_reverb_effect, AL_REVERB_DENSITY, 0.75f);
+    alDieIfError();
+    qalEffectf(al_reverb_effect, AL_REVERB_DIFFUSION, 0.95f);
+    alDieIfError();
+    qalEffectf(al_reverb_effect, AL_REVERB_GAIN, baseLevel);
+    alDieIfError();
+    qalEffectf(al_reverb_effect, AL_REVERB_GAINHF, 0.65f);
+    alDieIfError();
+    qalEffectf(al_reverb_effect, AL_REVERB_DECAY_TIME, decayTime);
+    alDieIfError();
+    qalEffectf(al_reverb_effect, AL_REVERB_DECAY_HFRATIO, 0.65f);
+    alDieIfError();
+    qalEffectf(al_reverb_effect, AL_REVERB_REFLECTIONS_GAIN, 0.20f);
+    alDieIfError();
+    qalEffectf(al_reverb_effect, AL_REVERB_LATE_REVERB_GAIN, 1.15f);
+    alDieIfError();
+    qalAuxiliaryEffectSloti(al_reverb_slot, AL_EFFECTSLOT_EFFECT, al_reverb_effect);
+    alDieIfError();
+}
+
+static void S_OPENAL_UpdateChannelDistanceEffects(openal_channel *channel, const vec3_t listenerOrigin, const vec3_t soundOrigin)
+{
+    vec3_t distanceVec;
+    float  distance;
+    float  amount;
+    float  directHF;
+    float  sendGain;
+    float  sendHF;
+
+    if (!channel || !channel->pSfx || !s_impulse_distance_fx->integer || !al_use_efx || !channel->source
+        || channel->iDistanceFxType == OPENAL_DISTANCE_FX_NONE) {
+        S_OPENAL_ClearChannelDistanceEffects(channel);
+        return;
+    }
+
+    if (!S_OPENAL_ConfigureChannelDistanceFilters(channel)) {
+        S_OPENAL_ClearChannelDistanceEffects(channel);
+        return;
+    }
+
+    VectorSubtract(listenerOrigin, soundOrigin, distanceVec);
+    distance = VectorLength(distanceVec);
+    amount   = S_OPENAL_ComputeDistanceFxAmount(distance, Q_max(channel->fMinDist, 1.0f), Q_max(channel->fMaxDist, channel->fMinDist + 1.0f));
+
+    if (amount <= 0.001f) {
+        S_OPENAL_ClearChannelDistanceEffects(channel);
+        return;
+    }
+
+    directHF = 1.0f + (Q_clamp_float(s_impulse_distance_fx_far_hf->value, 0.01f, 1.0f) - 1.0f) * amount;
+    sendGain = Q_clamp_float(Q_max(s_fReverbLevel, s_impulse_distance_fx_reverb_base->value), 0.0f, 1.0f)
+             * Q_clamp_float(s_impulse_distance_fx_reverb_far->value, 0.0f, 1.0f) * amount;
+    sendHF = 1.0f - 0.5f * amount;
+
+    if (fabsf(channel->fDistanceFxDirectHF - directHF) > 0.01f) {
+        qalFilterf(channel->directFilter, AL_LOWPASS_GAIN, 1.0f);
+        alDieIfError();
+        qalFilterf(channel->directFilter, AL_LOWPASS_GAINHF, directHF);
+        alDieIfError();
+        channel->fDistanceFxDirectHF = directHF;
+    }
+
+    if (fabsf(channel->fDistanceFxSendGain - sendGain) > 0.01f || fabsf(channel->fDistanceFxSendHF - sendHF) > 0.01f) {
+        qalFilterf(channel->sendFilter, AL_LOWPASS_GAIN, sendGain);
+        alDieIfError();
+        qalFilterf(channel->sendFilter, AL_LOWPASS_GAINHF, sendHF);
+        alDieIfError();
+        channel->fDistanceFxSendGain = sendGain;
+        channel->fDistanceFxSendHF   = sendHF;
+    }
+
+    qalSourcei(channel->source, AL_DIRECT_FILTER, channel->directFilter);
+    alDieIfError();
+
+    if (al_use_reverb && al_reverb_slot) {
+        qalSource3i(channel->source, AL_AUXILIARY_SEND_FILTER, al_reverb_slot, 0, channel->sendFilter);
+        alDieIfError();
+    }
+
+    channel->fDistanceFxAmount = amount;
+}
+
 /*
 ==============
 S_OPENAL_reverb
@@ -2466,10 +2785,34 @@ S_OPENAL_reverb
 */
 static void S_OPENAL_reverb(int iChannel, int iReverbType, float fReverbLevel)
 {
-    // FIXME: Connect source to effect slot
-    //  see https://github.com/kcat/openal-soft/blob/master/examples/alreverb.c
+    openal_channel *channel;
 
-    // No reverb currently.
+    if (iChannel < 0 || iChannel >= MAX_SOUNDSYSTEM_CHANNELS) {
+        return;
+    }
+
+    channel = openal.channel[iChannel];
+    if (!channel) {
+        return;
+    }
+
+    if (!al_use_efx || !channel->source || channel->iDistanceFxType == OPENAL_DISTANCE_FX_NONE) {
+        S_OPENAL_ClearChannelDistanceEffects(channel);
+        return;
+    }
+
+    S_OPENAL_UpdateImpulseReverb();
+
+    if (!al_use_reverb || !al_reverb_slot) {
+        qalSource3i(channel->source, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 0, AL_FILTER_NULL);
+        alDieIfError();
+        return;
+    }
+
+    if (S_OPENAL_ConfigureChannelDistanceFilters(channel)) {
+        qalSource3i(channel->source, AL_AUXILIARY_SEND_FILTER, al_reverb_slot, 0, channel->sendFilter);
+        alDieIfError();
+    }
 }
 
 /*
@@ -2481,13 +2824,11 @@ void S_OPENAL_SetReverb(int iType, float fLevel)
 {
     s_fReverbLevel = fLevel;
     s_iReverbType  = iType;
-    if (al_use_reverb) {
-        s_bReverbChanged = true;
-    }
+    s_bReverbChanged = true;
 
-    // FIXME: generate effect and auxiliary effect slot
-    //  or destroy them
-    //  see https://github.com/kcat/openal-soft/blob/master/examples/alreverb.c
+    if (al_use_reverb) {
+        S_OPENAL_UpdateImpulseReverb();
+    }
 }
 
 /*
@@ -2921,6 +3262,7 @@ openal_channel::set_no_3d
 */
 void openal_channel::set_no_3d()
 {
+    S_OPENAL_ClearChannelDistanceEffects(this);
     qalSource3f(source, AL_POSITION, 0, 0, 0);
     alDieIfError();
     qalSource3f(source, AL_VELOCITY, 0, 0, 0);
@@ -3023,6 +3365,7 @@ openal_channel::stop
 */
 void openal_channel::stop()
 {
+    S_OPENAL_ClearChannelDistanceEffects(this);
     qalSourceStop(source);
     alDieIfError();
 }
@@ -3071,7 +3414,8 @@ openal_channel::force_free
 void openal_channel::force_free()
 {
     stop();
-    iFlags = 0;
+    iFlags          = 0;
+    iDistanceFxType = OPENAL_DISTANCE_FX_NONE;
 }
 
 /*
