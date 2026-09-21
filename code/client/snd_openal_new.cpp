@@ -141,7 +141,7 @@ S_OPENAL_SpatializeStereoSound(const vec3_t listener_origin, const vec3_t listen
 static void   S_OPENAL_reverb(int iChannel, int iReverbType, float fReverbLevel);
 static void   S_OPENAL_ClearChannelDistanceEffects(openal_channel *channel);
 static void   S_OPENAL_UpdateChannelDistanceEffects(openal_channel *channel, const vec3_t listenerOrigin, const vec3_t soundOrigin);
-static void   S_OPENAL_UpdateImpulseReverb(void);
+static void   S_OPENAL_UpdateImpulseReverb(int iReverbType, float fReverbLevel);
 static bool   S_OPENAL_ConfigureChannelDistanceFilters(openal_channel *channel);
 static bool   S_OPENAL_LoadMP3_Codec(const char *_path, sfx_t *pSfx);
 static ALuint S_OPENAL_Format(float width, int channels);
@@ -771,7 +771,7 @@ qboolean S_OPENAL_Init()
         alDieIfError();
 
         if (al_reverb_effect && al_reverb_slot) {
-            S_OPENAL_UpdateImpulseReverb();
+            S_OPENAL_UpdateImpulseReverb(s_iReverbType, s_fReverbLevel);
             qalAuxiliaryEffectSloti(al_reverb_slot, AL_EFFECTSLOT_EFFECT, al_reverb_effect);
             alDieIfError();
             S_OPENAL_SetReverb(s_iReverbType, s_fReverbLevel);
@@ -2679,19 +2679,18 @@ static void S_OPENAL_ClearChannelDistanceEffects(openal_channel *channel)
     channel->fDistanceFxSendHF    = -1.0f;
 }
 
-static void S_OPENAL_UpdateImpulseReverb(void)
+static void S_OPENAL_UpdateImpulseReverb(int iReverbType, float fReverbLevel)
 {
     float decayTime;
     float baseLevel;
-    int   reverbType;
 
     if (!al_use_reverb || !al_reverb_effect || !qalEffecti || !qalEffectf) {
         return;
     }
 
-    reverbType = Q_clamp_int(s_iReverbType, 0, (int)(ARRAY_LEN(reverb_table) - 1));
-    decayTime  = Q_clamp_float(reverb_table[reverbType] * 3.0f, 0.2f, 8.0f);
-    baseLevel  = Q_max(s_fReverbLevel, s_impulse_distance_fx_reverb_base->value);
+    iReverbType = Q_clamp_int(iReverbType, 0, (int)(ARRAY_LEN(reverb_table) - 1));
+    decayTime   = Q_clamp_float(reverb_table[iReverbType] * 3.0f, 0.2f, 8.0f);
+    baseLevel   = Q_max(fReverbLevel, s_impulse_distance_fx_reverb_base->value);
     baseLevel  = Q_clamp_float(baseLevel, 0.0f, 1.0f);
 
     qalEffecti(al_reverb_effect, AL_EFFECT_TYPE, AL_EFFECT_REVERB);
@@ -2807,7 +2806,7 @@ static void S_OPENAL_reverb(int iChannel, int iReverbType, float fReverbLevel)
         return;
     }
 
-    S_OPENAL_UpdateImpulseReverb();
+    S_OPENAL_UpdateImpulseReverb(iReverbType, fReverbLevel);
 
     if (!al_use_reverb || !al_reverb_slot) {
         qalSource3i(channel->source, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 0, AL_FILTER_NULL);
@@ -2833,7 +2832,7 @@ void S_OPENAL_SetReverb(int iType, float fLevel)
     s_bReverbChanged = true;
 
     if (al_use_reverb) {
-        S_OPENAL_UpdateImpulseReverb();
+        S_OPENAL_UpdateImpulseReverb(iType, fLevel);
     }
 }
 
