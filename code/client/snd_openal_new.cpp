@@ -640,8 +640,8 @@ static bool S_OPENAL_InitExtensions()
 
     ima4_ext         = qalIsExtensionPresent("AL_EXT_IMA4");
     soft_block_align = qalIsExtensionPresent("AL_SOFT_block_alignment");
-    al_use_efx       = qalcIsExtensionPresent(al_device, "ALC_EXT_EFX") && qalSource3i && qalGenEffects && qalDeleteEffects
-                 && qalEffecti && qalEffectf && qalGenFilters && qalDeleteFilters && qalFilteri && qalFilterf
+    al_use_efx       = qalcIsExtensionPresent(al_device, "ALC_EXT_EFX") && qalGenEffects && qalDeleteEffects && qalEffecti
+                 && qalEffectf && qalGenFilters && qalDeleteFilters && qalFilteri && qalFilterf
                  && qalGenAuxiliaryEffectSlots && qalDeleteAuxiliaryEffectSlots && qalAuxiliaryEffectSloti;
 
     qalGetError();
